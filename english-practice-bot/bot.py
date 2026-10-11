@@ -1,10 +1,14 @@
 """English practice tutor bot for MasterClass English students.
 
 Free conversation with gentle corrections, powered by the Claude API.
+Voice messages supported: students talk, the bot transcribes (Whisper),
+replies as the tutor (Claude), and answers back with voice (TTS).
 Deploy as a Railway worker. Env vars:
   BOT_TOKEN          Telegram bot token (from @BotFather)
   ANTHROPIC_API_KEY  Claude API key (console.anthropic.com)
-  MODEL              Claude model id (default: claude-haiku-4-5-20251001)
+  OPENAI_API_KEY     OpenAI API key (platform.openai.com) — needed for voice
+  MODEL              Claude model id (default: claude-haiku-5-5)
+  TTS_VOICE          OpenAI TTS voice (default: nova)
   ADMIN_CHAT_ID      Telegram user id for error alerts (optional)
   DAILY_LIMIT        Max practice messages per user per day (default: 100)
 """
@@ -16,12 +20,17 @@ import time
 import urllib.parse
 import urllib.request
 
+import requests
+
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 MODEL = os.environ.get("MODEL", "claude-haiku-5-5")
+TTS_VOICE = os.environ.get("TTS_VOICE", "nova")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+FILE_API = f"https://api.telegram.org/file/bot{BOT_TOKEN}"
 
 SYSTEM_PROMPT = (
     "You are the English practice tutor bot for 'MasterClass English by Sayar Arkar', "
@@ -102,25 +111,143 @@ def bump_daily(chat_id):
     daily_counts[chat_id] = (today, count + 1) if day == today else (today, 1)
 
 
+def send_voice(chat_id, audio_bytes, caption="", reply_to=None):
+    """Send an .ogg Opus voice message, with the reply text as caption when it fits."""
+    try:
+        files = {"voice": ("reply.ogg", audio_bytes, "audio/ogg")}
+        data = {"chat_id": chat_id, "caption": caption[:1024]}
+        if reply_to:
+            data["reply_to_message_id"] = reply_to
+        r = requests.post(f"{API}/sendVoice", data=data, files=files, timeout=60)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print("sendVoice failed:", e)
+        return None
+
+
+def download_telegram_file(file_id):
+    info = tg("getFile", {"file_id": file_id}, timeout=30)
+    path = info["result"]["file_path"]
+    with urllib.request.urlopen(f"{FILE_API}/{path}", timeout=60) as r:
+        return r.read()
+
+
+def whisper_transcribe(audio_bytes):
+    r = requests.post(
+        "https://api.openai.com/v1/audio/transcriptions",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+        files={"file": ("voice.ogg", audio_bytes, "audio/ogg")},
+        data={"model": "whisper-1", "language": "en"},
+        timeout=90,
+    )
+    r.raise_for_status()
+    return r.json().get("text", "").strip()
+
+
+def tts_speak(text):
+    r = requests.post(
+        "https://api.openai.com/v1/audio/speech",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+        json={"model": "tts-1", "input": text, "voice": TTS_VOICE, "response_format": "opus"},
+        timeout=90,
+    )
+    r.raise_for_status()
+    return r.content
+
+
+def tutor_reply(chat_id, user_text):
+    """Run one tutor turn: returns the reply text (also updates history)."""
+    history = histories.setdefault(chat_id, [])
+    history.append({"role": "user", "content": user_text})
+    history[:] = history[-20:]  # keep last 10 exchanges
+    try:
+        reply = ask_claude(history).strip()
+    except Exception as e:
+        print("Claude API failed:", e)
+        history.pop()  # don't keep the failed turn
+        return None
+    if reply:
+        history.append({"role": "assistant", "content": reply})
+        history[:] = history[-20:]
+        bump_daily(chat_id)
+    return reply
+
+
 START_MSG = (
     "👋 Hi! I'm your English practice buddy from MasterClass English.\n\n"
-    "Just chat with me in English — about your day, your hobbies, anything! "
+    "Just chat with me in English — type, or hold the 🎤 mic button and talk! "
     "I'll gently correct your mistakes and help you sound more natural.\n\n"
     "Commands:\n"
     "/new — start a fresh conversation"
 )
 
 
+def handle_voice(chat_id, voice, thread):
+    duration = voice.get("duration", 0)
+    if duration > 120:
+        send_text(chat_id,
+                  "That's a long one! 😄 Keep voice messages under 2 minutes so I can "
+                  "understand you properly.", thread)
+        return
+    if not OPENAI_API_KEY:
+        send_text(chat_id,
+                  "Voice isn't switched on yet — send me text for now and I'll still "
+                  "help you practice! ✍️", thread)
+        return
+    if over_daily_limit(chat_id):
+        send_text(chat_id,
+                  "You've had lots of great practice today! 🎉 Come back tomorrow for more. "
+                  "Keep using what you learned!", thread)
+        return
+    try:
+        tg("sendChatAction", {"chat_id": chat_id, "action": "record_voice"}, timeout=10)
+    except Exception:
+        pass
+    try:
+        audio = download_telegram_file(voice["file_id"])
+        transcript = whisper_transcribe(audio)
+    except Exception as e:
+        print("voice download/transcribe failed:", e)
+        send_text(chat_id, "I couldn't quite hear that 🎧 — try again?", thread)
+        return
+    if not transcript or len(transcript) < 2:
+        send_text(chat_id, "I didn't catch any words there — say it once more? 🎤", thread)
+        return
+    send_typing(chat_id)
+    reply = tutor_reply(chat_id, transcript)
+    if not reply:
+        send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
+        return
+    # Voice answer first, then the text so they can re-read corrections.
+    try:
+        voice_bytes = tts_speak(reply)
+        sent = send_voice(chat_id, voice_bytes, caption=reply, reply_to=thread)
+    except Exception as e:
+        print("TTS failed:", e)
+        sent = None
+    if sent and len(reply) <= 1024:
+        return  # caption carried the text
+    send_text(chat_id, reply, thread)
+
+
 def handle_update(u):
     msg = u.get("message") or {}
     chat = msg.get("chat", {})
     chat_id = chat.get("id")
-    text = (msg.get("text") or "").strip()
-    if not chat_id or not text:
+    if not chat_id:
         return
     user = msg.get("from", {})
     name = user.get("first_name", "there")
     thread = msg.get("message_id") if chat.get("type") in ("group", "supergroup") else None
+
+    if msg.get("voice"):
+        handle_voice(chat_id, msg["voice"], thread)
+        return
+
+    text = (msg.get("text") or "").strip()
+    if not text:
+        return
 
     if text.startswith("/start"):
         send_text(chat_id, START_MSG, thread)
@@ -138,24 +265,12 @@ def handle_update(u):
                   "Keep using what you learned!", thread)
         return
 
-    history = histories.setdefault(chat_id, [])
-    history.append({"role": "user", "content": text})
-    history[:] = history[-20:]  # keep last 10 exchanges
-
     send_typing(chat_id)
-    try:
-        reply = ask_claude(history).strip()
-    except Exception as e:
-        print("Claude API failed:", e)
-        send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
-        history.pop()  # don't keep the failed turn
-        return
-
+    reply = tutor_reply(chat_id, text)
     if reply:
-        history.append({"role": "assistant", "content": reply})
-        history[:] = history[-20:]
-        bump_daily(chat_id)
         send_text(chat_id, reply, thread)
+    else:
+        send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
 
 
 def main():
