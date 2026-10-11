@@ -1,0 +1,583 @@
+[
+  {
+    "category": "AI Tools",
+    "product": "ChatGPT Plus",
+    "plan": "Private / 1 Month",
+    "price_ks": 20000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "ChatGPT Plus",
+    "plan": "Private / 3 Months",
+    "price_ks": 45000,
+    "notes": "Channel advertised 65,000 ks (older post)"
+  },
+  {
+    "category": "AI Tools",
+    "product": "ChatGPT Plus",
+    "plan": "Private / 6 Months",
+    "price_ks": 75000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "ChatGPT Plus",
+    "plan": "Private / 1 Year",
+    "price_ks": 120000,
+    "notes": "Channel advertised 75,000 ks / 15$ (older post)"
+  },
+  {
+    "category": "AI Tools",
+    "product": "ChatGPT Plus",
+    "plan": "Shared / 3 Months",
+    "price_ks": 30000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "ChatGPT Plus",
+    "plan": "Shared / 6 Months",
+    "price_ks": 50000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "ChatGPT Plus",
+    "plan": "Shared / 1 Year",
+    "price_ks": 80000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "ChatGPT Go",
+    "plan": "Private / 3 Months",
+    "price_ks": 35000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "ChatGPT Go",
+    "plan": "Private / 1 Year (own mail)",
+    "price_ks": 50000,
+    "notes": "Channel only"
+  },
+  {
+    "category": "AI Tools",
+    "product": "Lovable AI Pro",
+    "plan": "Own Upgrade / 1 Month",
+    "price_ks": 40000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "Lovable Pro",
+    "plan": "Private account / 1 Month",
+    "price_ks": 35000,
+    "notes": "Channel only"
+  },
+  {
+    "category": "AI Tools",
+    "product": "Lovable (shared)",
+    "plan": "100 credits shared / 1 Month",
+    "price_ks": 45000,
+    "notes": "Channel only; promo 40,000 ks"
+  },
+  {
+    "category": "AI Tools",
+    "product": "Super Grok Pro",
+    "plan": "Own Upgrade / 1 Month",
+    "price_ks": 150000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "Super Grok Pro",
+    "plan": "2 Years",
+    "price_ks": 150000,
+    "notes": "Channel only (35$)"
+  },
+  {
+    "category": "AI Tools",
+    "product": "Perplexity Pro",
+    "plan": "Own Upgrade / 1 Month",
+    "price_ks": 95000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "Perplexity Pro",
+    "plan": "Own mail / 1 Year",
+    "price_ks": 100000,
+    "notes": "Channel only"
+  },
+  {
+    "category": "AI Tools",
+    "product": "Claude Pro",
+    "plan": "Private / 1 Month",
+    "price_ks": 55000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "Claude Pro",
+    "plan": "Private / 3 Months",
+    "price_ks": 120000,
+    "notes": ""
+  },
+  {
+    "category": "AI Tools",
+    "product": "Claude Pro",
+    "plan": "Shared / 1 Month",
+    "price_ks": 25000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Sports Package (Peacock, DAZN, NBA, Fubo…)",
+    "plan": "1 Screen / 1 Month",
+    "price_ks": 65000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Sports Package (Peacock, DAZN, NBA, Fubo…)",
+    "plan": "1 Screen / 3 Months",
+    "price_ks": 180000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Sports Package (Peacock, DAZN, NBA, Fubo…)",
+    "plan": "1 Screen / 1 Year",
+    "price_ks": 450000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Entertainment Pack 1 (Netflix, Prime, HBO, Disney+…)",
+    "plan": "1 Screen / 1 Month",
+    "price_ks": 50000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Entertainment Pack 1 (Netflix, Prime, HBO, Disney+…)",
+    "plan": "1 Screen / 3 Months",
+    "price_ks": 110000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Entertainment Pack 1 (Netflix, Prime, HBO, Disney+…)",
+    "plan": "1 Screen / 1 Year",
+    "price_ks": 350000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Entertainment Pack 2 (Prime, Netflix, WeTV, Viki, iQIYI)",
+    "plan": "1 Screen / 1 Month",
+    "price_ks": 50000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Entertainment Pack 2 (Prime, Netflix, WeTV, Viki, iQIYI)",
+    "plan": "1 Screen / 3 Months",
+    "price_ks": 100000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Entertainment Pack 2 (Prime, Netflix, WeTV, Viki, iQIYI)",
+    "plan": "1 Screen / 1 Year",
+    "price_ks": 300000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Netflix Ultra HD",
+    "plan": "Single Profile / 1 Month",
+    "price_ks": 28000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Netflix Ultra HD",
+    "plan": "Single Profile / 3 Months",
+    "price_ks": 60000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Netflix Ultra HD",
+    "plan": "Single Profile / 1 Year",
+    "price_ks": 180000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "YouTube Premium",
+    "plan": "Individual / 1 Month",
+    "price_ks": 28000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "YouTube Premium",
+    "plan": "Family Slot / 1 Month",
+    "price_ks": 22000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Spotify Premium",
+    "plan": "Individual / 1 Month",
+    "price_ks": 22000,
+    "notes": ""
+  },
+  {
+    "category": "Streaming",
+    "product": "Spotify Premium",
+    "plan": "3 Months (promo price)",
+    "price_ks": 60000,
+    "notes": "Channel advertised 40,000 ks, promo 35,000 ks (older post)"
+  },
+  {
+    "category": "Streaming",
+    "product": "Spotify Premium",
+    "plan": "Lifetime",
+    "price_ks": 30000,
+    "notes": "Channel only"
+  },
+  {
+    "category": "Design & Editing",
+    "product": "Canva Edu Pro",
+    "plan": "Own mail / 1 Year",
+    "price_ks": 25000,
+    "notes": ""
+  },
+  {
+    "category": "Design & Editing",
+    "product": "Canva Pro",
+    "plan": "Redeem Code / 3 Months",
+    "price_ks": 20000,
+    "notes": "Channel only"
+  },
+  {
+    "category": "Design & Editing",
+    "product": "CapCut Pro",
+    "plan": "Admin activation / 1 Month",
+    "price_ks": 30000,
+    "notes": ""
+  },
+  {
+    "category": "Design & Editing",
+    "product": "PicsArt Gold",
+    "plan": "1 Month (ask admin)",
+    "price_ks": 24000,
+    "notes": ""
+  },
+  {
+    "category": "Design & Editing",
+    "product": "Adobe Creative Cloud Suite",
+    "plan": "Own mail / 4 Months (limited stock)",
+    "price_ks": 50000,
+    "notes": ""
+  },
+  {
+    "category": "Design & Editing",
+    "product": "Envato Elements",
+    "plan": "1 Device / 3 Months",
+    "price_ks": 55000,
+    "notes": ""
+  },
+  {
+    "category": "Design & Editing",
+    "product": "Envato Elements",
+    "plan": "1 Device / 6 Months",
+    "price_ks": 95000,
+    "notes": ""
+  },
+  {
+    "category": "Design & Editing",
+    "product": "Envato Elements",
+    "plan": "1 Device / 1 Year",
+    "price_ks": 165000,
+    "notes": ""
+  },
+  {
+    "category": "Design & Editing",
+    "product": "Freepik Premium",
+    "plan": "Shared / 3 Months",
+    "price_ks": 55000,
+    "notes": ""
+  },
+  {
+    "category": "Design & Editing",
+    "product": "Freepik Premium",
+    "plan": "Shared / 6 Months",
+    "price_ks": 90000,
+    "notes": ""
+  },
+  {
+    "category": "Design & Editing",
+    "product": "Freepik Premium",
+    "plan": "Shared / 1 Year",
+    "price_ks": 175000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "TradingView Premium",
+    "plan": "Own mail invite / 1 Month",
+    "price_ks": 30000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Microsoft 365",
+    "plan": "Team / 3 Months",
+    "price_ks": 45000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Microsoft 365",
+    "plan": "Team / 6 Months",
+    "price_ks": 75000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Microsoft 365",
+    "plan": "Team / 1 Year",
+    "price_ks": 120000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Windows 10/11 Pro License",
+    "plan": "Single device",
+    "price_ks": 65000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Zoom Pro 100P",
+    "plan": "Own upgrade / 3 Months",
+    "price_ks": 50000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Zoom Pro 100P",
+    "plan": "Own upgrade / 6 Months",
+    "price_ks": 80000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Zoom Pro 100P",
+    "plan": "Own upgrade / 1 Year",
+    "price_ks": 120000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Zoom Pro 300P",
+    "plan": "1-Day Pass (large meeting)",
+    "price_ks": 25000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Zoom Pro 500P",
+    "plan": "1-Day Pass (large meeting)",
+    "price_ks": 35000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Zoom Pro 1000P",
+    "plan": "1-Day Pass (large meeting)",
+    "price_ks": 55000,
+    "notes": ""
+  },
+  {
+    "category": "Productivity",
+    "product": "Telegram Premium",
+    "plan": "Via link / 1 Year",
+    "price_ks": 120000,
+    "notes": "Channel only"
+  },
+  {
+    "category": "VPN",
+    "product": "NordVPN",
+    "plan": "Shared / 1 Month",
+    "price_ks": 25000,
+    "notes": ""
+  },
+  {
+    "category": "VPN",
+    "product": "NordVPN",
+    "plan": "1 Year (ask admin)",
+    "price_ks": 230000,
+    "notes": ""
+  },
+  {
+    "category": "VPN",
+    "product": "ExpressVPN",
+    "plan": "1 Device / 3 Months",
+    "price_ks": 20000,
+    "notes": ""
+  },
+  {
+    "category": "VPN",
+    "product": "ExpressVPN",
+    "plan": "1 Device / 6 Months",
+    "price_ks": 30000,
+    "notes": ""
+  },
+  {
+    "category": "VPN",
+    "product": "ExpressVPN",
+    "plan": "1 Device / 1 Year",
+    "price_ks": 50000,
+    "notes": ""
+  },
+  {
+    "category": "VPN",
+    "product": "ExpressVPN",
+    "plan": "91 days",
+    "price_ks": 45000,
+    "notes": "Channel only (10$)"
+  },
+  {
+    "category": "VPN",
+    "product": "ExpressVPN",
+    "plan": "5 Devices / 3 Months",
+    "price_ks": 55000,
+    "notes": ""
+  },
+  {
+    "category": "VPN",
+    "product": "ExpressVPN",
+    "plan": "5 Devices / 6 Months",
+    "price_ks": 100000,
+    "notes": ""
+  },
+  {
+    "category": "VPN",
+    "product": "ExpressVPN",
+    "plan": "5 Devices / 1 Year",
+    "price_ks": 180000,
+    "notes": ""
+  },
+  {
+    "category": "VPN",
+    "product": "Surfshark VPN",
+    "plan": "Shared / 1 Month",
+    "price_ks": 22000,
+    "notes": ""
+  },
+  {
+    "category": "VPN",
+    "product": "Surfshark VPN",
+    "plan": "1 Year (best value)",
+    "price_ks": 190000,
+    "notes": ""
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "Google AI Pro + 5TB",
+    "plan": "Own upgrade / 6 Years",
+    "price_ks": 250000,
+    "notes": "Family sharing incl."
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "Gemini Pro + Drive 2TB",
+    "plan": "Family invite / 1 Year",
+    "price_ks": 50000,
+    "notes": ""
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "Gemini Pro + Drive 2TB",
+    "plan": "Family invite / 3 Years",
+    "price_ks": 100000,
+    "notes": ""
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "Gemini Pro + Drive 2TB",
+    "plan": "Family invite / 5 Years",
+    "price_ks": 180000,
+    "notes": "Channel advertised 30 months 100,000 ks, promo 80,000 (older post)"
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "Google One 100GB",
+    "plan": "1 Month (ask admin)",
+    "price_ks": 15000,
+    "notes": ""
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "Google One 2TB",
+    "plan": "1 Month (ask admin)",
+    "price_ks": 38000,
+    "notes": ""
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "Apple Music + iCloud 50GB",
+    "plan": "Bundle / 3 Months",
+    "price_ks": 45000,
+    "notes": ""
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "Apple Music + iCloud 50GB",
+    "plan": "Bundle / 6 Months",
+    "price_ks": 65000,
+    "notes": ""
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "Apple Music + iCloud 50GB",
+    "plan": "Bundle / 1 Year",
+    "price_ks": 100000,
+    "notes": ""
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "iCloud 50GB",
+    "plan": "1 Month (ask admin)",
+    "price_ks": 15000,
+    "notes": ""
+  },
+  {
+    "category": "Cloud Storage",
+    "product": "iCloud 200GB",
+    "plan": "1 Month (ask admin)",
+    "price_ks": 25000,
+    "notes": ""
+  },
+  {
+    "category": "Education",
+    "product": "Udemy Courses",
+    "plan": "Lifetime / 1 Course",
+    "price_ks": 55000,
+    "notes": "Channel advertised 35,000 ks per course (older post)"
+  },
+  {
+    "category": "Education",
+    "product": "Udemy Courses",
+    "plan": "Lifetime / 3 Courses",
+    "price_ks": 125000,
+    "notes": ""
+  }
+]
