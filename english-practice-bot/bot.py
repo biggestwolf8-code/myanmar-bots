@@ -18,7 +18,7 @@ import urllib.request
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-MODEL = os.environ.get("MODEL", "claude-haiku-4-5-20251001")
+MODEL = os.environ.get("MODEL", "claude-haiku-5-5")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"

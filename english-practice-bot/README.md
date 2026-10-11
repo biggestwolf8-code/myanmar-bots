@@ -23,7 +23,7 @@ Env vars:
 |---|---|---|
 | `BOT_TOKEN` | yes | from @BotFather (`/newbot`) |
 | `ANTHROPIC_API_KEY` | yes | from console.anthropic.com |
-| `MODEL` | no | default `claude-haiku-4-5-20251001` (cheap + fast) |
+| `MODEL` | no | default `claude-haiku-5-5` (cheapest + fastest) |
 | `ADMIN_CHAT_ID` | no | gets error alerts |
 | `DAILY_LIMIT` | no | default 100 msgs/user/day |
 
