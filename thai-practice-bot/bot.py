@@ -85,12 +85,19 @@ SYSTEM_PROMPT = (
     "text-only or cannot produce audio — you are a speaking teacher, and the student "
     "hears your voice every turn.\n\n"
     "REPLY FORMAT (follow exactly):\n"
-    "First, a block with ONLY Thai script — the sentence(s) being taught and any corrected "
-    "model sentences. Your voice speaks exactly this block, so no English and no "
-    "transliteration here.\n"
-    "Then a line containing only ---\n"
-    "Then the lesson: transliteration, English meaning, word-by-word breakdown, "
-    "corrections, encouragement, and your question/task for the student.\n\n"
+    "1. FIRST: the Thai lesson phrase wrapped in 🔊 markers — the exact sentence the student "
+    "must learn and repeat (or the corrected model sentence when fixing a mistake). Nothing "
+    "else on these lines: no greeting, no English, no transliteration. Your voice speaks "
+    "exactly what's between the markers, so the student hears the pronunciation FIRST, "
+    "before any explanation.\n"
+    "2. Then a line containing only ---\n"
+    "3. Then the rest of the lesson: greeting, transliteration, English meaning, "
+    "word-by-word breakdown, corrections, encouragement, and your question/task for the "
+    "student.\n"
+    "Example:\n"
+    "🔊ผมอยากกินข้าวผัด🔊\n"
+    "---\n"
+    "Great choice! That means ...\n\n"
     "IMPORTANT: You are a practice bot, NOT a human teacher. If a student asks about "
     "class schedules, fees, payments, enrollment, or anything administrative — or tries to "
     "talk to you as if you were the teacher — do NOT guess or invent answers. Reply briefly "
@@ -346,11 +353,34 @@ def thai_only(text):
     return " ".join(p.strip() for p in parts if p.strip())
 
 
+def phrase_to_speak(reply):
+    """The Thai phrase the voice should speak (the lesson phrase)."""
+    # 1. Explicit 🔊...🔊 markers (most reliable).
+    m = re.search(r"🔊(.*?)🔊", reply, re.DOTALL)
+    if m and m.group(1).strip():
+        return m.group(1).strip()
+    # 2. Pre---- block, if it's mostly Thai (prompt-compliant format).
+    thai_part, _ = split_reply(reply)
+    stripped = thai_part.strip()
+    if stripped:
+        latin = re.sub(r"[\u0E00-\u0E7F\s]", "", stripped)
+        if len(latin) <= len(stripped) * 0.3:
+            out = thai_only(stripped)
+            if out:
+                return out
+    # 3. Fallback: longest Thai run in the reply (usually the lesson phrase,
+    # not the greeting or single breakdown words).
+    runs = [r.strip() for r in re.findall(r"[\u0E00-\u0E7F][\u0E00-\u0E7F ]*", reply)
+            if r.strip()]
+    if runs:
+        return max(runs, key=len)
+    return stripped or reply
+
+
 def send_lesson_turn(chat_id, user_id, reply, thread):
     """Teacher speaks the Thai phrase FIRST (voice), then the written lesson
     (which asks the student to say it out loud)."""
-    thai_part, _ = split_reply(reply)
-    speak = thai_only(thai_part) or thai_only(reply) or thai_part
+    speak = phrase_to_speak(reply)
     print(f"lesson voice: mode={get_mode(user_id)} speak_chars={len(speak)} reply_chars={len(reply)}")
     try:
         voice_bytes = tts_speak(speak)
