@@ -36,6 +36,8 @@ import time
 import urllib.parse
 import urllib.request
 
+import requests
+
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 MODEL = os.environ.get("MODEL", "claude-haiku-4-5-20251001")
@@ -572,9 +574,15 @@ def handle_update(u):
             files = build_files(blocks)
             if files:
                 send_text(chat_id, clean or "Here you go! 📎", thread)
+                failed = 0
                 for fname, data, mime, caption in files:
-                    send_document(chat_id, fname, data, mime,
-                                  caption=caption, reply_to=thread)
+                    if not send_document(chat_id, fname, data, mime,
+                                         caption=caption, reply_to=thread):
+                        failed += 1
+                if failed:
+                    send_text(chat_id,
+                              "⚠️ I built the file but couldn't send it — "
+                              "please try asking again.", thread)
             else:
                 # Nothing built — fall back to the full text so nothing is lost.
                 send_text(chat_id, reply, thread)
