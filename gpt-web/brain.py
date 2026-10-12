@@ -45,10 +45,13 @@ SYSTEM_PROMPT = (
     "brief when you attach a file — the file carries the content. Only use these blocks "
     "when the user actually wants a file, never for ordinary answers. "
     "IMAGES: If the user asks you to generate, create, draw, or make an image/picture/photo/logo, "
-    "end your reply with a fenced block that starts with ```image followed by a detailed visual "
-    "description of the image (subject, style, colors, composition, mood). Keep your chat text "
-    "brief — the image carries the content. Only use this block when the user actually wants an "
-    "image generated, never for ordinary answers."
+    "you MUST end your reply with EXACTLY this format and nothing else in a code block:\n"
+    "```image\n"
+    "a detailed visual description of the image (subject, style, colors, composition, mood)\n"
+    "```\n"
+    "The word 'image' must come immediately after the opening triple backticks. Keep any chat "
+    "text brief and OUTSIDE the code block — the image carries the content. Only do this when "
+    "the user actually wants an image generated, never for ordinary answers."
 )
 
 
@@ -70,31 +73,84 @@ def _post(payload):
         return json.load(r)
 
 
-def ask_gpt(messages, max_tokens=None):
-    """Returns (reply_text, usage_dict). Raises on API failure."""
-    api_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    api_messages += [{"role": m["role"], "content": m["content"]} for m in messages]
-    payload = {
-        "model": MODEL,
-        "messages": api_messages,
-        "max_completion_tokens": max_tokens or MAX_TOKENS,
-    }
+def _post_with_fallback(payload, max_tokens):
     try:
-        out = _post(payload)
+        return _post(payload)
     except urllib.error.HTTPError as e:
         # older models expect max_tokens instead of max_completion_tokens
         err = e.read().decode(errors="replace")
         if e.code == 400 and "max_completion_tokens" in err:
-            payload.pop("max_completion_tokens")
-            payload["max_tokens"] = max_tokens or MAX_TOKENS
-            out = _post(payload)
-        else:
-            raise RuntimeError(f"OpenAI API error {e.code}: {err[:300]}")
+            payload = {k: v for k, v in payload.items() if k != "max_completion_tokens"}
+            payload["max_tokens"] = max_tokens
+            return _post(payload)
+        raise RuntimeError(f"OpenAI API error {e.code}: {err[:300]}")
+
+
+def ask_gpt(messages, max_tokens=None, attachments=None):
+    """Returns (reply_text, usage_dict). Raises on API failure.
+
+    attachments: optional list applied to the LAST user message:
+      {"kind": "image", "mime": "...", "b64": "..."}   (photo/screenshot)
+      {"kind": "doc", "name": "...", "text": "..."}     (extracted doc text)
+    """
+    api_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for m in messages[:-1]:
+        api_messages.append({"role": m["role"], "content": m["content"]})
+    last = messages[-1]
+    if attachments and last.get("role") == "user":
+        parts = []
+        text = last.get("content") or ""
+        for a in attachments:
+            if a["kind"] == "doc":
+                text = f"[Attached document \"{a['name']}\":\n{a['text']}]\n\n{text}"
+        if not text.strip():
+            text = "Describe this image in detail."
+        parts.append({"type": "text", "text": text})
+        for a in attachments:
+            if a["kind"] == "image":
+                parts.append({"type": "image_url",
+                              "image_url": {"url": f"data:{a['mime']};base64,{a['b64']}"}})
+        api_messages.append({"role": "user", "content": parts})
+    else:
+        api_messages.append({"role": last.get("role", "user"),
+                             "content": last.get("content", "")})
+    mt = max_tokens or MAX_TOKENS
+    payload = {
+        "model": MODEL,
+        "messages": api_messages,
+        "max_completion_tokens": mt,
+    }
+    out = _post_with_fallback(payload, mt)
     choice = (out.get("choices") or [{}])[0]
     text = ((choice.get("message") or {}).get("content") or "").strip()
     usage = out.get("usage", {})
     return text, {"input_tokens": usage.get("prompt_tokens", 0),
                   "output_tokens": usage.get("completion_tokens", 0)}
+
+
+def extract_doc_text(filename, data, max_chars=20000):
+    """Extract readable text from an uploaded document. Returns (ok, text_or_error)."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    try:
+        if ext == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(data))
+            pages = []
+            for p in reader.pages[:50]:
+                pages.append(p.extract_text() or "")
+            text = "\n".join(pages)
+        elif ext in (".txt", ".md", ".markdown", ".csv"):
+            text = data.decode("utf-8", errors="replace")
+        else:
+            return False, "unsupported file type"
+    except Exception as e:
+        return False, f"could not read file: {e}"
+    text = text.strip()
+    if not text:
+        return False, "no readable text found"
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n...[truncated]"
+    return True, text
 
 
 def generate_image(prompt, size="1024x1024"):
@@ -124,7 +180,36 @@ def generate_image(prompt, size="1024x1024"):
     return base64.b64decode(out["data"][0]["b64_json"])
 
 
-BLOCK_RE = re.compile(r"```(excel|pdf|image)\n(.*?)```", re.DOTALL | re.IGNORECASE)
+BLOCK_RE = re.compile(r"```(excel|pdf|image)[ \t]*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+
+
+def looks_like_image_request(text):
+    """Heuristic: did the user ask for an image to be generated?"""
+    t = (text or "").lower()
+    wants_visual = any(w in t for w in (
+        "image", "picture", "photo", "logo", "illustration",
+        "drawing", "painting", "artwork", "portrait"))
+    wants_made = any(w in t for w in (
+        "generat", "creat", "draw", "make", "design", "paint", "produce"))
+    return wants_visual and wants_made
+
+
+FENCE_RE = re.compile(r"```\w*[ \t]*\n(.*?)```", re.DOTALL)
+
+
+def extract_image_fallback(user_text, reply):
+    """Fallback: user asked for an image but the model didn't use the ```image
+    fence (e.g. a plain code block). Returns (prompt|None, clean_reply)."""
+    if not looks_like_image_request(user_text):
+        return None, reply
+    fences = list(FENCE_RE.finditer(reply))
+    if not fences:
+        return None, reply
+    prompt = fences[-1].group(1).strip()
+    if not prompt or len(prompt) > 2000:
+        return None, reply
+    clean = (reply[:fences[-1].start()] + reply[fences[-1].end():]).strip()
+    return prompt, clean
 
 
 def extract_blocks(text):

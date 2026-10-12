@@ -33,6 +33,8 @@ plus a volume mounted at `/data`.
 - **Image generation** — ask for a picture, logo, or illustration; it appears
   right in the chat with a download button (OpenAI image API, ~$0.04/image,
   tracked per code in the admin panel).
+- **File uploads** — attach a photo or document (PDF, TXT, Markdown, CSV);
+  the AI reads it and discusses it with you (📎 button in the chat).
 - **Cost control** — per-code daily message cap; per-code token + cost tracking.
 - **Admin panel** (`/admin`) — generate invite codes, copy invite links,
   see per-code usage and total API cost, revoke access.

@@ -17,7 +17,9 @@ Env vars:
 Invite links look like: https://<host>/i/<CODE>  (single use)
 Admin panel: https://<host>/admin
 """
+import base64
 import datetime
+import io
 import json
 import os
 import secrets
@@ -26,6 +28,24 @@ import time
 from flask import Flask, jsonify, redirect, request, send_file, session, url_for
 
 import brain
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif",
+                ".pdf", ".txt", ".md", ".markdown", ".csv"}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+
+def shrink_image(data, ext):
+    """Downscale large images to bound vision cost. Returns (mime, bytes)."""
+    from PIL import Image
+    img = Image.open(io.BytesIO(data))
+    img.thumbnail((2048, 2048))
+    buf = io.BytesIO()
+    if ext == ".png":
+        img.save(buf, "PNG")
+        return "image/png", buf.getvalue()
+    img.convert("RGB").save(buf, "JPEG", quality=85)
+    return "image/jpeg", buf.getvalue()
 
 DATA_DIR = os.environ.get("DATA_DIR", ".")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -150,6 +170,20 @@ def track_images(code, n=1):
     u = usage.setdefault(code, {"input": 0, "output": 0, "cost": 0.0})
     u["images"] = u.get("images", 0) + n
     u["cost"] += brain.IMAGE_COST * n
+
+
+def split_blocks(reply, user_text):
+    """Split fenced blocks; if the user asked for an image but the model didn't
+    use the ```image fence, fall back to its last fenced block as the prompt."""
+    clean, blocks = brain.extract_blocks(reply)
+    img_blocks = [content for kind, content in blocks if kind == "image"]
+    if not img_blocks:
+        fb_prompt, fb_clean = brain.extract_image_fallback(user_text, reply)
+        if fb_prompt:
+            img_blocks = [fb_prompt]
+            clean = fb_clean
+    doc_blocks = [(kind, content) for kind, content in blocks if kind != "image"]
+    return clean, img_blocks, doc_blocks
 
 
 def cleanup_files():
@@ -289,11 +323,9 @@ def api_chat():
     bump_daily(code)
     record_usage(code, api_usage)
 
-    clean, blocks = brain.extract_blocks(reply)
+    clean, img_blocks, doc_blocks = split_blocks(reply, text)
     files = []
-    img_blocks = [content for kind, content in blocks if kind == "image"]
-    doc_blocks = [(kind, content) for kind, content in blocks if kind != "image"]
-    if blocks:
+    if img_blocks or doc_blocks:
         cleanup_files()
         import datetime
         for kind, fname, fbytes, mime in brain.build_files(doc_blocks):
@@ -308,7 +340,92 @@ def api_chat():
                 print("image generation failed:", e)
         _save_json("gptfiles.json", filemeta)
     save_all()
-    if blocks and not files:
+    if (img_blocks or doc_blocks) and not files:
+        return jsonify({"ok": True, "reply": reply, "files": []})
+    return jsonify({"ok": True, "reply": clean or "Here you go! 📎", "files": files})
+
+
+@app.route("/api/upload_chat", methods=["POST"])
+def api_upload_chat():
+    """Chat turn with a file attachment (photo or document). Multipart form."""
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False, "error": "Not signed in."}), 401
+    code = code_for_sid(sid)
+    text = (request.form.get("message") or "").strip()
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "No file attached."}), 400
+    if len(text) > 6000:
+        return jsonify({"ok": False, "error": "Message too long (6000 chars max)."}), 400
+    if over_daily_limit(code):
+        return jsonify({"ok": False,
+                         "error": "You've reached today's message limit — come back tomorrow!"}), 429
+
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ALLOWED_EXTS:
+        return jsonify({"ok": False,
+                         "error": "That file type isn't supported (photos, PDF, TXT, Markdown, CSV)."}), 400
+    data = f.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        return jsonify({"ok": False, "error": "File too big (10MB max)."}), 400
+    if not data:
+        return jsonify({"ok": False, "error": "Empty file."}), 400
+
+    attachments = []
+    stored_label = ""
+    try:
+        if ext in IMAGE_EXTS:
+            mime, img_bytes = shrink_image(data, ext)
+            attachments.append({"kind": "image", "mime": mime,
+                                "b64": base64.b64encode(img_bytes).decode()})
+            stored_label = f"[Image attached: {f.filename}]"
+        else:
+            ok, doc_text = brain.extract_doc_text(f.filename, data)
+            if not ok:
+                return jsonify({"ok": False, "error": f"Couldn't read that file: {doc_text}"}), 400
+            attachments.append({"kind": "doc", "name": f.filename, "text": doc_text})
+            stored_label = f"[Document attached: {f.filename}]"
+    except Exception as e:
+        print("upload processing failed:", e)
+        return jsonify({"ok": False, "error": "Couldn't process that file."}), 400
+
+    history = histories.setdefault(sid, [])
+    api_turns = history + [{"role": "user", "content": text}]
+    try:
+        reply, api_usage = brain.ask_gpt(api_turns, attachments=attachments)
+        reply = reply.strip()
+    except Exception as ex:
+        print("OpenAI API failed:", ex)
+        return jsonify({"ok": False,
+                         "error": "The AI didn't respond — try again in a moment."}), 502
+    if not reply:
+        return jsonify({"ok": False, "error": "Empty reply — try again."}), 502
+
+    stored_content = (stored_label + " " + text).strip()
+    history.append({"role": "user", "content": stored_content})
+    history.append({"role": "assistant", "content": reply})
+    history[:] = history[-20:]
+    bump_daily(code)
+    record_usage(code, api_usage)
+
+    clean, img_blocks, doc_blocks = split_blocks(reply, text)
+    files = []
+    if img_blocks or doc_blocks:
+        cleanup_files()
+        for kind, fname, fbytes, mime in brain.build_files(doc_blocks):
+            files.append(store_file(sid, fname, fbytes, mime))
+        for prompt in img_blocks:
+            try:
+                img_bytes = brain.generate_image(prompt)
+                ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                files.append(store_file(sid, f"image_{ts}.png", img_bytes, "image/png"))
+                track_images(code)
+            except Exception as e:
+                print("image generation failed:", e)
+        _save_json("gptfiles.json", filemeta)
+    save_all()
+    if (img_blocks or doc_blocks) and not files:
         return jsonify({"ok": True, "reply": reply, "files": []})
     return jsonify({"ok": True, "reply": clean or "Here you go! 📎", "files": files})
 

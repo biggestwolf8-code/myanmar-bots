@@ -96,7 +96,14 @@
   </header>
   <div id="msgs"></div>
   <div id="composer">
+    <div id="fileChip" style="display:none;max-width:820px;margin:0 auto 8px;align-items:center;gap:10px;background:#eef0ff;border:1px solid #c9cdf7;border-radius:10px;padding:8px 12px;font-size:13px;">
+      <img id="fileThumb" class="hidden" style="width:40px;height:40px;object-fit:cover;border-radius:8px;" alt="">
+      <span id="fileName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+      <button onclick="clearAttachment()" style="border:0;background:none;cursor:pointer;font-size:16px;color:var(--muted);padding:0 4px;">✕</button>
+    </div>
     <div class="row">
+      <button id="attachBtn" onclick="document.getElementById('fileInput').click()" title="Attach a photo or document" style="padding:0 14px;font-size:18px;background:#fff !important;border:1.5px solid var(--line);border-radius:14px;cursor:pointer;box-shadow:none;">📎</button>
+      <input type="file" id="fileInput" class="hidden" accept="image/*,.pdf,.txt,.md,.csv" onchange="onFilePicked(this)">
       <input id="msgInput" placeholder="Ask anything…" autocomplete="off" onkeydown="if(event.key==='Enter')send()">
       <button id="sendBtn" onclick="send()">Send</button>
     </div>
@@ -158,7 +165,7 @@ async function boot(){
   document.getElementById('chat').classList.toggle('hidden', !j.ok);
   if (j.ok && !window._welcomed){
     window._welcomed = true;
-    addMsg('bot', "👋 Hi! I'm your AI co-worker, powered by OpenAI API.\n\nAsk me anything — drafting, writing, translations, planning, ideas. I can also make Excel spreadsheets, PDF files, and generate images — just ask!");
+    addMsg('bot', "👋 Hi! I'm your AI co-worker, powered by OpenAI API.\n\nAsk me anything — drafting, writing, translations, planning, ideas. I can also make Excel spreadsheets, PDF files, and generate images — just ask! You can attach photos or documents with the 📎 button and I'll read them.");
     document.getElementById('msgInput').focus();
   }
 }
@@ -173,18 +180,56 @@ async function redeem(){
   else document.getElementById('loginErr').textContent = j.error || 'Something went wrong.';
 }
 let sending = false;
+let attachedFile = null;
+let attachedPreviewUrl = null;
+function onFilePicked(input){
+  const f = input.files[0];
+  if (!f) return;
+  if (f.size > 10*1024*1024){ alert('File too big — 10MB max.'); input.value=''; return; }
+  attachedFile = f;
+  document.getElementById('fileName').textContent = f.name;
+  const thumb = document.getElementById('fileThumb');
+  if (f.type.startsWith('image/')){
+    attachedPreviewUrl = URL.createObjectURL(f);
+    thumb.src = attachedPreviewUrl; thumb.classList.remove('hidden');
+  } else { thumb.classList.add('hidden'); attachedPreviewUrl = null; }
+  document.getElementById('fileChip').style.display = 'flex';
+}
+function clearAttachment(){
+  attachedFile = null; attachedPreviewUrl = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileChip').style.display = 'none';
+}
 async function send(){
   if (sending) return;
   const inp = document.getElementById('msgInput');
   const text = inp.value.trim();
-  if (!text) return;
+  const file = attachedFile;
+  if (!text && !file) return;
   sending = true; document.getElementById('sendBtn').disabled = true;
-  addMsg('user', text); inp.value = '';
+  const ub = addMsg('user', text || ('📎 '+file.name));
+  if (file && file.type.startsWith('image/') && attachedPreviewUrl){
+    const img = document.createElement('img');
+    img.src = attachedPreviewUrl;
+    img.style.cssText = 'max-width:100%;border-radius:10px;margin-top:6px;display:block;';
+    ub.appendChild(img);
+  }
+  inp.value = '';
+  clearAttachment();
   const t = document.createElement('div'); t.className='typing'; t.innerHTML='<span>●</span> <span>●</span> <span>●</span>';
   const box = document.getElementById('msgs'); box.appendChild(t); box.scrollTop = box.scrollHeight;
   try {
-    const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
-    const j = await r.json();
+    let j;
+    if (file){
+      const fd = new FormData();
+      fd.append('message', text);
+      fd.append('file', file);
+      const r = await fetch('/api/upload_chat',{method:'POST',body:fd});
+      j = await r.json();
+    } else {
+      const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
+      j = await r.json();
+    }
     t.remove();
     if (j.ok) addMsg('bot', j.reply, j.files);
     else addMsg('bot', '⚠️ '+(j.error||'Something went wrong.'));
