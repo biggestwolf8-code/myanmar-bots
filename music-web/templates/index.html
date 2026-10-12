@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{{ app_name }}</title>
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#0a0a0f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   :root {
@@ -122,6 +128,10 @@
   #vol::-moz-range-thumb { width: 11px; height: 11px; border: none; border-radius: 50%; background: #fff; }
   #logout { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 12px; }
   #logout:hover { color: #fff; }
+  #toast { position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%);
+           background: #1e1e2c; border: 1px solid var(--line); color: #fff;
+           padding: 10px 18px; border-radius: 999px; font-size: 14px; display: none;
+           z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,.5); white-space: nowrap; }
 
   #upnext { position: fixed; right: 14px; bottom: 96px; width: 300px; max-height: 46vh; overflow-y: auto;
             background: #1e1e2c; border: 1px solid var(--line); border-radius: 12px; padding: 10px;
@@ -153,6 +163,7 @@
     <div class="brand"><div class="logo">🎵</div><b>{{ app_name }}</b></div>
     <button class="navbtn active" id="navHome">🏠&nbsp; Home</button>
     <button class="navbtn" id="navSearch">🔍&nbsp; Search</button>
+    <button class="navbtn" id="navDl">⬇️&nbsp; Downloads <span id="dlCount" style="margin-left:auto;color:var(--dim);font-size:12px"></span></button>
     <div class="pl-head"><span>Playlists</span><button id="newPl">+ New</button></div>
     <div id="pllist"></div>
     <div style="margin-top:auto; padding: 10px;">
@@ -167,6 +178,7 @@
     </div>
     <h2 id="viewTitle">All tracks</h2>
     <div id="viewSub"></div>
+    <div id="offlineBar" style="display:none;background:#3a2a10;border:1px solid #8a6a20;color:#ffd98a;padding:9px 14px;border-radius:10px;font-size:13px;margin-bottom:12px">📴 You're offline — showing your downloads.</div>
     <div id="trackwrap"></div>
   </main>
 </div>
@@ -245,9 +257,15 @@ async function loadTracks() {
 }
 function applySearch() {
   const q = $("#search").value.trim().toLowerCase();
-  if (viewName === "home") {
-    viewTracks = q ? allTracks.filter(t =>
-      (t.title + " " + t.artist + " " + t.album).toLowerCase().includes(q)) : allTracks.slice();
+  if (viewName === "playlist") return;
+  const pool = viewName === "downloads" ? downloadsPool() : allTracks;
+  viewTracks = q ? pool.filter(t =>
+    (t.title + " " + t.artist + " " + (t.album || "")).toLowerCase().includes(q)) : pool.slice();
+  if (viewName === "downloads") {
+    renderView("⬇️ Downloads",
+      viewTracks.length ? viewTracks.length + (viewTracks.length === 1 ? " track" : " tracks") + " available offline"
+                        : "No downloads yet — tap ⬇ on any track while online.");
+  } else {
     renderView("All tracks", viewTracks.length + (viewTracks.length === 1 ? " song" : " songs"));
   }
 }
@@ -256,7 +274,10 @@ function renderView(title, sub) {
   $("#viewSub").textContent = sub;
   const w = $("#trackwrap");
   if (!viewTracks.length) {
-    w.innerHTML = '<div class="empty">🎵 No tracks here yet.<br><span style="font-size:13px">Ask the admin to upload some music.</span></div>';
+    const msg = viewName === "downloads"
+      ? 'No downloads yet.<br><span style="font-size:13px">Tap ⬇ on any track while you\'re online.</span>'
+      : '🎵 No tracks here yet.<br><span style="font-size:13px">Ask the admin to upload some music.</span>';
+    w.innerHTML = '<div class="empty">' + msg + '</div>';
     return;
   }
   const inPlaylist = viewName === "playlist";
@@ -272,11 +293,12 @@ function renderView(title, sub) {
       `<td class="t-dur">${fmt(t.duration)}</td>` +
       `<td style="text-align:right;white-space:nowrap">` +
       (inPlaylist ? `<button class="rmlink" data-rm="${t.id}">remove</button> ` : "") +
+      `<button class="addbtn dlbtn" data-dl="${t.id}" title="Download for offline">⬇</button> ` +
       `<button class="addbtn" data-add="${t.id}" title="Add to playlist">+</button></td></tr>`;
   });
   w.innerHTML = html + "</tbody></table>";
   w.querySelectorAll("tr.row").forEach(tr => tr.addEventListener("click", e => {
-    if (e.target.closest("[data-add]") || e.target.closest("[data-rm]")) return;
+    if (e.target.closest("[data-add]") || e.target.closest("[data-rm]") || e.target.closest("[data-dl]")) return;
     playContext(viewTracks, parseInt(tr.dataset.i, 10));
   }));
   w.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", e => {
@@ -285,6 +307,10 @@ function renderView(title, sub) {
   w.querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", e => {
     e.stopPropagation(); removeFromPlaylist(viewPid, b.dataset.rm);
   }));
+  w.querySelectorAll("[data-dl]").forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation(); toggleDownload(b.dataset.dl);
+  }));
+  paintDlButtons();
 }
 async function showPlaylist(pid, name) {
   const d = await api("GET", "/api/playlists/" + pid);
@@ -292,13 +318,15 @@ async function showPlaylist(pid, name) {
   viewName = "playlist"; viewPid = pid; viewTracks = d.tracks;
   document.querySelectorAll(".plitem").forEach(el =>
     el.classList.toggle("active", el.dataset.pid === pid));
-  $("#navHome").classList.remove("active");
+  document.querySelectorAll(".navbtn").forEach(b => b.classList.remove("active"));
   renderView("🎶 " + d.name, d.tracks.length + (d.tracks.length === 1 ? " song" : " songs"));
   $("#sidebar").classList.remove("open");
 }
 function showHome() {
+  if (!navigator.onLine) { showDownloads(); return; }
   viewName = "home"; viewPid = null;
   document.querySelectorAll(".plitem").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".navbtn").forEach(b => b.classList.remove("active"));
   $("#navHome").classList.add("active");
   applySearch();
   $("#sidebar").classList.remove("open");
@@ -366,6 +394,117 @@ document.addEventListener("click", e => {
     $("#upnext").style.display = "none";
 });
 
+/* ---------------- offline downloads ---------------- */
+const TRACK_CACHE = "tunebox-tracks-v1";
+const DL_KEY = "tb-downloads-v1";
+const getDlIndex = () => { try { return JSON.parse(localStorage.getItem(DL_KEY) || "{}"); } catch (e) { return {}; } };
+const setDlIndex = (idx) => { try { localStorage.setItem(DL_KEY, JSON.stringify(idx)); } catch (e) {} };
+const blobUrls = {};   // id -> objectURL for this session
+let lastBlobId = null;
+
+function toast(msg) {
+  let t = document.getElementById("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.style.display = "block";
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.style.display = "none"; }, 2200);
+}
+
+function paintDlButtons() {
+  const idx = getDlIndex();
+  document.querySelectorAll("[data-dl]").forEach(b => {
+    const dl = !!idx[b.dataset.dl];
+    b.textContent = dl ? "✓" : "⬇";
+    b.title = dl ? "Remove download" : "Download for offline";
+    b.style.color = dl ? "var(--acc2)" : "";
+    b.style.borderColor = dl ? "var(--acc2)" : "";
+  });
+  const n = Object.keys(idx).length;
+  const el = document.getElementById("dlCount");
+  if (el) el.textContent = n ? n : "";
+}
+
+function findTrack(id) {
+  return allTracks.find(t => t.id === id)
+      || viewTracks.find(t => t.id === id)
+      || (() => { const d = getDlIndex()[id]; return d ? Object.assign({ id }, d) : null; })();
+}
+
+async function toggleDownload(id) {
+  const idx = getDlIndex();
+  if (idx[id]) {
+    try { const c = await caches.open(TRACK_CACHE); await c.delete("/api/stream/" + id); } catch (e) {}
+    if (blobUrls[id]) { URL.revokeObjectURL(blobUrls[id]); delete blobUrls[id]; }
+    if (lastBlobId === id) lastBlobId = null;
+    delete idx[id];
+    setDlIndex(idx);
+    paintDlButtons();
+    if (viewName === "downloads") showDownloads();
+    toast("Download removed");
+    return;
+  }
+  const t = findTrack(id);
+  if (!t) return;
+  if (!navigator.onLine) { toast("You're offline — connect to download"); return; }
+  toast("Downloading…");
+  try {
+    const res = await fetch("/api/stream/" + id);
+    if (!res.ok) throw new Error("bad response");
+    const cache = await caches.open(TRACK_CACHE);
+    await cache.put("/api/stream/" + id, res);
+    idx[id] = { title: t.title, artist: t.artist, album: t.album || "",
+                duration: t.duration || 0, at: Date.now() };
+    setDlIndex(idx);
+    paintDlButtons();
+    toast("Saved for offline ✓");
+  } catch (e) {
+    toast("Download failed — try again");
+  }
+}
+
+async function offlineUrl(id) {
+  if (blobUrls[id]) return blobUrls[id];
+  try {
+    const c = await caches.open(TRACK_CACHE);
+    const m = await c.match("/api/stream/" + id);
+    if (!m) return null;
+    const blob = await m.blob();
+    blobUrls[id] = URL.createObjectURL(blob);
+    return blobUrls[id];
+  } catch (e) { return null; }
+}
+
+function downloadsPool() {
+  const idx = getDlIndex();
+  return Object.keys(idx)
+    .sort((a, b) => idx[b].at - idx[a].at)
+    .map(id => Object.assign({ id, plays: 0 }, idx[id]));
+}
+
+function showDownloads() {
+  viewName = "downloads"; viewPid = null;
+  document.querySelectorAll(".plitem").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".navbtn").forEach(b => b.classList.remove("active"));
+  document.getElementById("navDl").classList.add("active");
+  applySearch();
+  document.getElementById("sidebar").classList.remove("open");
+}
+
+function updateOnlineState() {
+  const off = !navigator.onLine;
+  document.getElementById("offlineBar").style.display = off ? "block" : "none";
+  if (off && viewName !== "downloads") showDownloads();
+}
+window.addEventListener("online", updateOnlineState);
+window.addEventListener("offline", updateOnlineState);
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+  });
+}
+
 /* ---------------- playback ---------------- */
 function buildOrder() {
   playOrder = queue.map((_, i) => i);
@@ -384,10 +523,16 @@ function playContext(list, i) {
   if (shuffle) qi = 0;
   startTrack();
 }
-function startTrack() {
+async function startTrack() {
   const t = queue[qi];
   if (!t) return;
-  audio.src = "/api/stream/" + t.id;
+  const bu = await offlineUrl(t.id);
+  if (lastBlobId && lastBlobId !== t.id && blobUrls[lastBlobId]) {
+    URL.revokeObjectURL(blobUrls[lastBlobId]);
+    delete blobUrls[lastBlobId];
+  }
+  lastBlobId = bu ? t.id : null;
+  audio.src = bu || ("/api/stream/" + t.id);
   audio.play().catch(() => {});
   $("#nowTitle").textContent = t.title;
   $("#nowArtist").textContent = t.artist;
@@ -484,7 +629,8 @@ $("#queueBtn").addEventListener("click", () => {
 
 /* ---------------- nav ---------------- */
 $("#navHome").addEventListener("click", showHome);
-$("#navSearch").addEventListener("click", () => { showHome(); $("#search").focus(); });
+$("#navDl").addEventListener("click", showDownloads);
+$("#navSearch").addEventListener("click", () => { if (!navigator.onLine) { showDownloads(); return; } showHome(); $("#search").focus(); });
 $("#search").addEventListener("input", applySearch);
 $("#menuBtn").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
 $("#logout").addEventListener("click", () => { location.href = "/logout"; });
@@ -497,6 +643,8 @@ document.addEventListener("keydown", e => {
 
 loadTracks();
 loadPlaylists();
+paintDlButtons();
+updateOnlineState();
 </script>
 </body>
 </html>

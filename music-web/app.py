@@ -34,7 +34,7 @@ ALLOWED_EXTS = {"mp3", "m4a", "aac", "ogg", "oga", "wav", "flac", "opus"}
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
-TUNEBOX_VERSION = "1.0"
+TUNEBOX_VERSION = "1.1"
 
 
 # ---------------------------------------------------------------- storage
@@ -450,6 +450,15 @@ def admin_revoke(code):
         sessions.pop(e["used_by"], None)
     save_all()
     return redirect("/admin")
+
+
+@app.route("/sw.js")
+def sw():
+    rv = send_file(os.path.join(BASE_DIR, "static", "sw.js"),
+                   mimetype="application/javascript")
+    rv.headers["Service-Worker-Allowed"] = "/"
+    rv.headers["Cache-Control"] = "no-cache"
+    return rv
 
 
 @app.route("/healthz")

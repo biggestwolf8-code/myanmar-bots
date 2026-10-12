@@ -1,0 +1,1 @@
+{"background_color":"#0a0a0f","description":"Private music streaming","display":"standalone","icons":[{"sizes":"192x192","src":"/static/icon-192.png","type":"image/png"},{"sizes":"512x512","src":"/static/icon-512.png","type":"image/png"}],"name":"TuneBox","orientation":"portrait","scope":"/","short_name":"TuneBox","start_url":"/","theme_color":"#0a0a0f"}
