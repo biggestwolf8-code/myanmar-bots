@@ -30,11 +30,36 @@ MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "300"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TRACKS_DIR = os.path.join(DATA_DIR, "tracks")
 ALLOWED_EXTS = {"mp3", "m4a", "aac", "ogg", "oga", "wav", "flac", "opus"}
+# MIME -> extension, used when the uploaded filename has no usable extension
+# (common when picking files from iOS).
+EXT_BY_MIME = {
+    "audio/mpeg": "mp3", "audio/mp3": "mp3",
+    "audio/mp4": "m4a", "audio/x-m4a": "m4a",
+    "audio/aac": "aac", "audio/aacp": "aac",
+    "audio/ogg": "ogg", "audio/opus": "opus",
+    "audio/wav": "wav", "audio/x-wav": "wav", "audio/wave": "wav",
+    "audio/flac": "flac", "audio/x-flac": "flac",
+}
+
+
+def _upload_ext(f, audio):
+    """Pick a file extension: trusted filename first, then MIME hints."""
+    name = (f.filename or "")
+    if "." in name:
+        e = name.rsplit(".", 1)[-1].lower()
+        if e in ALLOWED_EXTS:
+            return e
+    for src in (f.mimetype or "",
+                (audio.mime[0] if getattr(audio, "mime", None) else "")):
+        m = src.split(";")[0].strip().lower()
+        if m in EXT_BY_MIME:
+            return EXT_BY_MIME[m]
+    return "mp3"
 
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
-TUNEBOX_VERSION = "1.1"
+TUNEBOX_VERSION = "1.2"
 
 
 # ---------------------------------------------------------------- storage
@@ -345,8 +370,11 @@ def admin():
     total_plays = sum(t.get("plays", 0) for t in tracks.values())
     top = sorted(tracks.items(), key=lambda kv: kv[1].get("plays", 0),
                  reverse=True)[:10]
+    err = request.args.get("err")
+    errmsg = {"notaudio": "That file couldn't be read as audio. Please choose an MP3, M4A, WAV, FLAC or OGG file.",
+              "nofile": "No file was chosen — please pick a file first."}.get(err)
     return render_template(
-        "admin.html", need_login=False,
+        "admin.html", need_login=False, errmsg=errmsg,
         track_list=[(tid, public_track(tid, t), t.get("uploaded_at", ""))
                     for tid, t in sorted(tracks.items(),
                                          key=lambda kv: kv[1]["title"].lower())],
@@ -371,30 +399,40 @@ def admin_upload():
         abort(403)
     f = request.files.get("file")
     if not f or not f.filename:
-        return redirect("/admin")
-    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
-    if ext not in ALLOWED_EXTS:
-        return "Unsupported file type. Use: " + ", ".join(sorted(ALLOWED_EXTS)), 400
-    tid = secrets.token_hex(8)
+        return redirect("/admin?err=nofile")
+    # Save first, then validate the actual content (not just the extension):
+    # phones often send audio files with missing or odd filenames.
     os.makedirs(TRACKS_DIR, exist_ok=True)
+    tmp = os.path.join(TRACKS_DIR, ".tmp_" + secrets.token_hex(8))
+    f.save(tmp)
+    try:
+        from mutagen import File as MutagenFile
+        audio = MutagenFile(tmp)
+        ok = audio is not None and getattr(audio, "info", None)
+    except Exception:
+        ok = False
+        audio = None
+    if not ok:
+        print(f"upload rejected (not audio): filename={f.filename!r} "
+              f"mimetype={f.mimetype!r}", flush=True)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return redirect("/admin?err=notaudio")
+
+    duration = int(getattr(audio.info, "length", 0) or 0)
+    ext = _upload_ext(f, audio)
+    tid = secrets.token_hex(8)
     filename = tid + "." + ext
     path = os.path.join(TRACKS_DIR, filename)
-    f.save(path)
+    os.replace(tmp, path)
 
     title = (request.form.get("title") or "").strip()
     if not title:
-        title = os.path.splitext(f.filename)[0][:120]
+        title = os.path.splitext(f.filename)[0][:120] or "Untitled"
     artist = (request.form.get("artist") or "").strip()[:120] or "Unknown artist"
     album = (request.form.get("album") or "").strip()[:120]
-
-    duration = 0
-    try:
-        from mutagen import File as MutagenFile
-        audio = MutagenFile(path)
-        if audio is not None and getattr(audio, "info", None):
-            duration = int(audio.info.length or 0)
-    except Exception:
-        duration = 0
 
     tracks[tid] = {"title": title[:120], "artist": artist, "album": album,
                    "ext": ext, "file": filename,

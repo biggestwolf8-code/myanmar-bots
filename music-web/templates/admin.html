@@ -65,7 +65,8 @@
   </div>
 
   <div class="card">
-    <h2>Upload track <span style="color:#9a9ab0;font-weight:400;font-size:12px">(mp3, m4a, ogg, wav, flac — max {{ max_mb }} MB)</span></h2>
+    <h2>Upload track <span style="color:#9a9ab0;font-weight:400;font-size:12px">(MP3, M4A, WAV, FLAC, OGG — max {{ max_mb }} MB; files without an extension are fine too)</span></h2>
+    {% if errmsg %}<div class="err">{{ errmsg }}</div>{% endif %}
     <form method="post" action="/admin/upload" enctype="multipart/form-data">
       <input type="file" name="file" accept="audio/*" required>
       <label>Title (leave blank to use the file name)</label>
