@@ -90,6 +90,34 @@ SYSTEM_PROMPT = (
     "directly about classes or fees!\" Then steer back to the lesson with a question."
 )
 
+CHAT_SYSTEM_PROMPT = (
+    "You are a friendly Thai conversation partner for English-speaking learners of "
+    "Thai. You are male — if anyone asks, say you are a male Thai tutor bot. "
+    "Chat naturally and warmly in Thai (Thai script), like a good friend. When the "
+    "student makes mistakes in Thai, first respond to what they said, then add a short "
+    "gentle correction in English like \"Small fix: ...\" explaining the correct Thai. "
+    "Keep replies short (2-4 sentences of Thai) and conversational, and always ask a "
+    "follow-up question to keep the conversation going. Match their level.\n\n"
+    "RULES:\n"
+    "- Students do NOT need to type Thai script — transliteration or English answers are "
+    "fine. Thai script in your messages is for reading and listening.\n"
+    "- Keep it warm, patient, and encouraging.\n\n"
+    "REPLY FORMAT (follow exactly):\n"
+    "First, a block with ONLY Thai script. Your voice speaks exactly this block, so no "
+    "English and no transliteration here.\n"
+    "Then a line containing only ---\n"
+    "Then the English translation of your whole reply (including any correction note) — "
+    "natural, not word-for-word.\n\n"
+    "IMPORTANT: You are a practice bot, NOT a human teacher. If a student asks about "
+    "class schedules, fees, payments, enrollment, or anything administrative — or tries to "
+    "talk to you as if you were the teacher — do NOT guess or invent answers. Reply briefly "
+    "in a friendly way: \"I'm just the practice buddy — please message your teacher "
+    "directly about classes or fees!\" Then steer back to chatting in Thai with a question."
+)
+
+# user_id -> "lesson" (default) or "chat"
+modes = {}
+
 # user_id -> list of {"role": ..., "content": ...}
 histories = {}
 # user_id -> (date_str, count)
@@ -300,13 +328,18 @@ def split_reply(reply):
     return reply, reply
 
 
+def get_mode(user_id):
+    return modes.get(user_id, "lesson")
+
+
 def tutor_reply(user_id, user_text):
     """Run one tutor turn: returns the reply text (also updates history)."""
     history = histories.setdefault(user_id, [])
     history.append({"role": "user", "content": user_text})
     history[:] = history[-20:]  # keep last 10 exchanges
+    system = CHAT_SYSTEM_PROMPT if get_mode(user_id) == "chat" else SYSTEM_PROMPT
     try:
-        reply = ask_claude(history).strip()
+        reply = ask_claude(history, system=system).strip()
     except Exception as e:
         print("Claude API failed:", e)
         history.pop()  # don't keep the failed turn
@@ -327,8 +360,13 @@ START_MSG = (
     "after every lesson.\n\n"
     "You don't need to type Thai — answer in transliteration or English, "
     "or hold the 🎤 mic button and SPEAK Thai out loud!\n\n"
+    "Two modes:\n"
+    "📚 Lessons (default) — I teach you step by step\n"
+    "💬 /chat — free conversation in Thai\n\n"
     "Commands:\n"
-    "/new — start a fresh course from the beginning"
+    "/lesson — back to lessons\n"
+    "/chat — free Thai conversation\n"
+    "/new — fresh start (keeps your mode)"
 )
 
 LIMIT_MSG = (
@@ -516,6 +554,22 @@ def handle_update(u):
     if text.startswith("/new"):
         histories.pop(user_id, None)
         send_text(chat_id, "✨ Fresh start! What would you like to talk about?", thread)
+        return
+    if text.startswith("/chat"):
+        modes[user_id] = "chat"
+        histories.pop(user_id, None)
+        send_text(chat_id,
+                  "💬 Free talk mode! Just chat with me in Thai — type or send a voice "
+                  "message. I'll reply in Thai with an English translation.\n\n"
+                  "Say /lesson anytime to go back to lessons.", thread)
+        return
+    if text.startswith("/lesson"):
+        modes[user_id] = "lesson"
+        histories.pop(user_id, None)
+        send_text(chat_id,
+                  "📚 Lesson mode! I'll teach you Thai step by step: short lessons, "
+                  "word breakdowns, and you'll make your own sentences.\n\n"
+                  "Say /chat anytime for free conversation.", thread)
         return
     if text.startswith("/"):
         return
