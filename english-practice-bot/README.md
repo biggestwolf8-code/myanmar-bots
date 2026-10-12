@@ -10,8 +10,9 @@ the text, so corrections can be re-read).
 
 - Students just chat in English — the bot replies like a friendly tutor,
   corrects mistakes gently ("Small fix: ..."), and asks follow-up questions.
-- Voice messages: transcribed (Whisper) → tutor reply (Claude) → spoken
-  answer (TTS) sent as a voice message with the reply text as caption.
+- Voice messages: transcribed with auto language detection (English, Myanmar, or a mix)
+  → tutor reply (Claude) → spoken English answer (TTS) sent as a voice message,
+  with the full bilingual reply (English + 🇲🇲 Myanmar subtitle) as text.
 - Per-user conversation history (last 10 exchanges) for natural dialogue.
 - `/start` — welcome message, `/new` — fresh conversation.
 - Daily per-user message cap (`DAILY_LIMIT`, default 100) to bound API costs.
