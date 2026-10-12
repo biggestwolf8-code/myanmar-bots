@@ -3,19 +3,34 @@
 Free conversation with gentle corrections, powered by the Claude API.
 Voice messages supported: students talk, the bot transcribes (Whisper),
 replies as the tutor (Claude), and answers back with voice (TTS).
+
+ACCESS CONTROL: the bot is private. Each student gets a single-use invite
+link (t.me/<bot>?start=CODE). The first Telegram account to open it is bound
+to that code; the code can't be reused or shared. Anyone else gets a polite
+"ask Sayar Arkar" notice and no API calls are made for them.
+
 Deploy as a Railway worker. Env vars:
   BOT_TOKEN          Telegram bot token (from @BotFather)
   ANTHROPIC_API_KEY  Claude API key (console.anthropic.com)
   OPENAI_API_KEY     OpenAI API key (platform.openai.com) — needed for voice
   MODEL              Claude model id (default: claude-haiku-5-5)
-  TTS_VOICE          OpenAI TTS voice (default: nova)
-  ADMIN_CHAT_ID      Telegram user id for error alerts (optional)
+  TTS_VOICE          OpenAI TTS voice (default: onyx)
+  ADMIN_CHAT_ID      Telegram user id of the teacher (full access + commands)
+  BOT_USERNAME       Bot username without @ (default: MasterclassPractice_Bot)
+  DATA_DIR           Directory for codes.json (default: "."; use "/data" with
+                     a Railway volume so invites survive redeploys)
   DAILY_LIMIT        Max practice messages per user per day (default: 100)
+
+Admin commands (only ADMIN_CHAT_ID):
+  /newcodes 20     generate 20 single-use invite links
+  /users           list activated students
+  /revoke CODE     deactivate an invite code / student
 """
 import datetime
 import html
 import json
 import os
+import secrets
 import time
 import urllib.parse
 import urllib.request
@@ -28,6 +43,9 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 MODEL = os.environ.get("MODEL", "claude-haiku-5-5")
 TTS_VOICE = os.environ.get("TTS_VOICE", "onyx")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "MasterclassPractice_Bot")
+DATA_DIR = os.environ.get("DATA_DIR", ".")
+CODES_FILE = os.path.join(DATA_DIR, "codes.json")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 FILE_API = f"https://api.telegram.org/file/bot{BOT_TOKEN}"
@@ -55,10 +73,12 @@ SYSTEM_PROMPT = (
     "practice with a question."
 )
 
-# chat_id -> list of {"role": ..., "content": ...}
+# user_id -> list of {"role": ..., "content": ...}
 histories = {}
-# chat_id -> (date_str, count)
+# user_id -> (date_str, count)
 daily_counts = {}
+# user_id -> last timestamp of the "private bot" notice (spam cooldown)
+gate_notices = {}
 
 
 def tg(method, params=None, timeout=30):
@@ -86,6 +106,83 @@ def send_typing(chat_id):
         pass
 
 
+# ---------- invite codes ----------
+
+def load_codes():
+    try:
+        with open(CODES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("codes", {})
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_codes(codes):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = CODES_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"codes": codes}, f, ensure_ascii=False)
+    os.replace(tmp, CODES_FILE)
+
+
+def is_admin(user_id):
+    return bool(ADMIN_CHAT_ID) and str(user_id) == str(ADMIN_CHAT_ID)
+
+
+def is_activated(user_id):
+    if is_admin(user_id):
+        return True
+    codes = load_codes()
+    return any(c.get("used_by") == user_id for c in codes.values())
+
+
+def redeem_code(code, user_id, label=""):
+    code = (code or "").strip().upper()
+    codes = load_codes()
+    entry = codes.get(code)
+    if not entry:
+        return "invalid"
+    if entry.get("used_by") == user_id:
+        return "already_yours"
+    if entry.get("used_by"):
+        return "used"
+    entry["used_by"] = user_id
+    entry["label"] = label
+    entry["used_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+    save_codes(codes)
+    return "ok"
+
+
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no confusing chars
+
+
+def make_code():
+    return "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
+
+
+def invite_link(code):
+    return f"https://t.me/{BOT_USERNAME}?start={code}"
+
+
+GATE_MSG = (
+    "🔒 This practice bot is for MasterClass English students only.\n\n"
+    "Please ask Sayar Arkar for your personal invite link!"
+)
+
+
+def gate_check(chat_id, user_id):
+    """True if the user may use the bot. Sends a (rate-limited) notice otherwise."""
+    if is_activated(user_id):
+        return True
+    now = time.time()
+    if now - gate_notices.get(user_id, 0) > 3600:
+        send_text(chat_id, GATE_MSG)
+        gate_notices[user_id] = now
+    return False
+
+
+# ---------- AI ----------
+
 def ask_claude(messages):
     body = json.dumps({
         "model": MODEL,
@@ -107,19 +204,19 @@ def ask_claude(messages):
     return "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
 
 
-def over_daily_limit(chat_id):
+def over_daily_limit(user_id):
     today = datetime.date.today().isoformat()
-    day, count = daily_counts.get(chat_id, (today, 0))
+    day, count = daily_counts.get(user_id, (today, 0))
     if day != today:
-        daily_counts[chat_id] = (today, 0)
+        daily_counts[user_id] = (today, 0)
         return False
     return count >= DAILY_LIMIT
 
 
-def bump_daily(chat_id):
+def bump_daily(user_id):
     today = datetime.date.today().isoformat()
-    day, count = daily_counts.get(chat_id, (today, 0))
-    daily_counts[chat_id] = (today, count + 1) if day == today else (today, 1)
+    day, count = daily_counts.get(user_id, (today, 0))
+    daily_counts[user_id] = (today, count + 1) if day == today else (today, 1)
 
 
 def send_voice(chat_id, audio_bytes, caption="", reply_to=None):
@@ -195,9 +292,9 @@ def tts_speak(text):
     return r.content
 
 
-def tutor_reply(chat_id, user_text):
+def tutor_reply(user_id, user_text):
     """Run one tutor turn: returns the reply text (also updates history)."""
-    history = histories.setdefault(chat_id, [])
+    history = histories.setdefault(user_id, [])
     history.append({"role": "user", "content": user_text})
     history[:] = history[-20:]  # keep last 10 exchanges
     try:
@@ -209,7 +306,7 @@ def tutor_reply(chat_id, user_text):
     if reply:
         history.append({"role": "assistant", "content": reply})
         history[:] = history[-20:]
-        bump_daily(chat_id)
+        bump_daily(user_id)
     return reply
 
 
@@ -221,8 +318,13 @@ START_MSG = (
     "/new — start a fresh conversation"
 )
 
+LIMIT_MSG = (
+    "You've had lots of great practice today! 🎉 Come back tomorrow for more. "
+    "Keep using what you learned!"
+)
 
-def handle_voice(chat_id, voice, thread):
+
+def handle_voice(chat_id, user_id, voice, thread):
     duration = voice.get("duration", 0)
     if duration > 120:
         send_text(chat_id,
@@ -234,10 +336,8 @@ def handle_voice(chat_id, voice, thread):
                   "Voice isn't switched on yet — send me text for now and I'll still "
                   "help you practice! ✍️", thread)
         return
-    if over_daily_limit(chat_id):
-        send_text(chat_id,
-                  "You've had lots of great practice today! 🎉 Come back tomorrow for more. "
-                  "Keep using what you learned!", thread)
+    if over_daily_limit(user_id):
+        send_text(chat_id, LIMIT_MSG, thread)
         return
     try:
         tg("sendChatAction", {"chat_id": chat_id, "action": "record_voice"}, timeout=10)
@@ -254,7 +354,7 @@ def handle_voice(chat_id, voice, thread):
         send_text(chat_id, "I didn't catch any words there — say it once more? 🎤", thread)
         return
     send_typing(chat_id)
-    reply = tutor_reply(chat_id, transcript)
+    reply = tutor_reply(user_id, transcript)
     if not reply:
         send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
         return
@@ -272,6 +372,82 @@ def handle_voice(chat_id, voice, thread):
     send_text(chat_id, reply, thread)
 
 
+def handle_admin_command(chat_id, user_id, text):
+    parts = text.split()
+    cmd = parts[0].lower()
+
+    if cmd == "/newcodes":
+        try:
+            n = int(parts[1]) if len(parts) > 1 else 10
+        except ValueError:
+            n = 10
+        n = max(1, min(n, 50))
+        codes = load_codes()
+        fresh = []
+        while len(fresh) < n:
+            c = make_code()
+            if c not in codes:
+                codes[c] = {"used_by": None, "label": "", "created": datetime.datetime.now().isoformat(timespec="seconds")}
+                fresh.append(c)
+        save_codes(codes)
+        lines = [f"🎟️ {n} single-use invite links (each works once, then locks to that student):",
+                 ""]
+        lines += [invite_link(c) for c in fresh]
+        lines += ["", "Send one link per student, privately — not in a group!"]
+        # Telegram messages cap at 4096 chars; split if needed.
+        chunk, out = [], []
+        for line in lines:
+            if sum(len(x) + 1 for x in chunk) + len(line) > 4000:
+                out.append("\n".join(chunk))
+                chunk = []
+            chunk.append(line)
+        out.append("\n".join(chunk))
+        for m in out:
+            send_text(chat_id, m)
+        return True
+
+    if cmd == "/users":
+        codes = load_codes()
+        used = [(c, e) for c, e in codes.items() if e.get("used_by")]
+        unused = sum(1 for e in codes.values() if not e.get("used_by"))
+        if not used:
+            send_text(chat_id, f"No students activated yet. {unused} unused invite(s).")
+            return True
+        lines = [f"👥 Activated students ({len(used)}), {unused} invite(s) left:", ""]
+        for c, e in sorted(used, key=lambda x: x[1].get("used_at", "")):
+            label = f" ({e['label']})" if e.get("label") else ""
+            lines.append(f"• {c} → {e['used_by']}{label}")
+        send_text(chat_id, "\n".join(lines)[:4000])
+        return True
+
+    if cmd == "/revoke":
+        if len(parts) < 2:
+            send_text(chat_id, "Usage: /revoke CODE  (or /revoke <telegram user id>)")
+            return True
+        target = parts[1].strip().upper()
+        codes = load_codes()
+        if target in codes:
+            codes[target]["used_by"] = None
+            save_codes(codes)
+            send_text(chat_id, f"🚫 Invite {target} deactivated.")
+        else:
+            try:
+                uid = int(parts[1])
+            except ValueError:
+                send_text(chat_id, "Code not found.")
+                return True
+            found = [c for c, e in codes.items() if e.get("used_by") == uid]
+            for c in found:
+                codes[c]["used_by"] = None
+            save_codes(codes)
+            histories.pop(uid, None)
+            send_text(chat_id, f"🚫 Deactivated {len(found)} invite(s) for user {uid}."
+                               if found else "That user has no active invite.")
+        return True
+
+    return False
+
+
 def handle_update(u):
     msg = u.get("message") or {}
     chat = msg.get("chat", {})
@@ -279,35 +455,62 @@ def handle_update(u):
     if not chat_id:
         return
     user = msg.get("from", {})
+    user_id = user.get("id")
+    if not user_id:
+        return
     name = user.get("first_name", "there")
     thread = msg.get("message_id") if chat.get("type") in ("group", "supergroup") else None
-
-    if msg.get("voice"):
-        handle_voice(chat_id, msg["voice"], thread)
-        return
-
     text = (msg.get("text") or "").strip()
-    if not text:
-        return
+
+    # Admin commands work without an invite.
+    if is_admin(user_id) and text.startswith("/"):
+        if handle_admin_command(chat_id, user_id, text):
+            return
 
     if text.startswith("/start"):
+        parts = text.split()
+        if len(parts) > 1:
+            result = redeem_code(parts[1], user_id, name)
+            if result == "ok":
+                send_text(chat_id,
+                          f"🎉 Welcome, {html.escape(name)}! Your invite is activated.\n\n" + START_MSG,
+                          thread)
+            elif result == "already_yours":
+                send_text(chat_id, "You're already activated — let's practice! 💪\n\n" + START_MSG,
+                          thread)
+            else:
+                send_text(chat_id,
+                          "😕 This invite link is invalid or was already used.\n"
+                          "Please ask Sayar Arkar for your own personal link!", thread)
+            return
+        if not gate_check(chat_id, user_id):
+            return
         send_text(chat_id, START_MSG, thread)
         return
+
+    # Everyone else needs a valid invite before anything (no API cost for strangers).
+    if not gate_check(chat_id, user_id):
+        return
+
+    if msg.get("voice"):
+        handle_voice(chat_id, user_id, msg["voice"], thread)
+        return
+
+    if not text:
+        return
     if text.startswith("/new"):
-        histories.pop(chat_id, None)
+        histories.pop(user_id, None)
         send_text(chat_id, "✨ Fresh start! What would you like to talk about?", thread)
         return
     if text.startswith("/"):
         return
 
-    if over_daily_limit(chat_id):
-        send_text(chat_id,
-                  "You've had lots of great practice today! 🎉 Come back tomorrow for more. "
-                  "Keep using what you learned!", thread)
+    if over_daily_limit(user_id):
+        send_text(chat_id, LIMIT_MSG, thread)
         return
 
     send_typing(chat_id)
-    reply = tutor_reply(chat_id, text)
+    reply = tutor_reply(user_id, text)
     if reply:
         send_text(chat_id, reply, thread)
     else:

@@ -36,8 +36,14 @@ Env vars:
 | `ADMIN_CHAT_ID` | no | gets error alerts |
 | `DAILY_LIMIT` | no | default 100 msgs/user/day |
 
-## Cost note
+## Access control (invite links)
 
-Every student message calls the Claude API (Haiku is the cheapest model).
-The daily cap keeps costs predictable — roughly a few dollars/month for
-normal class use, depending on volume.
+The bot is private — strangers can't run up your API bill:
+- Message the bot `/newcodes 20` → it replies with 20 single-use invite links.
+- Send **one link per student, privately** (DM, not a group).
+- The first Telegram account to open a link is locked to it; the link can't be
+  reused or shared. Anyone else gets a "ask Sayar Arkar" notice — no API cost.
+- `/users` lists activated students, `/revoke CODE` deactivates one.
+
+Invite state lives in `codes.json` under `DATA_DIR` — on Railway, attach a
+volume at `/data` and set `DATA_DIR=/data` so invites survive redeploys.
