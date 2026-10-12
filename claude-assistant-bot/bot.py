@@ -24,6 +24,7 @@ Admin commands (only ADMIN_CHAT_ID):
   /newcodes 20     generate 20 single-use invite links
   /users           list activated users
   /revoke CODE     deactivate an invite code / user
+  /usage           show API token usage + estimated cost
 """
 import datetime
 import html
@@ -76,6 +77,50 @@ histories = {}
 daily_counts = {}
 # user_id -> last timestamp of the "private bot" notice (spam cooldown)
 gate_notices = {}
+# str(user_id) -> {"input": int, "output": int, "cost": float}
+usage_totals = {}
+
+# ($ per 1M input tokens, $ per 1M output tokens)
+MODEL_RATES = {
+    "claude-sonnet-5-5": (2.0, 10.0),
+    "claude-haiku-4-5-20251001": (1.0, 5.0),
+}
+
+
+def usage_file():
+    return os.path.join(DATA_DIR, "usage.json")
+
+
+def load_usage():
+    try:
+        with open(usage_file(), encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_usage():
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        tmp = usage_file() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(usage_totals, f)
+        os.replace(tmp, usage_file())
+    except Exception as e:
+        print("save usage failed:", e)
+
+
+def record_usage(user_id, model, usage):
+    inp = usage.get("input_tokens", 0)
+    out = usage.get("output_tokens", 0)
+    r_in, r_out = MODEL_RATES.get(model, (2.0, 10.0))
+    cost = inp / 1e6 * r_in + out / 1e6 * r_out
+    u = usage_totals.setdefault(str(user_id), {"input": 0, "output": 0, "cost": 0.0})
+    u["input"] += inp
+    u["output"] += out
+    u["cost"] += cost
+    save_usage()
 
 
 def tg(method, params=None, timeout=30):
@@ -293,6 +338,7 @@ def gate_check(chat_id, user_id):
 # ---------- AI ----------
 
 def ask_claude(messages, max_tokens=4000):
+    """Returns (reply_text, usage_dict)."""
     body = json.dumps({
         "model": MODEL,
         "max_tokens": max_tokens,
@@ -310,7 +356,8 @@ def ask_claude(messages, max_tokens=4000):
     )
     with urllib.request.urlopen(req, timeout=60) as r:
         out = json.load(r)
-    return "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
+    text = "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
+    return text, out.get("usage", {})
 
 
 def over_daily_limit(user_id):
@@ -334,7 +381,8 @@ def assistant_reply(user_id, user_text):
     history.append({"role": "user", "content": user_text})
     history[:] = history[-20:]  # keep last 10 exchanges
     try:
-        reply = ask_claude(history).strip()
+        reply, usage = ask_claude(history)
+        reply = reply.strip()
     except Exception as e:
         print("Claude API failed:", e)
         history.pop()  # don't keep the failed turn
@@ -345,6 +393,7 @@ def assistant_reply(user_id, user_text):
     history.append({"role": "assistant", "content": reply})
     history[:] = history[-20:]
     bump_daily(user_id)
+    record_usage(user_id, MODEL, usage)
     return reply
 
 
@@ -437,6 +486,24 @@ def handle_admin_command(chat_id, user_id, text):
                                if found else "That user has no active invite.")
         return True
 
+    if cmd == "/usage":
+        if not usage_totals:
+            send_text(chat_id, "📊 No API usage recorded yet.")
+            return True
+        t_in = sum(u["input"] for u in usage_totals.values())
+        t_out = sum(u["output"] for u in usage_totals.values())
+        t_cost = sum(u["cost"] for u in usage_totals.values())
+        lines = ["📊 API usage so far (tracked from 12 Oct):", "",
+                 f"• Input: {t_in:,} tokens",
+                 f"• Output: {t_out:,} tokens",
+                 f"• Est. cost: ${t_cost:.4f}"]
+        if len(usage_totals) > 1:
+            lines += ["", "Per user:"]
+            for uid, u in sorted(usage_totals.items(), key=lambda x: -x[1]["cost"]):
+                lines.append(f"• {uid}: in {u['input']:,} / out {u['output']:,} — ${u['cost']:.4f}")
+        send_text(chat_id, "\n".join(lines)[:4000])
+        return True
+
     return False
 
 
@@ -524,6 +591,7 @@ def main():
     if not ANTHROPIC_API_KEY:
         print("Set the ANTHROPIC_API_KEY env var (console.anthropic.com).")
         return
+    usage_totals.update(load_usage())
     offset = 0
     print("Claude assistant bot started. Polling...")
     while True:

@@ -28,6 +28,7 @@ Root directory: `claude-assistant-bot` · start command: `python bot.py`
 - `/newcodes 20` — generate 20 single-use invite links (send one per person, privately)
 - `/users` — list activated users + unused invites
 - `/revoke CODE` (or `/revoke <telegram user id>`) — deactivate access
+- `/usage` — show total API tokens used + estimated cost (tracked per user)
 
 ## File creation
 
