@@ -12,9 +12,8 @@ the text, so corrections can be re-read).
   corrects mistakes gently ("Small fix: ..."), and asks follow-up questions.
 - Voice messages: transcribed as English (Whisper, language forced to English for
   reliability) → tutor reply (Claude) → spoken English answer in a male voice
-  (TTS onyx), with the full bilingual reply (English + 🇲🇲 Myanmar subtitle,
-  using ကျွန်တော်) as text. Students can still write in Myanmar via text —
-  only voice is English-only. The admin gets a "👂 Heard: ..." line showing
+  (TTS onyx), with the reply text sent after so corrections can be re-read.
+  Students can still write in Myanmar via text — only voice is English-only. The admin gets a "👂 Heard: ..." line showing
   the raw transcript for testing.
 - Per-user conversation history (last 10 exchanges) for natural dialogue.
 - `/start` — welcome message, `/new` — fresh conversation.
@@ -34,7 +33,6 @@ Env vars:
 | `ANTHROPIC_API_KEY` | yes | from console.anthropic.com |
 | `OPENAI_API_KEY` | for voice | from platform.openai.com (Whisper + TTS) |
 | `MODEL` | no | default `claude-haiku-4-5-20251001` (English chat) |
-| `TRANSLATE_MODEL` | no | default `claude-sonnet-4-5-20250929` (Myanmar subtitles — stronger model, still cheap at this volume) |
 | `TTS_VOICE` | no | default `onyx` (male voice) |
 | `ADMIN_CHAT_ID` | no | gets error alerts |
 | `DAILY_LIMIT` | no | default 100 msgs/user/day |
