@@ -63,6 +63,10 @@
   #search:focus { outline: none; border-color: var(--acc1); }
   #viewTitle { font-size: 24px; font-weight: 800; margin: 6px 0 2px; }
   #viewSub { color: var(--dim); font-size: 13px; margin-bottom: 14px; }
+  .vhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  #dlAllBtn { background: linear-gradient(135deg,#7c5cff,#00c6ff); border: none; color: #fff;
+              font-weight: 700; padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 13px; }
+  #dlAllBtn:disabled { opacity: .75; cursor: default; }
   table.tracks { width: 100%; border-collapse: collapse; font-size: 14px; }
   table.tracks th { text-align: left; color: var(--dim); font-size: 11px; text-transform: uppercase;
                     letter-spacing: 1px; padding: 8px 10px; border-bottom: 1px solid var(--line);
@@ -176,7 +180,7 @@
       <button id="menuBtn">☰</button>
       <input id="search" placeholder="Search title, artist, album…" autocomplete="off">
     </div>
-    <h2 id="viewTitle">All tracks</h2>
+    <div class="vhead"><h2 id="viewTitle">All tracks</h2><button id="dlAllBtn" style="display:none">⬇ Download all</button></div>
     <div id="viewSub"></div>
     <div id="offlineBar" style="display:none;background:#3a2a10;border:1px solid #8a6a20;color:#ffd98a;padding:9px 14px;border-radius:10px;font-size:13px;margin-bottom:12px">📴 You're offline — showing your downloads.</div>
     <div id="trackwrap"></div>
@@ -272,6 +276,7 @@ function applySearch() {
 function renderView(title, sub) {
   $("#viewTitle").textContent = title;
   $("#viewSub").textContent = sub;
+  updateDlButton();
   const w = $("#trackwrap");
   if (!viewTracks.length) {
     const msg = viewName === "downloads"
@@ -448,6 +453,18 @@ async function toggleDownload(id) {
   if (!t) return;
   if (!navigator.onLine) { toast("You're offline — connect to download"); return; }
   toast("Downloading…");
+  const ok = await cacheTrack(id);
+  paintDlButtons();
+  if (viewName === "downloads") showDownloads();
+  toast(ok ? "Saved for offline ✓" : "Download failed — try again");
+}
+
+// Download one track's bytes into the offline cache. No UI churn; returns true/false.
+async function cacheTrack(id) {
+  const idx = getDlIndex();
+  if (idx[id]) return true;
+  const t = findTrack(id);
+  if (!t) return false;
   try {
     const res = await fetch("/api/stream/" + id);
     if (!res.ok) throw new Error("bad response");
@@ -456,12 +473,41 @@ async function toggleDownload(id) {
     idx[id] = { title: t.title, artist: t.artist, album: t.album || "",
                 duration: t.duration || 0, at: Date.now() };
     setDlIndex(idx);
-    paintDlButtons();
-    toast("Saved for offline ✓");
-  } catch (e) {
-    toast("Download failed — try again");
+    return true;
+  } catch (e) { return false; }
+}
+
+// Download every track in the current playlist view for offline listening.
+async function downloadPlaylist(btn) {
+  if (!navigator.onLine) { toast("You're offline — connect to download"); return; }
+  const list = viewTracks.filter(t => !getDlIndex()[t.id]);
+  if (!list.length) { toast("Already saved for offline ✓"); return; }
+  btn.disabled = true;
+  let done = 0, failed = 0;
+  for (const t of list) {
+    btn.textContent = "⬇ " + (done + 1) + "/" + list.length;
+    if (await cacheTrack(t.id)) done++; else failed++;
+  }
+  btn.disabled = false;
+  paintDlButtons();
+  updateDlButton();
+  toast(failed ? "Saved " + done + "/" + list.length + " (" + failed + " failed)"
+               : "Playlist saved for offline ✓ (" + done + ")");
+}
+
+function updateDlButton() {
+  const b = $("#dlAllBtn");
+  if (!b) return;
+  const show = viewName === "playlist" && viewTracks.length > 0;
+  b.style.display = show ? "" : "none";
+  if (show) {
+    const idx = getDlIndex();
+    const pending = viewTracks.filter(t => !idx[t.id]).length;
+    b.textContent = pending ? "⬇ Download all" : "✓ Saved for offline";
+    b.disabled = false;
   }
 }
+$("#dlAllBtn").addEventListener("click", e => downloadPlaylist(e.currentTarget));
 
 async function offlineUrl(id) {
   if (blobUrls[id]) return blobUrls[id];

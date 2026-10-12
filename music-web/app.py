@@ -60,7 +60,7 @@ def _upload_ext(f, audio):
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
-TUNEBOX_VERSION = "1.5"
+TUNEBOX_VERSION = "1.6"
 
 
 # ---------------------------------------------------------------- storage
