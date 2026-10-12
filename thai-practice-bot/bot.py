@@ -402,7 +402,13 @@ def handle_voice(chat_id, user_id, voice, thread):
         send_text(chat_id, "I couldn't quite hear that 🎧 — try again?", thread)
         return
     if not transcript or len(transcript) < 2:
-        send_text(chat_id, "I didn't catch any words there — say it once more? 🎤", thread)
+        if duration <= 2:
+            send_text(chat_id,
+                      "That was too short for me to hear anything! 🎤\n"
+                      "Hold the mic button down, say a full sentence in Thai, "
+                      "then release.", thread)
+        else:
+            send_text(chat_id, "I didn't catch any words there — say it once more? 🎤", thread)
         return
     # Admin sees the raw transcript — makes it easy to check what was heard.
     if is_admin(user_id):
