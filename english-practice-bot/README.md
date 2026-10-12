@@ -10,9 +10,10 @@ the text, so corrections can be re-read).
 
 - Students just chat in English — the bot replies like a friendly tutor,
   corrects mistakes gently ("Small fix: ..."), and asks follow-up questions.
-- Voice messages: transcribed with auto language detection (English, Myanmar, or a mix)
-  → tutor reply (Claude) → spoken English answer (TTS) sent as a voice message,
-  with the full bilingual reply (English + 🇲🇲 Myanmar subtitle) as text.
+- Voice messages: transcribed with auto language detection (English, Myanmar, or a mix —
+  a bilingual prompt plus a Myanmar-forced retry help short Myanmar utterances)
+  → tutor reply (Claude) → spoken English answer in a male voice (TTS onyx),
+  with the full bilingual reply (English + 🇲🇲 Myanmar subtitle, using ကျွန်တော်) as text.
 - Per-user conversation history (last 10 exchanges) for natural dialogue.
 - `/start` — welcome message, `/new` — fresh conversation.
 - Daily per-user message cap (`DAILY_LIMIT`, default 100) to bound API costs.
@@ -31,7 +32,7 @@ Env vars:
 | `ANTHROPIC_API_KEY` | yes | from console.anthropic.com |
 | `OPENAI_API_KEY` | for voice | from platform.openai.com (Whisper + TTS) |
 | `MODEL` | no | default `claude-haiku-5-5` (cheapest + fastest) |
-| `TTS_VOICE` | no | default `nova` |
+| `TTS_VOICE` | no | default `onyx` (male voice) |
 | `ADMIN_CHAT_ID` | no | gets error alerts |
 | `DAILY_LIMIT` | no | default 100 msgs/user/day |
 
