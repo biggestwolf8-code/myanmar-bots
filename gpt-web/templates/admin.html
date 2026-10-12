@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — Chat GPT Plus API</title>
+<meta name="theme-color" content="#4f46e5">
+<style>
+  :root { --accent:#4f46e5; --bg:#faf9f7; --card:#fff; --ink:#1f2937; --muted:#6b7280; --line:#e4e2f5; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 22px; } h2 { font-size: 17px; margin-top: 32px; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .stats { display:flex; gap:12px; flex-wrap:wrap; }
+  .stat { flex:1; min-width:140px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .stat .v { font-size:22px; font-weight:700; } .stat .l { font-size:12px; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12px; }
+  code { background:#f1f0fa; padding:2px 6px; border-radius:5px; }
+  .linkrow { display:flex; gap:6px; align-items:center; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; font-weight:600; font-size:13px; }
+  button.ghost { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  button.danger { background:#dc2626; }
+  input[type=password],input[type=number],input[type=text] { padding:9px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  .used { color:#16a34a; font-weight:600; } .free { color:var(--muted); }
+  #loginBox { max-width:360px; margin:80px auto; text-align:center; }
+  .hidden{display:none!important}
+  .err{color:#dc2626;font-size:13px;margin-top:8px}
+  .codes-out{background:#1f2937;color:#f9fafb;border-radius:10px;padding:14px;font-size:13px;white-space:pre-wrap;word-break:break-all;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div id="loginBox" class="hidden">
+  <h1>Admin</h1>
+  <p style="color:var(--muted)">Enter the admin password.</p>
+  <input type="password" id="pw" placeholder="Password" style="width:100%;margin-bottom:10px">
+  <button onclick="login()" style="width:100%">Log in</button>
+  <div id="loginErr" class="err"></div>
+</div>
+
+<div id="panel" class="hidden">
+  <h1>Chat GPT Plus API — Admin</h1>
+
+  <h2>Totals</h2>
+  <div class="stats">
+    <div class="stat"><div class="v" id="stCost">$0</div><div class="l">est. API cost</div></div>
+    <div class="stat"><div class="v" id="stIn">0</div><div class="l">input tokens</div></div>
+    <div class="stat"><div class="v" id="stOut">0</div><div class="l">output tokens</div></div>
+    <div class="stat"><div class="v" id="stSess">0</div><div class="l">active sessions</div></div>
+  </div>
+
+  <h2>New invite codes</h2>
+  <div class="card">
+    <input type="number" id="nCodes" value="10" min="1" max="50" style="width:80px">
+    <button onclick="newCodes()">Generate</button>
+    <div id="codesOut" class="codes-out hidden"></div>
+  </div>
+
+  <h2>Invite codes</h2>
+  <div class="card" style="overflow-x:auto">
+    <table id="codesTable">
+      <thead><tr><th>Code</th><th>Status</th><th>Invite link</th><th>Used today</th><th>Tokens in/out</th><th>Cost</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+<script>
+const ADMIN_CONFIGURED = {{ configured|tojson }};
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+async function boot(){
+  if (!ADMIN_CONFIGURED){ document.getElementById('loginBox').classList.remove('hidden');
+    document.getElementById('loginErr').textContent='Admin password is not configured on the server.'; return; }
+  const r = await fetch('/api/admin/data'); const j = await r.json();
+  if (j.ok){ showPanel(j); }
+  else document.getElementById('loginBox').classList.remove('hidden');
+}
+async function login(){
+  const r = await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('pw').value})});
+  const j = await r.json();
+  if (j.ok) location.reload();
+  else document.getElementById('loginErr').textContent = j.error||'Login failed.';
+}
+function showPanel(j){
+  document.getElementById('panel').classList.remove('hidden');
+  document.getElementById('stCost').textContent = '$'+j.totals.cost.toFixed(4);
+  document.getElementById('stIn').textContent = j.totals.in.toLocaleString();
+  document.getElementById('stOut').textContent = j.totals.out.toLocaleString();
+  document.getElementById('stSess').textContent = j.totals.active_sessions;
+  const tb = document.querySelector('#codesTable tbody'); tb.innerHTML='';
+  for (const c of j.codes){
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><code>'+esc(c.code)+'</code></td>'+
+      '<td class="'+(c.used?'used':'free')+'">'+(c.used?'used':'unused')+'</td>'+
+      '<td><div class="linkrow"><input type="text" readonly value="'+esc(c.link)+'" style="width:220px;font-size:11px" onclick="this.select()"><button class="ghost" onclick="navigator.clipboard.writeText(\''+c.link+'\')">Copy</button></div></td>'+
+      '<td>'+c.today+'</td>'+
+      '<td>'+c.in.toLocaleString()+' / '+c.out.toLocaleString()+'</td>'+
+      '<td>$'+c.cost.toFixed(4)+'</td>'+
+      '<td>'+(c.used?'<button class="danger" onclick="revoke(\''+c.code+'\')">Revoke</button>':'')+'</td>';
+    tb.appendChild(tr);
+  }
+}
+async function newCodes(){
+  const n = parseInt(document.getElementById('nCodes').value)||10;
+  const r = await fetch('/api/admin/newcodes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({n})});
+  const j = await r.json();
+  const out = document.getElementById('codesOut');
+  out.classList.remove('hidden');
+  out.textContent = j.ok ? j.codes.map(c=>c.link).join('\n') : 'Error: '+(j.error||'failed');
+  if (j.ok) boot();
+}
+async function revoke(code){
+  if (!confirm('Revoke '+code+'? The user will lose access immediately.')) return;
+  await fetch('/api/admin/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+  boot();
+}
+document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+boot();
+</script>
+</body>
+</html>
