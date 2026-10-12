@@ -295,10 +295,10 @@ def download_telegram_file(file_id):
 
 
 def _whisper(audio_bytes):
-    # Thai forced: reliable for Thai speech (lesson learned from Burmese
-    # auto-detect issues). Thai is well-supported by Whisper.
-    data = {"model": "whisper-1", "response_format": "verbose_json",
-            "temperature": 0, "language": "th"}
+    # Auto-detect language: students mix Thai practice with English questions,
+    # so forcing Thai would turn English into gibberish. Thai auto-detection
+    # is reliable (unlike Burmese) — no forcing needed.
+    data = {"model": "whisper-1", "response_format": "verbose_json", "temperature": 0}
     r = requests.post(
         "https://api.openai.com/v1/audio/transcriptions",
         headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
