@@ -32,6 +32,7 @@ import datetime
 import html
 import json
 import os
+import re
 import secrets
 import time
 import urllib.parse
@@ -328,6 +329,27 @@ def split_reply(reply):
     return reply, reply
 
 
+def thai_only(text):
+    """Extract Thai-script runs. Guarantees the voice speaks Thai even if the
+    model drifts from the --- reply format."""
+    parts = re.findall(r"[\u0E00-\u0E7F][\u0E00-\u0E7F ]*", text)
+    return " ".join(p.strip() for p in parts if p.strip())
+
+
+def send_lesson_turn(chat_id, user_id, reply, thread):
+    """Teacher speaks the Thai phrase FIRST (voice), then the written lesson
+    (which asks the student to say it out loud)."""
+    thai_part, _ = split_reply(reply)
+    speak = thai_only(thai_part) or thai_only(reply) or thai_part
+    print(f"lesson voice: mode={get_mode(user_id)} speak_chars={len(speak)} reply_chars={len(reply)}")
+    try:
+        voice_bytes = tts_speak(speak)
+        send_voice(chat_id, voice_bytes, reply_to=thread)
+    except Exception as e:
+        print("TTS failed:", e)
+    send_text(chat_id, reply, thread)
+
+
 def get_mode(user_id):
     return modes.get(user_id, "lesson")
 
@@ -419,17 +441,10 @@ def handle_voice(chat_id, user_id, voice, thread):
         send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
         return
     # Voice answer speaks Thai only; the text carries the lesson / translation.
-    thai_part, _ = split_reply(reply)
     if get_mode(user_id) == "lesson":
-        # Teacher speaks the phrase FIRST, then the written lesson asks the
-        # student to say it out loud.
-        try:
-            voice_bytes = tts_speak(thai_part)
-            send_voice(chat_id, voice_bytes, reply_to=thread)
-        except Exception as e:
-            print("TTS failed:", e)
-        send_text(chat_id, reply, thread)
+        send_lesson_turn(chat_id, user_id, reply, thread)
         return
+    thai_part, _ = split_reply(reply)
     try:
         voice_bytes = tts_speak(thai_part)
         sent = send_voice(chat_id, voice_bytes, caption=reply, reply_to=thread)
@@ -598,15 +613,9 @@ def handle_update(u):
     reply = tutor_reply(user_id, text)
     if reply:
         if get_mode(user_id) == "lesson" and OPENAI_API_KEY:
-            # The teacher speaks the Thai phrase FIRST (voice), then the written
-            # lesson asks the student to say it out loud.
-            thai_part, _ = split_reply(reply)
-            try:
-                voice_bytes = tts_speak(thai_part)
-                send_voice(chat_id, voice_bytes, reply_to=thread)
-            except Exception as e:
-                print("TTS failed:", e)
-        send_text(chat_id, reply, thread)
+            send_lesson_turn(chat_id, user_id, reply, thread)
+        else:
+            send_text(chat_id, reply, thread)
     else:
         send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
 
