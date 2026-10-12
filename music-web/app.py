@@ -1,13 +1,13 @@
 """TuneBox — private music streaming web app.
 
-A Spotify-style player for your own audio files. Listeners get in with
-invite codes (share links like https://<host>/i/<CODE>), browse the library,
-build playlists, and stream. The admin uploads MP3s and manages codes.
+A Spotify-style player for your own audio files. Listeners sign up with
+their email + password, browse the library, build playlists, and stream.
+The admin uploads audio and manages user accounts.
 
 Env vars:
   ADMIN_PASSWORD  Password for the /admin panel (required)
   DATA_DIR        Storage dir (default "."; use "/data" with a Railway
-                  volume so tracks/codes/playlists survive redeploys)
+                  volume so tracks/users/playlists survive redeploys)
   PORT            Listen port (default: 5000)
   MAX_UPLOAD_MB   Max upload size in MB (default: 300)
 
@@ -19,9 +19,11 @@ import mimetypes
 import os
 import re
 import secrets
+import time
 
 from flask import (Flask, Response, abort, jsonify, redirect, request,
                    send_file, session)
+from werkzeug.security import check_password_hash, generate_password_hash
 
 DATA_DIR = os.environ.get("DATA_DIR", ".")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -59,8 +61,9 @@ def _upload_ext(f, audio):
 
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+app.permanent_session_lifetime = datetime.timedelta(days=90)
 
-TUNEBOX_VERSION = "1.6"
+TUNEBOX_VERSION = "2.0"
 
 
 # ---------------------------------------------------------------- storage
@@ -102,48 +105,74 @@ def get_secret_key():
 
 app.secret_key = get_secret_key()
 
-# code -> {"used_by": sid|None, "label": "", "created": ts, "used_at": ts|None}
-codes = _load_json("tbcodes.json", {})
-# sid -> {"code": code, "created": ts}
+# email(lowercased) -> {"pw": hash, "created": ts, "disabled": bool}
+users = _load_json("tbusers.json", {})
+# sid -> {"user": email, "created": ts}
 sessions = _load_json("tbsessions.json", {})
 # tid -> {"title","artist","album","ext","duration","size","uploaded_at","plays"}
 tracks = _load_json("tbtracks.json", {})
-# sid -> [{"id","name","tids":[],"created"}]
+# email -> [{"id","name","tids":[],"created"}]
 playlists = _load_json("tbplaylists.json", {})
-
-CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
 def save_all():
-    _save_json("tbcodes.json", codes)
+    _save_json("tbusers.json", users)
     _save_json("tbsessions.json", sessions)
     _save_json("tbtracks.json", tracks)
     _save_json("tbplaylists.json", playlists)
 
 
-def make_code():
-    while True:
-        c = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
-        if c not in codes:
-            return c
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# simple in-memory brute-force guard: ip -> {"n": fails, "until": ts}
+_login_hits = {}
 
 
-def invite_link(code):
-    return request.host_url.rstrip("/") + "/i/" + code
+def _rate_limited(ip):
+    h = _login_hits.get(ip)
+    return bool(h and h["until"] > time.time())
 
 
-def current_sid():
+def _rate_hit(ip):
+    h = _login_hits.setdefault(ip, {"n": 0, "until": 0})
+    h["n"] += 1
+    if h["n"] >= 15:
+        h["until"] = time.time() + 600
+        h["n"] = 0
+
+
+def _rate_clear(ip):
+    _login_hits.pop(ip, None)
+
+
+def valid_email(email):
+    return bool(email) and len(email) <= 120 and EMAIL_RE.match(email)
+
+
+def current_user():
     sid = session.get("sid")
     if sid and sid in sessions:
-        return sid
+        email = sessions[sid].get("user")
+        u = users.get(email)
+        if u and not u.get("disabled"):
+            return email
     return None
 
 
 def require_listener():
-    sid = current_sid()
-    if not sid:
+    email = current_user()
+    if not email:
         abort(401)
-    return sid
+    return email
+
+
+def new_session(email):
+    sid = secrets.token_hex(16)
+    sessions[sid] = {"user": email,
+                     "created": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    save_all()
+    session["sid"] = sid
+    session.permanent = True
 
 
 def track_path(t):
@@ -161,49 +190,76 @@ def public_track(tid, t):
 @app.route("/")
 def home():
     from flask import render_template
-    if not current_sid():
-        return render_template("login.html", app_name="TuneBox")
+    if not current_user():
+        return render_template("login.html", app_name="TuneBox", mode="login")
     return render_template("index.html", app_name="TuneBox")
 
 
 @app.route("/i/<code>")
 def redeem(code):
-    code = code.strip().upper()
-    e = codes.get(code)
-    if not e:
-        from flask import render_template
-        return render_template("login.html", app_name="TuneBox",
-                               error="That invite code doesn't exist."), 404
-    if e.get("used_by") and e["used_by"] not in sessions:
-        e["used_by"] = None  # stale lock, free it
-    if e.get("used_by"):
-        from flask import render_template
-        return render_template("login.html", app_name="TuneBox",
-                               error="This invite link was already used."), 403
-    sid = secrets.token_hex(16)
-    sessions[sid] = {"code": code, "created": datetime.datetime.now(datetime.timezone.utc).isoformat()}
-    e["used_by"] = sid
-    e["used_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    save_all()
-    session["sid"] = sid
+    # Invite links are retired — send old links to the sign-in page.
     return redirect("/")
 
 
-@app.route("/login", methods=["POST"])
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    code = (request.form.get("code") or "").strip().upper()
-    return redeem(code)
+    from flask import render_template
+    if current_user():
+        return redirect("/")
+    if request.method == "POST":
+        ip = request.remote_addr or "?"
+        if _rate_limited(ip):
+            return render_template("login.html", app_name="TuneBox", mode="login",
+                                   error="Too many attempts — try again in a few minutes."), 429
+        email = (request.form.get("email") or "").strip().lower()
+        pw = request.form.get("password") or ""
+        u = users.get(email)
+        if not u or u.get("disabled") or not check_password_hash(u["pw"], pw):
+            _rate_hit(ip)
+            return render_template("login.html", app_name="TuneBox", mode="login",
+                                   error="Wrong email or password."), 401
+        _rate_clear(ip)
+        new_session(email)
+        return redirect("/")
+    return render_template("login.html", app_name="TuneBox", mode="login")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    from flask import render_template
+    if current_user():
+        return redirect("/")
+    if request.method == "POST":
+        ip = request.remote_addr or "?"
+        if _rate_limited(ip):
+            return render_template("login.html", app_name="TuneBox", mode="register",
+                                   error="Too many attempts — try again in a few minutes."), 429
+        email = (request.form.get("email") or "").strip().lower()
+        pw = request.form.get("password") or ""
+        if not valid_email(email):
+            return render_template("login.html", app_name="TuneBox", mode="register",
+                                   error="Please enter a valid email address."), 400
+        if len(pw) < 6:
+            return render_template("login.html", app_name="TuneBox", mode="register",
+                                   error="Password needs at least 6 characters."), 400
+        if email in users:
+            _rate_hit(ip)
+            return render_template("login.html", app_name="TuneBox", mode="register",
+                                   error="This email already has an account — sign in instead."), 400
+        users[email] = {"pw": generate_password_hash(pw),
+                        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                        "disabled": False}
+        _rate_clear(ip)
+        new_session(email)
+        return redirect("/")
+    return render_template("login.html", app_name="TuneBox", mode="register")
 
 
 @app.route("/logout")
 def logout():
     sid = session.pop("sid", None)
     if sid and sid in sessions:
-        code = sessions[sid].get("code")
-        if code and codes.get(code, {}).get("used_by") == sid:
-            codes[code]["used_by"] = None
         sessions.pop(sid, None)
-        playlists.pop(sid, None)
         save_all()
     return redirect("/")
 
@@ -295,9 +351,9 @@ def api_playlists():
 
 @app.route("/api/playlists", methods=["POST"])
 def api_playlist_create():
-    sid = require_listener()
+    email = require_listener()
     name = (request.json.get("name") or "").strip()[:60] or "New playlist"
-    pls = playlists.setdefault(sid, [])
+    pls = playlists.setdefault(email, [])
     pid = secrets.token_hex(6)
     pls.append({"id": pid, "name": name, "tids": [],
                 "created": datetime.datetime.now(datetime.timezone.utc).isoformat()})
@@ -307,8 +363,8 @@ def api_playlist_create():
 
 @app.route("/api/playlists/<pid>")
 def api_playlist_get(pid):
-    sid = require_listener()
-    for p in playlists.get(sid, []):
+    email = require_listener()
+    for p in playlists.get(email, []):
         if p["id"] == pid:
             items = [public_track(tid, tracks[tid]) for tid in p["tids"]
                      if tid in tracks]
@@ -318,20 +374,20 @@ def api_playlist_get(pid):
 
 @app.route("/api/playlists/<pid>", methods=["DELETE"])
 def api_playlist_delete(pid):
-    sid = require_listener()
-    pls = playlists.get(sid, [])
-    playlists[sid] = [p for p in pls if p["id"] != pid]
+    email = require_listener()
+    pls = playlists.get(email, [])
+    playlists[email] = [p for p in pls if p["id"] != pid]
     save_all()
     return jsonify({"ok": True})
 
 
 @app.route("/api/playlists/<pid>/tracks", methods=["POST"])
 def api_playlist_add(pid):
-    sid = require_listener()
+    email = require_listener()
     tid = (request.json.get("track_id") or "")
     if tid not in tracks:
         abort(404)
-    for p in playlists.get(sid, []):
+    for p in playlists.get(email, []):
         if p["id"] == pid:
             if tid not in p["tids"]:
                 p["tids"].append(tid)
@@ -342,8 +398,8 @@ def api_playlist_add(pid):
 
 @app.route("/api/playlists/<pid>/tracks/<tid>", methods=["DELETE"])
 def api_playlist_remove(pid, tid):
-    sid = require_listener()
-    for p in playlists.get(sid, []):
+    email = require_listener()
+    for p in playlists.get(email, []):
         if p["id"] == pid:
             p["tids"] = [x for x in p["tids"] if x != tid]
             save_all()
@@ -376,14 +432,16 @@ def admin():
               "nofile": "No file was chosen — please pick a file first."}.get(err)
     return render_template(
         "admin.html", need_login=False, errmsg=errmsg,
+        reset_email=request.args.get("reset_email"),
+        reset_pw=request.args.get("reset_pw"),
         track_list=[(tid, public_track(tid, t), t.get("uploaded_at", ""))
                     for tid, t in sorted(tracks.items(),
                                          key=lambda kv: kv[1]["title"].lower())],
-        code_list=[(c, e.get("label", ""), bool(e.get("used_by")),
-                    invite_link(c)) for c, e in sorted(codes.items())],
+        user_list=[(email, u.get("created", "")[:16].replace("T", " "),
+                    len(playlists.get(email, [])), bool(u.get("disabled")))
+                   for email, u in sorted(users.items())],
         stats={"tracks": len(tracks), "plays": total_plays,
-               "codes": len(codes),
-               "used_codes": sum(1 for e in codes.values() if e.get("used_by"))},
+               "users": len(users)},
         top=[(tid, t["title"], t["artist"], t.get("plays", 0)) for tid, t in top],
         max_mb=MAX_UPLOAD_MB)
 
@@ -463,31 +521,49 @@ def admin_delete(tid):
     return redirect("/admin")
 
 
-@app.route("/admin/codes", methods=["POST"])
-def admin_codes():
+@app.route("/admin/users/reset", methods=["POST"])
+def admin_user_reset():
     if not admin_ok():
         abort(403)
-    n = max(1, min(100, int(request.form.get("n") or 1)))
-    label = (request.form.get("label") or "").strip()[:60]
-    made = []
-    for _ in range(n):
-        c = make_code()
-        codes[c] = {"used_by": None, "label": label,
-                    "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    "used_at": None}
-        made.append(c)
+    email = (request.form.get("email") or "").strip().lower()
+    u = users.get(email)
+    if not u:
+        return redirect("/admin")
+    new_pw = secrets.token_urlsafe(9)
+    u["pw"] = generate_password_hash(new_pw)
+    # force re-login everywhere
+    for sid in [s for s, e in sessions.items() if e.get("user") == email]:
+        sessions.pop(sid, None)
     save_all()
+    return redirect(f"/admin?reset_email={email}&reset_pw={new_pw}")
+
+
+@app.route("/admin/users/toggle", methods=["POST"])
+def admin_user_toggle():
+    if not admin_ok():
+        abort(403)
+    email = (request.form.get("email") or "").strip().lower()
+    u = users.get(email)
+    if u:
+        u["disabled"] = not u.get("disabled")
+        if u["disabled"]:
+            for sid in [s for s, e in sessions.items() if e.get("user") == email]:
+                sessions.pop(sid, None)
+        save_all()
     return redirect("/admin")
 
 
-@app.route("/admin/revoke/<code>", methods=["POST"])
-def admin_revoke(code):
+@app.route("/admin/users/delete", methods=["POST"])
+def admin_user_delete():
     if not admin_ok():
         abort(403)
-    e = codes.pop(code, None)
-    if e and e.get("used_by") in sessions:
-        sessions.pop(e["used_by"], None)
-    save_all()
+    email = (request.form.get("email") or "").strip().lower()
+    if email in users:
+        users.pop(email, None)
+        playlists.pop(email, None)
+        for sid in [s for s, e in sessions.items() if e.get("user") == email]:
+            sessions.pop(sid, None)
+        save_all()
     return redirect("/admin")
 
 

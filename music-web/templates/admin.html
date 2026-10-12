@@ -23,6 +23,8 @@
   button.small { padding: 5px 12px; font-size: 12px; }
   .err { background: #3d1420; border: 1px solid #7f2d3f; color: #ff9db0; padding: 10px;
          border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+  .ok { background: #0f2f1d; border: 1px solid #2d7f4a; color: #9df0b6; padding: 10px;
+        border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: #9a9ab0; font-size: 11px; text-transform: uppercase; padding: 6px 8px;
        border-bottom: 1px solid #26263a; }
@@ -60,7 +62,7 @@
     <div class="stats">
       <div class="stat"><b>{{ stats.tracks }}</b><span>tracks</span></div>
       <div class="stat"><b>{{ stats.plays }}</b><span>total plays</span></div>
-      <div class="stat"><b>{{ stats.used_codes }}/{{ stats.codes }}</b><span>codes used</span></div>
+      <div class="stat"><b>{{ stats.users }}</b><span>users</span></div>
     </div>
   </div>
 
@@ -108,26 +110,27 @@
   </div>
 
   <div class="card">
-    <h2>Invite codes</h2>
-    <form method="post" action="/admin/codes" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <input type="number" name="n" value="5" min="1" max="100" style="width:80px">
-      <input type="text" name="label" placeholder="Label, e.g. batch for May" maxlength="60" style="flex:1;min-width:180px">
-      <button type="submit">Generate</button>
-    </form>
+    <h2>Users</h2>
+    {% if reset_pw %}<div class="ok">New password for <b>{{ reset_email }}</b>: <b class="code">{{ reset_pw }}</b><br><span style="font-size:12px">Share it with them once — it won't be shown again.</span></div>{% endif %}
     <table>
-      <tr><th>Code</th><th>Label</th><th>Status</th><th>Invite link</th><th></th></tr>
-      {% for code, label, used, link in code_list %}
+      <tr><th>Email</th><th>Signed up</th><th>Playlists</th><th>Status</th><th></th></tr>
+      {% for email, created, npl, disabled in user_list %}
       <tr>
-        <td class="code">{{ code }}</td>
-        <td>{{ label or "—" }}</td>
-        <td>{{ "🔴 used" if used else "🟢 fresh" }}</td>
-        <td><span class="link">{{ link }}</span></td>
-        <td><form class="inline" method="post" action="/admin/revoke/{{ code }}"
-              onsubmit="return confirm('Revoke this code?')"><button class="danger small" type="submit">Revoke</button></form></td>
+        <td><b>{{ email }}</b></td>
+        <td style="color:#9a9ab0;font-size:11px">{{ created or "—" }}</td>
+        <td>{{ npl }}</td>
+        <td>{{ "🔴 disabled" if disabled else "🟢 active" }}</td>
+        <td style="white-space:nowrap">
+          <form class="inline" method="post" action="/admin/users/reset"
+                onsubmit="return confirm('Reset password for {{ email }}? They will be signed out everywhere.')"><input type="hidden" name="email" value="{{ email }}"><button class="small" type="submit">Reset pw</button></form>
+          <form class="inline" method="post" action="/admin/users/toggle"><input type="hidden" name="email" value="{{ email }}"><button class="small" type="submit">{{ "Enable" if disabled else "Disable" }}</button></form>
+          <form class="inline" method="post" action="/admin/users/delete"
+                onsubmit="return confirm('Delete {{ email }} and their playlists?')"><input type="hidden" name="email" value="{{ email }}"><button class="danger small" type="submit">Delete</button></form>
+        </td>
       </tr>
       {% endfor %}
     </table>
-    {% if not code_list %}<p class="sub" style="margin:10px 0 0">No codes yet — generate some to share.</p>{% endif %}
+    {% if not user_list %}<p class="sub" style="margin:10px 0 0">No users yet — share your app link and people can sign up with their email.</p>{% endif %}
   </div>
   {% endif %}
 </div>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ app_name }} — Private Music</title>
+<title>{{ app_name }} — Sign in</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0a0a0f; color: #fff; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -16,8 +16,7 @@
   h1 { font-size: 26px; margin-bottom: 6px; }
   p.sub { color: #9a9ab0; font-size: 14px; margin-bottom: 24px; }
   input { width: 100%; padding: 13px 14px; border-radius: 10px; border: 1px solid #33334d;
-          background: #0d0d14; color: #fff; font-size: 16px; text-align: center;
-          letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+          background: #0d0d14; color: #fff; font-size: 16px; margin-bottom: 12px; }
   input:focus { outline: none; border-color: #7c3aed; }
   button { width: 100%; padding: 13px; border: none; border-radius: 10px; font-size: 16px;
            font-weight: 700; color: #fff; cursor: pointer;
@@ -25,18 +24,35 @@
   button:active { transform: scale(.98); }
   .err { background: #3d1420; border: 1px solid #7f2d3f; color: #ff9db0;
          padding: 10px; border-radius: 10px; font-size: 13px; margin-bottom: 14px; }
+  .swap { margin-top: 18px; font-size: 14px; color: #9a9ab0; }
+  .swap a { color: #a78bfa; text-decoration: none; font-weight: 600; }
 </style>
 </head>
 <body>
   <div class="card">
     <div class="logo">🎵</div>
     <h1>{{ app_name }}</h1>
-    <p class="sub">Private music streaming.<br>Enter your invite code to listen.</p>
+    {% if mode == "register" %}
+    <p class="sub">Create your account to start listening.</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <form method="post" action="/register">
+      <input name="email" type="email" placeholder="Email address" autocomplete="email" required>
+      <input name="password" type="password" placeholder="Password (min 6 characters)"
+             autocomplete="new-password" minlength="6" required>
+      <button type="submit">Create account</button>
+    </form>
+    <p class="swap">Already have an account? <a href="/login">Sign in</a></p>
+    {% else %}
+    <p class="sub">Sign in with your email to listen.</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     <form method="post" action="/login">
-      <input name="code" placeholder="INVITE CODE" maxlength="16" autocomplete="off" required>
-      <button type="submit">Start listening</button>
+      <input name="email" type="email" placeholder="Email address" autocomplete="email" required>
+      <input name="password" type="password" placeholder="Password"
+             autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
     </form>
+    <p class="swap">New here? <a href="/register">Create an account</a></p>
+    {% endif %}
   </div>
 </body>
 </html>
