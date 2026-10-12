@@ -453,6 +453,7 @@ def api_chat():
     clean, img_blocks, doc_blocks = split_blocks(
         reply, text, pending_image=bool(convo.get("pending_image")))
     files = []
+    blocked = False
     if img_blocks or doc_blocks:
         cleanup_files()
         import datetime
@@ -464,6 +465,9 @@ def api_chat():
                 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 files.append(store_file(sid, f"image_{ts}.png", img_bytes, "image/png"))
                 track_images(code)
+            except brain.ImageBlockedError:
+                blocked = True
+                print("image blocked by safety filter")
             except Exception as e:
                 print("image generation failed:", e)
         _save_json("gptfiles.json", filemeta)
@@ -471,7 +475,16 @@ def api_chat():
     amsg["content"] = clean or amsg["content"]
     update_pending_image(convo, text, img_blocks, files)
     save_all()
-    if (img_blocks or doc_blocks) and not files:
+    image_files = [f for f in files if f["mime"].startswith("image/")]
+    if img_blocks and not image_files:
+        msg = ("⚠️ That image was declined by the safety filter — "
+               "try describing it differently." if blocked else
+               "⚠️ I couldn't generate the image — try again in a moment.")
+        amsg["content"] = msg
+        _save_json("gpthistories.json", histories)
+        return jsonify({"ok": True, "reply": msg, "files": files,
+                        "convo": convo["id"], "title": convo["title"]})
+    if doc_blocks and not files:
         return jsonify({"ok": True, "reply": reply, "files": [],
                         "convo": convo["id"], "title": convo["title"]})
     return jsonify({"ok": True, "reply": clean or "Here you go! 📎", "files": files,
@@ -551,6 +564,7 @@ def api_upload_chat():
     clean, img_blocks, doc_blocks = split_blocks(
         reply, text, pending_image=bool(convo.get("pending_image")))
     files = []
+    blocked = False
     if img_blocks or doc_blocks:
         cleanup_files()
         for kind, fname, fbytes, mime in brain.build_files(doc_blocks):
@@ -561,6 +575,9 @@ def api_upload_chat():
                 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 files.append(store_file(sid, f"image_{ts}.png", img_bytes, "image/png"))
                 track_images(code)
+            except brain.ImageBlockedError:
+                blocked = True
+                print("image blocked by safety filter")
             except Exception as e:
                 print("image generation failed:", e)
         _save_json("gptfiles.json", filemeta)
@@ -568,7 +585,16 @@ def api_upload_chat():
     amsg["content"] = clean or amsg["content"]
     update_pending_image(convo, text, img_blocks, files)
     save_all()
-    if (img_blocks or doc_blocks) and not files:
+    image_files = [f for f in files if f["mime"].startswith("image/")]
+    if img_blocks and not image_files:
+        msg = ("⚠️ That image was declined by the safety filter — "
+               "try describing it differently." if blocked else
+               "⚠️ I couldn't generate the image — try again in a moment.")
+        amsg["content"] = msg
+        _save_json("gpthistories.json", histories)
+        return jsonify({"ok": True, "reply": msg, "files": files,
+                        "convo": convo["id"], "title": convo["title"]})
+    if doc_blocks and not files:
         return jsonify({"ok": True, "reply": reply, "files": [],
                         "convo": convo["id"], "title": convo["title"]})
     return jsonify({"ok": True, "reply": clean or "Here you go! 📎", "files": files,

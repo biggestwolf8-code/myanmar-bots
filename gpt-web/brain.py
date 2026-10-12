@@ -24,6 +24,11 @@ OUTPUT_RATE = float(os.environ.get("OUTPUT_RATE", "10.0"))
 IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "gpt-image-1")
 IMAGE_COST = float(os.environ.get("IMAGE_COST", "0.04"))
 
+
+class ImageBlockedError(RuntimeError):
+    """Raised when OpenAI's safety system rejects the image prompt."""
+    pass
+
 SYSTEM_PROMPT = (
     "You are the user's AI co-worker in a web app, powered by OpenAI's GPT. You are "
     "the ideal colleague: sharp, reliable, proactive, and easy to work with. Help with "
@@ -189,6 +194,8 @@ def generate_image(prompt, size="1024x1024"):
             out = json.load(r)
     except urllib.error.HTTPError as e:
         err = e.read().decode(errors="replace")
+        if "moderation_block" in err:
+            raise ImageBlockedError("moderation_block")
         raise RuntimeError(f"OpenAI image API error {e.code}: {err[:300]}")
     url = None
     d = (out.get("data") or [{}])[0]
