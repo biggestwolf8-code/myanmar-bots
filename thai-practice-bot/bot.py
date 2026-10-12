@@ -418,8 +418,18 @@ def handle_voice(chat_id, user_id, voice, thread):
     if not reply:
         send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
         return
-    # Voice answer speaks Thai only; the text carries Thai + English translation.
+    # Voice answer speaks Thai only; the text carries the lesson / translation.
     thai_part, _ = split_reply(reply)
+    if get_mode(user_id) == "lesson":
+        # Teacher speaks the phrase FIRST, then the written lesson asks the
+        # student to say it out loud.
+        try:
+            voice_bytes = tts_speak(thai_part)
+            send_voice(chat_id, voice_bytes, reply_to=thread)
+        except Exception as e:
+            print("TTS failed:", e)
+        send_text(chat_id, reply, thread)
+        return
     try:
         voice_bytes = tts_speak(thai_part)
         sent = send_voice(chat_id, voice_bytes, caption=reply, reply_to=thread)
@@ -587,6 +597,15 @@ def handle_update(u):
     send_typing(chat_id)
     reply = tutor_reply(user_id, text)
     if reply:
+        if get_mode(user_id) == "lesson" and OPENAI_API_KEY:
+            # The teacher speaks the Thai phrase FIRST (voice), then the written
+            # lesson asks the student to say it out loud.
+            thai_part, _ = split_reply(reply)
+            try:
+                voice_bytes = tts_speak(thai_part)
+                send_voice(chat_id, voice_bytes, reply_to=thread)
+            except Exception as e:
+                print("TTS failed:", e)
         send_text(chat_id, reply, thread)
     else:
         send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
