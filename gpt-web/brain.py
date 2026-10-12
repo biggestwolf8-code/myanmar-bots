@@ -155,12 +155,10 @@ def extract_doc_text(filename, data, max_chars=20000):
 
 def generate_image(prompt, size="1024x1024"):
     """Generate an image via OpenAI. Returns PNG bytes. Raises on failure."""
-    import base64
     payload = {
         "model": IMAGE_MODEL,
         "prompt": prompt,
         "size": size,
-        "response_format": "b64_json",
     }
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
@@ -177,7 +175,10 @@ def generate_image(prompt, size="1024x1024"):
     except urllib.error.HTTPError as e:
         err = e.read().decode(errors="replace")
         raise RuntimeError(f"OpenAI image API error {e.code}: {err[:300]}")
-    return base64.b64decode(out["data"][0]["b64_json"])
+    url = out["data"][0]["url"]
+    # download right away — OpenAI image URLs expire
+    with urllib.request.urlopen(url, timeout=120) as r:
+        return r.read()
 
 
 BLOCK_RE = re.compile(r"```(excel|pdf|image)[ \t]*\n(.*?)```", re.DOTALL | re.IGNORECASE)
