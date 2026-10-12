@@ -62,7 +62,7 @@
   <h2>Invite codes</h2>
   <div class="card" style="overflow-x:auto">
     <table id="codesTable">
-      <thead><tr><th>Code</th><th>Status</th><th>Invite link</th><th>Used today</th><th>Tokens in/out</th><th>Cost</th><th></th></tr></thead>
+      <thead><tr><th>Code</th><th>Status</th><th>Invite link</th><th>Used today</th><th>Images</th><th>Tokens in/out</th><th>Cost</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -99,6 +99,7 @@ function showPanel(j){
       '<td class="'+(c.used?'used':'free')+'">'+(c.used?'used':'unused')+'</td>'+
       '<td><div class="linkrow"><input type="text" readonly value="'+esc(c.link)+'" style="width:220px;font-size:11px" onclick="this.select()"><button class="ghost" onclick="navigator.clipboard.writeText(\''+c.link+'\')">Copy</button></div></td>'+
       '<td>'+c.today+'</td>'+
+      '<td>'+(c.images||0)+'</td>'+
       '<td>'+c.in.toLocaleString()+' / '+c.out.toLocaleString()+'</td>'+
       '<td>$'+c.cost.toFixed(4)+'</td>'+
       '<td>'+(c.used?'<button class="danger" onclick="revoke(\''+c.code+'\')">Revoke</button>':'')+'</td>';

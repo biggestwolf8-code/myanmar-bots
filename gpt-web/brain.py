@@ -20,6 +20,9 @@ MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "4000"))
 # $ per 1M tokens (defaults = gpt-6.1-sol rates; override via env per model)
 INPUT_RATE = float(os.environ.get("INPUT_RATE", "2.0"))
 OUTPUT_RATE = float(os.environ.get("OUTPUT_RATE", "10.0"))
+# image generation ($ per image estimate; override via env)
+IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "gpt-image-1")
+IMAGE_COST = float(os.environ.get("IMAGE_COST", "0.04"))
 
 SYSTEM_PROMPT = (
     "You are the user's AI co-worker in a web app, powered by OpenAI's GPT. You are "
@@ -40,7 +43,12 @@ SYSTEM_PROMPT = (
     "document, end your reply with a fenced block that starts with ```pdf whose first line "
     "is the document title, then a blank line, then the body text. Keep your chat text "
     "brief when you attach a file — the file carries the content. Only use these blocks "
-    "when the user actually wants a file, never for ordinary answers."
+    "when the user actually wants a file, never for ordinary answers. "
+    "IMAGES: If the user asks you to generate, create, draw, or make an image/picture/photo/logo, "
+    "end your reply with a fenced block that starts with ```image followed by a detailed visual "
+    "description of the image (subject, style, colors, composition, mood). Keep your chat text "
+    "brief — the image carries the content. Only use this block when the user actually wants an "
+    "image generated, never for ordinary answers."
 )
 
 
@@ -89,7 +97,34 @@ def ask_gpt(messages, max_tokens=None):
                   "output_tokens": usage.get("completion_tokens", 0)}
 
 
-BLOCK_RE = re.compile(r"```(excel|pdf)\n(.*?)```", re.DOTALL | re.IGNORECASE)
+def generate_image(prompt, size="1024x1024"):
+    """Generate an image via OpenAI. Returns PNG bytes. Raises on failure."""
+    import base64
+    payload = {
+        "model": IMAGE_MODEL,
+        "prompt": prompt,
+        "size": size,
+        "response_format": "b64_json",
+    }
+    body = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/images/generations",
+        data=body,
+        headers={
+            "Authorization": "Bearer " + OPENAI_API_KEY,
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            out = json.load(r)
+    except urllib.error.HTTPError as e:
+        err = e.read().decode(errors="replace")
+        raise RuntimeError(f"OpenAI image API error {e.code}: {err[:300]}")
+    return base64.b64decode(out["data"][0]["b64_json"])
+
+
+BLOCK_RE = re.compile(r"```(excel|pdf|image)\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
 
 def extract_blocks(text):

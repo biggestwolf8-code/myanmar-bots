@@ -135,11 +135,17 @@ function addMsg(who, text, files){
   d.className = 'msg '+who;
   d.innerHTML = who==='bot' ? fmt(text) : esc(text);
   if (files) for (const f of files){
+    if (f.mime.startsWith('image/')){
+      const img = document.createElement('img');
+      img.src = '/files/'+f.id; img.alt = f.name;
+      img.style.cssText = 'max-width:100%;border-radius:10px;margin-top:8px;display:block;';
+      d.appendChild(img);
+    }
     const a = document.createElement('a');
     a.className = 'filebtn'; a.href = '/files/'+f.id;
-    a.textContent = (f.mime.includes('sheet')||f.name.endsWith('.xlsx') ? '📊 ' : '📄 ') + f.name;
+    a.textContent = (f.mime.startsWith('image/') ? '🖼️ ' : f.mime.includes('sheet')||f.name.endsWith('.xlsx') ? '📊 ' : '📄 ') + f.name;
     a.setAttribute('download','');
-    d.appendChild(document.createElement('br')); d.appendChild(a);
+    d.appendChild(a);
   }
   const box = document.getElementById('msgs');
   box.appendChild(d); box.scrollTop = box.scrollHeight;
@@ -152,7 +158,7 @@ async function boot(){
   document.getElementById('chat').classList.toggle('hidden', !j.ok);
   if (j.ok && !window._welcomed){
     window._welcomed = true;
-    addMsg('bot', "👋 Hi! I'm your AI co-worker, powered by OpenAI API.\n\nAsk me anything — drafting, writing, translations, planning, ideas. I can also make Excel spreadsheets and PDF files, just ask!");
+    addMsg('bot', "👋 Hi! I'm your AI co-worker, powered by OpenAI API.\n\nAsk me anything — drafting, writing, translations, planning, ideas. I can also make Excel spreadsheets, PDF files, and generate images — just ask!");
     document.getElementById('msgInput').focus();
   }
 }
