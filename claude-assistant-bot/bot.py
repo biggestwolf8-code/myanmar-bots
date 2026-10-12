@@ -75,14 +75,28 @@ def tg(method, params=None, timeout=30):
 
 
 def send_text(chat_id, text, reply_to=None):
-    params = {"chat_id": chat_id, "text": text}
-    if reply_to:
-        params["reply_to_message_id"] = reply_to
-    try:
-        return tg("sendMessage", params)
-    except Exception as e:
-        print("sendMessage failed:", e)
-        return None
+    # Telegram caps a message at 4096 chars — split long replies into
+    # sequential messages instead of letting them get cut off.
+    chunks = []
+    rest = text
+    while len(rest) > 4000:
+        cut = rest.rfind("\n", 0, 4000)
+        if cut < 1000:  # no good newline break nearby; hard cut
+            cut = 4000
+        chunks.append(rest[:cut])
+        rest = rest[cut:].lstrip("\n")
+    chunks.append(rest)
+    result = None
+    for i, c in enumerate(chunks):
+        params = {"chat_id": chat_id, "text": c}
+        if reply_to and i == 0:
+            params["reply_to_message_id"] = reply_to
+        try:
+            result = tg("sendMessage", params)
+        except Exception as e:
+            print("sendMessage failed:", e)
+            return None
+    return result
 
 
 def send_typing(chat_id):
@@ -169,7 +183,7 @@ def gate_check(chat_id, user_id):
 
 # ---------- AI ----------
 
-def ask_claude(messages, max_tokens=1000):
+def ask_claude(messages, max_tokens=4000):
     body = json.dumps({
         "model": MODEL,
         "max_tokens": max_tokens,
