@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TuneBox — Admin</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0f; color: #fff; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+         padding: 24px 16px 60px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .sub { color: #9a9ab0; font-size: 13px; margin-bottom: 20px; }
+  .card { background: #14141c; border: 1px solid #26263a; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+  .card h2 { font-size: 16px; margin-bottom: 12px; }
+  label { display: block; color: #9a9ab0; font-size: 12px; margin: 10px 0 4px; }
+  input[type=text], input[type=password], input[type=number] { width: 100%; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid #33334d; background: #0d0d14; color: #fff; font-size: 14px; }
+  input[type=file] { margin: 6px 0; color: #9a9ab0; font-size: 14px; }
+  button, .btn { background: linear-gradient(135deg, #7c3aed, #06b6d4); color: #fff; border: none;
+    border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  button.danger { background: #4a1620; border: 1px solid #7f2d3f; }
+  button.small { padding: 5px 12px; font-size: 12px; }
+  .err { background: #3d1420; border: 1px solid #7f2d3f; color: #ff9db0; padding: 10px;
+         border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #9a9ab0; font-size: 11px; text-transform: uppercase; padding: 6px 8px;
+       border-bottom: 1px solid #26263a; }
+  td { padding: 7px 8px; border-bottom: 1px solid #1c1c28; vertical-align: middle; }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; }
+  .stat { background: #1a1a24; border: 1px solid #26263a; border-radius: 10px; padding: 12px 18px; flex: 1; min-width: 120px; }
+  .stat b { font-size: 22px; display: block; }
+  .stat span { color: #9a9ab0; font-size: 12px; }
+  .code { font-family: monospace; letter-spacing: 1px; }
+  .link { color: #06b6d4; font-size: 12px; word-break: break-all; }
+  form.inline { display: inline; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 600px) { .row2 { grid-template-columns: 1fr; } }
+  a.back { color: #9a9ab0; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎵 TuneBox Admin</h1>
+  <p class="sub"><a class="back" href="/">← back to player</a> · <a class="back" href="/admin/logout">log out</a></p>
+
+  {% if need_login %}
+  <div class="card">
+    <h2>Sign in</h2>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <form method="post">
+      <label>Admin password</label>
+      <input type="password" name="password" required autofocus>
+      <div style="margin-top:12px"><button type="submit">Sign in</button></div>
+    </form>
+  </div>
+  {% else %}
+
+  <div class="card">
+    <div class="stats">
+      <div class="stat"><b>{{ stats.tracks }}</b><span>tracks</span></div>
+      <div class="stat"><b>{{ stats.plays }}</b><span>total plays</span></div>
+      <div class="stat"><b>{{ stats.used_codes }}/{{ stats.codes }}</b><span>codes used</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Upload track <span style="color:#9a9ab0;font-weight:400;font-size:12px">(mp3, m4a, ogg, wav, flac — max {{ max_mb }} MB)</span></h2>
+    <form method="post" action="/admin/upload" enctype="multipart/form-data">
+      <input type="file" name="file" accept="audio/*" required>
+      <label>Title (leave blank to use the file name)</label>
+      <input type="text" name="title" maxlength="120">
+      <div class="row2">
+        <div><label>Artist</label><input type="text" name="artist" maxlength="120" placeholder="Unknown artist"></div>
+        <div><label>Album</label><input type="text" name="album" maxlength="120"></div>
+      </div>
+      <div style="margin-top:12px"><button type="submit">Upload</button></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Library</h2>
+    <table>
+      <tr><th>Title</th><th>Artist</th><th>⏱</th><th>▶</th><th></th></tr>
+      {% for tid, t, uploaded in track_list %}
+      <tr>
+        <td><b>{{ t.title }}</b><br><span style="color:#9a9ab0;font-size:11px">{{ uploaded }}</span></td>
+        <td>{{ t.artist }}</td>
+        <td>{{ "%d:%02d" % (t.duration // 60, t.duration % 60) }}</td>
+        <td>{{ t.plays }}</td>
+        <td><form class="inline" method="post" action="/admin/delete/{{ tid }}"
+              onsubmit="return confirm('Delete this track?')"><button class="danger small" type="submit">Delete</button></form></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% if not track_list %}<p class="sub" style="margin:10px 0 0">No tracks yet — upload your first one above.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Top tracks</h2>
+    <table>
+      {% for tid, title, artist, plays in top %}
+      <tr><td><b>{{ title }}</b> <span style="color:#9a9ab0">· {{ artist }}</span></td><td>{{ plays }} plays</td></tr>
+      {% endfor %}
+    </table>
+    {% if not top %}<p class="sub" style="margin:10px 0 0">No plays yet.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Invite codes</h2>
+    <form method="post" action="/admin/codes" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <input type="number" name="n" value="5" min="1" max="100" style="width:80px">
+      <input type="text" name="label" placeholder="Label, e.g. batch for May" maxlength="60" style="flex:1;min-width:180px">
+      <button type="submit">Generate</button>
+    </form>
+    <table>
+      <tr><th>Code</th><th>Label</th><th>Status</th><th>Invite link</th><th></th></tr>
+      {% for code, label, used, link in code_list %}
+      <tr>
+        <td class="code">{{ code }}</td>
+        <td>{{ label or "—" }}</td>
+        <td>{{ "🔴 used" if used else "🟢 fresh" }}</td>
+        <td><span class="link">{{ link }}</span></td>
+        <td><form class="inline" method="post" action="/admin/revoke/{{ code }}"
+              onsubmit="return confirm('Revoke this code?')"><button class="danger small" type="submit">Revoke</button></form></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% if not code_list %}<p class="sub" style="margin:10px 0 0">No codes yet — generate some to share.</p>{% endif %}
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>
