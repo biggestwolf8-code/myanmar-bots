@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Claude Coworker</title>
+<meta name="theme-color" content="#d97706">
+<meta name="description" content="Your AI co-worker, powered by Claude.">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.png">
+<style>
+  :root { --accent: #d97706; --bg: #faf9f7; --card: #ffffff; --ink: #1f2937; --muted: #6b7280; --line: #e5e7eb; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans Myanmar", sans-serif; background: var(--bg); color: var(--ink); height: 100dvh; display: flex; flex-direction: column; }
+  .hidden { display: none !important; }
+
+  /* login */
+  #login { margin: auto; width: min(92vw, 380px); background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 32px 28px; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.06); }
+  #login .logo { width: 56px; height: 56px; border-radius: 16px; background: var(--accent); color: #fff; font-size: 30px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+  #login h1 { font-size: 22px; margin: 0 0 6px; }
+  #login p { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+  #login input { width: 100%; padding: 12px 14px; font-size: 16px; border: 1px solid var(--line); border-radius: 10px; text-transform: uppercase; letter-spacing: 2px; text-align: center; margin-bottom: 12px; }
+  #login button { width: 100%; padding: 12px; font-size: 16px; background: var(--accent); color: #fff; border: 0; border-radius: 10px; cursor: pointer; font-weight: 600; }
+  #login button:disabled { opacity: .6; }
+  #loginErr { color: #dc2626; font-size: 13px; min-height: 20px; margin-top: 10px; }
+
+  /* chat */
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
+  header .dot { width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  header .title { font-weight: 700; font-size: 16px; }
+  header .sub { font-size: 12px; color: var(--muted); }
+  header .spacer { flex: 1; }
+  header button { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; color: var(--ink); }
+  header button:hover { background: #f3f4f6; }
+  #msgs { flex: 1; overflow-y: auto; padding: 18px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 800px; width: 100%; margin: 0 auto; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 15px; line-height: 1.55; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .msg.bot p { margin: 0 0 8px; } .msg.bot p:last-child { margin-bottom: 0; }
+  .msg.bot ul { margin: 4px 0 8px; padding-left: 20px; }
+  .msg.bot code { background: #f3f4f6; padding: 1px 6px; border-radius: 5px; font-size: 13px; }
+  .msg.bot pre { background: #1f2937; color: #f9fafb; padding: 10px 12px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+  .msg.bot pre code { background: none; padding: 0; }
+  .filebtn { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; padding: 9px 14px; background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; border-radius: 10px; text-decoration: none; font-size: 14px; font-weight: 600; }
+  .filebtn:hover { background: #ffedd5; }
+  .typing { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; color: var(--muted); font-size: 14px; }
+  .typing span { animation: blink 1.2s infinite; } .typing span:nth-child(2){animation-delay:.2s} .typing span:nth-child(3){animation-delay:.4s}
+  @keyframes blink { 0%,100%{opacity:.2} 50%{opacity:1} }
+  #composer { border-top: 1px solid var(--line); background: var(--card); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  #composer .row { max-width: 800px; margin: 0 auto; display: flex; gap: 10px; }
+  #composer input { flex: 1; padding: 12px 14px; font-size: 16px; border: 1px solid var(--line); border-radius: 12px; }
+  #composer button { padding: 0 22px; font-size: 15px; background: var(--accent); color: #fff; border: 0; border-radius: 12px; cursor: pointer; font-weight: 600; }
+  #composer button:disabled { opacity: .6; }
+</style>
+</head>
+<body>
+
+<div id="login" class="hidden">
+  <div class="logo">C</div>
+  <h1>Claude Coworker</h1>
+  <p>Your AI co-worker, powered by Claude.<br>Enter your invite code to start.</p>
+  <input id="codeInput" placeholder="INVITE CODE" maxlength="16" autocomplete="off">
+  <button id="redeemBtn" onclick="redeem()">Start chatting</button>
+  <div id="loginErr"></div>
+</div>
+
+<div id="chat" class="hidden" style="display:flex;flex-direction:column;height:100dvh;">
+  <header>
+    <div class="dot">C</div>
+    <div><div class="title">Claude Coworker</div><div class="sub">your AI co-worker</div></div>
+    <div class="spacer"></div>
+    <button onclick="newChat()">+ New chat</button>
+    <button onclick="logout()">Log out</button>
+  </header>
+  <div id="msgs"></div>
+  <div id="composer">
+    <div class="row">
+      <input id="msgInput" placeholder="Ask anything…" autocomplete="off" onkeydown="if(event.key==='Enter')send()">
+      <button id="sendBtn" onclick="send()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const loginErr = {{ error|default(None)|tojson }};
+if (loginErr) { document.getElementById('loginErr').textContent = loginErr; }
+
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmt(text){
+  // safe mini-markdown: escape first, then decorate
+  let h = esc(text);
+  h = h.replace(/```[\s\S]*?```/g, m => '<pre><code>'+m.slice(3,-3).replace(/^\w+\n/,'')+'</code></pre>');
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  const lines = h.split('\n'); let out = '', inList = false;
+  for (const ln of lines){
+    if (/^\s*[-*] /.test(ln)){
+      if (!inList){ out += '<ul>'; inList = true; }
+      out += '<li>'+ln.replace(/^\s*[-*] /,'')+'</li>';
+    } else {
+      if (inList){ out += '</ul>'; inList = false; }
+      if (/^#{1,3} /.test(ln)) out += '<p><strong>'+ln.replace(/^#{1,3} /,'')+'</strong></p>';
+      else if (ln.trim()==='') out += '';
+      else if (ln.startsWith('<pre>')) out += ln;
+      else out += '<p>'+ln+'</p>';
+    }
+  }
+  if (inList) out += '</ul>';
+  return out || '<p></p>';
+}
+function addMsg(who, text, files){
+  const d = document.createElement('div');
+  d.className = 'msg '+who;
+  d.innerHTML = who==='bot' ? fmt(text) : esc(text);
+  if (files) for (const f of files){
+    const a = document.createElement('a');
+    a.className = 'filebtn'; a.href = '/files/'+f.id;
+    a.textContent = (f.mime.includes('sheet')||f.name.endsWith('.xlsx') ? '📊 ' : '📄 ') + f.name;
+    a.setAttribute('download','');
+    d.appendChild(document.createElement('br')); d.appendChild(a);
+  }
+  const box = document.getElementById('msgs');
+  box.appendChild(d); box.scrollTop = box.scrollHeight;
+  return d;
+}
+async function boot(){
+  const r = await fetch('/api/me');
+  const j = await r.json();
+  document.getElementById('login').classList.toggle('hidden', j.ok);
+  document.getElementById('chat').classList.toggle('hidden', !j.ok);
+  if (j.ok && !window._welcomed){
+    window._welcomed = true;
+    addMsg('bot', "👋 Hi! I'm Claude, your AI co-worker.\n\nAsk me anything — drafting, writing, translations, planning, ideas. I can also make Excel spreadsheets and PDF files, just ask!");
+    document.getElementById('msgInput').focus();
+  }
+}
+async function redeem(){
+  const code = document.getElementById('codeInput').value.trim();
+  const btn = document.getElementById('redeemBtn');
+  btn.disabled = true;
+  const r = await fetch('/api/redeem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+  const j = await r.json();
+  btn.disabled = false;
+  if (j.ok) boot();
+  else document.getElementById('loginErr').textContent = j.error || 'Something went wrong.';
+}
+let sending = false;
+async function send(){
+  if (sending) return;
+  const inp = document.getElementById('msgInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  sending = true; document.getElementById('sendBtn').disabled = true;
+  addMsg('user', text); inp.value = '';
+  const t = document.createElement('div'); t.className='typing'; t.innerHTML='<span>●</span> <span>●</span> <span>●</span>';
+  const box = document.getElementById('msgs'); box.appendChild(t); box.scrollTop = box.scrollHeight;
+  try {
+    const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
+    const j = await r.json();
+    t.remove();
+    if (j.ok) addMsg('bot', j.reply, j.files);
+    else addMsg('bot', '⚠️ '+(j.error||'Something went wrong.'));
+  } catch(e){ t.remove(); addMsg('bot','⚠️ Connection error — try again.'); }
+  sending = false; document.getElementById('sendBtn').disabled = false;
+  document.getElementById('msgInput').focus();
+}
+async function newChat(){
+  await fetch('/api/new',{method:'POST'});
+  document.getElementById('msgs').innerHTML = '';
+  addMsg('bot','✨ Fresh start! What would you like to work on?');
+}
+async function logout(){ await fetch('/api/logout',{method:'POST'}); location.reload(); }
+document.getElementById('codeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') redeem(); });
+boot();
+</script>
+</body>
+</html>

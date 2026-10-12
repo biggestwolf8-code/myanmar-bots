@@ -1,0 +1,4 @@
+flask
+openpyxl
+fpdf2
+uharfbuzz
