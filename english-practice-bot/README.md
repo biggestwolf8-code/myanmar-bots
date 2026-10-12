@@ -33,7 +33,8 @@ Env vars:
 | `BOT_TOKEN` | yes | from @BotFather (`/newbot`) |
 | `ANTHROPIC_API_KEY` | yes | from console.anthropic.com |
 | `OPENAI_API_KEY` | for voice | from platform.openai.com (Whisper + TTS) |
-| `MODEL` | no | default `claude-haiku-4-5-20251001` |
+| `MODEL` | no | default `claude-haiku-4-5-20251001` (English chat) |
+| `TRANSLATE_MODEL` | no | default `claude-sonnet-4-5-20250929` (Myanmar subtitles — stronger model, still cheap at this volume) |
 | `TTS_VOICE` | no | default `onyx` (male voice) |
 | `ADMIN_CHAT_ID` | no | gets error alerts |
 | `DAILY_LIMIT` | no | default 100 msgs/user/day |
