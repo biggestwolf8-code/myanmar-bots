@@ -1,23 +1,28 @@
 # Thai Practice Tutor Bot
 
-A Telegram bot for English speakers to practice speaking Thai through free
-conversation with gentle corrections. Powered by the Claude API + OpenAI
-Whisper/TTS. Mirror of the English practice bot.
+A Telegram bot that trains English speakers in Thai speaking like an
+experienced professional teacher: short structured lessons, word-by-word
+breakdowns, drilling, and the student produces their own sentences after
+every lesson. Powered by the Claude API + OpenAI Whisper/TTS.
 
 ## How it works
 
-- Students chat in Thai — type or voice. The bot replies in Thai (Thai script)
-  with an English translation, corrects mistakes gently ("Small fix: ..."),
-  and asks follow-up questions.
-- Voice: transcribed as Thai (Whisper, forced `th` — reliable, unlike
-  Burmese auto-detect) → tutor reply (Claude) → spoken Thai answer (TTS onyx,
-  male voice). Text carries Thai + English.
-- Male tutor persona. Corrections explained in English.
-- Per-user conversation history (last 10 exchanges).
-- `/start` — welcome, `/new` — fresh conversation.
+- Lesson flow per turn: TEACH (one Thai sentence/pattern) → BREAK DOWN
+  (word + transliteration + meaning) → DRILL (student says it) →
+  PRODUCE (student makes their own sentence — mandatory) →
+  CORRECT & ENCOURAGE.
+- Students do NOT need to type Thai script — transliteration or English
+  answers are fine. Thai script in lessons is for reading and listening.
+- Voice: students speak Thai (Whisper, forced `th`) → the voice reply
+  speaks the Thai-script lesson sentences (TTS onyx, male voice); the
+  text carries transliteration, breakdowns, and instructions in English.
+- Reply format: Thai-script block, then a `---` line, then the lesson
+  content. The voice speaks only the Thai-script block.
+- Male teacher persona. Starts from absolute beginner, builds up gradually.
+- Per-user conversation history (last 10 exchanges) so lessons progress.
+- `/start` — welcome, `/new` — restart the course from the beginning.
 - Daily per-user message cap (`DAILY_LIMIT`, default 100).
 - Private: single-use invite links (`/newcodes 20`, `/users`, `/revoke`).
-  See the English practice bot README for the invite flow.
 - In groups it replies threaded under the student's message; DMs unthreaded.
 
 ## Deploy (Railway, 5th service in myanmar-bots)
