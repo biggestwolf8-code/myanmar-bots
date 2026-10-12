@@ -171,6 +171,7 @@
     <div class="pl-head"><span>Playlists</span><button id="newPl">+ New</button></div>
     <div id="pllist"></div>
     <div style="margin-top:auto; padding: 10px;">
+      <div id="accessLine" style="font-size:11px;color:var(--dim);margin-bottom:6px"></div>
       <button id="logout" style="font-size:13px">Log out</button>
     </div>
   </aside>
@@ -680,6 +681,9 @@ $("#navSearch").addEventListener("click", () => { if (!navigator.onLine) { showD
 $("#search").addEventListener("input", applySearch);
 $("#menuBtn").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
 $("#logout").addEventListener("click", () => { location.href = "/logout"; });
+api("GET", "/api/me").then(d => {
+  if (d && d.access_until) $("#accessLine").textContent = "Access until " + d.access_until;
+});
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT") return;
   if (e.code === "Space") { e.preventDefault(); $("#playBtn").click(); }

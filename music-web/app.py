@@ -1,13 +1,15 @@
 """TuneBox — private music streaming web app.
 
 A Spotify-style player for your own audio files. Listeners sign up with
-their email + password, browse the library, build playlists, and stream.
-The admin uploads audio and manages user accounts.
+their email + password, then activate an access code (each code grants
+listening for a set number of days, like a subscription). They browse the
+library, build playlists, and stream. The admin uploads audio and manages
+users and access codes.
 
 Env vars:
   ADMIN_PASSWORD  Password for the /admin panel (required)
   DATA_DIR        Storage dir (default "."; use "/data" with a Railway
-                  volume so tracks/users/playlists survive redeploys)
+                  volume so tracks/users/codes/playlists survive redeploys)
   PORT            Listen port (default: 5000)
   MAX_UPLOAD_MB   Max upload size in MB (default: 300)
 
@@ -63,7 +65,7 @@ app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 app.permanent_session_lifetime = datetime.timedelta(days=90)
 
-TUNEBOX_VERSION = "2.0"
+TUNEBOX_VERSION = "3.0"
 
 
 # ---------------------------------------------------------------- storage
@@ -107,6 +109,9 @@ app.secret_key = get_secret_key()
 
 # email(lowercased) -> {"pw": hash, "created": ts, "disabled": bool}
 users = _load_json("tbusers.json", {})
+# code -> {"label": "", "days": 30, "created": ts, "used_by": email|None,
+#          "used_at": ts|None, "expires_at": ts|None}
+codes = _load_json("tbcodes.json", {})
 # sid -> {"user": email, "created": ts}
 sessions = _load_json("tbsessions.json", {})
 # tid -> {"title","artist","album","ext","duration","size","uploaded_at","plays"}
@@ -117,6 +122,7 @@ playlists = _load_json("tbplaylists.json", {})
 
 def save_all():
     _save_json("tbusers.json", users)
+    _save_json("tbcodes.json", codes)
     _save_json("tbsessions.json", sessions)
     _save_json("tbtracks.json", tracks)
     _save_json("tbplaylists.json", playlists)
@@ -161,7 +167,7 @@ def current_user():
 
 def require_listener():
     email = current_user()
-    if not email:
+    if not email or not has_access(email):
         abort(401)
     return email
 
@@ -173,6 +179,54 @@ def new_session(email):
     save_all()
     session["sid"] = sid
     session.permanent = True
+
+
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def make_code():
+    while True:
+        c = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
+        if c not in codes:
+            return c
+
+
+def invite_link(code):
+    return request.host_url.rstrip("/") + "/i/" + code
+
+
+def access_until(email):
+    """Latest expiry of any code redeemed by this account (None if none)."""
+    best = None
+    for e in codes.values():
+        if e.get("used_by") == email and e.get("expires_at"):
+            if best is None or e["expires_at"] > best:
+                best = e["expires_at"]
+    return best
+
+
+def has_access(email):
+    au = access_until(email)
+    return bool(au and au > datetime.datetime.now(datetime.timezone.utc).isoformat())
+
+
+def redeem_code(email, code):
+    """Attach a code to an account, extending access. Returns (ok, message)."""
+    code = (code or "").strip().upper()
+    e = codes.get(code)
+    if not e:
+        return False, "That code doesn't exist."
+    if e.get("used_by") and e["used_by"] != email:
+        return False, "This code was already used by another account."
+    now = datetime.datetime.now(datetime.timezone.utc)
+    au = access_until(email)
+    start_iso = au if au and au > now.isoformat() else now.isoformat()
+    start_dt = datetime.datetime.fromisoformat(start_iso)
+    e["used_by"] = email
+    e["used_at"] = now.isoformat()
+    e["expires_at"] = (start_dt + datetime.timedelta(days=int(e.get("days") or 30))).isoformat()
+    save_all()
+    return True, ""
 
 
 def track_path(t):
@@ -190,14 +244,46 @@ def public_track(tid, t):
 @app.route("/")
 def home():
     from flask import render_template
-    if not current_user():
+    email = current_user()
+    if not email:
         return render_template("login.html", app_name="TuneBox", mode="login")
+    if not has_access(email):
+        return render_template("redeem.html", app_name="TuneBox",
+                               email=email, expired=bool(access_until(email)))
     return render_template("index.html", app_name="TuneBox")
 
 
 @app.route("/i/<code>")
 def redeem(code):
-    # Invite links are retired — send old links to the sign-in page.
+    from flask import render_template
+    code = (code or "").strip().upper()
+    if not codes.get(code):
+        return render_template("login.html", app_name="TuneBox", mode="login",
+                               error="That code doesn't exist."), 404
+    email = current_user()
+    if email:
+        ok, msg = redeem_code(email, code)
+        if not ok:
+            return render_template("redeem.html", app_name="TuneBox",
+                                   email=email, expired=bool(access_until(email)),
+                                   error=msg), 403
+        return redirect("/")
+    session["pending_code"] = code
+    return render_template("login.html", app_name="TuneBox", mode="login",
+                           note="Sign in or create an account to activate your code.")
+
+
+@app.route("/redeem", methods=["POST"])
+def redeem_post():
+    from flask import render_template
+    email = current_user()
+    if not email:
+        return redirect("/")
+    ok, msg = redeem_code(email, request.form.get("code"))
+    if not ok:
+        return render_template("redeem.html", app_name="TuneBox",
+                               email=email, expired=bool(access_until(email)),
+                               error=msg), 403
     return redirect("/")
 
 
@@ -220,6 +306,9 @@ def login():
                                    error="Wrong email or password."), 401
         _rate_clear(ip)
         new_session(email)
+        pc = session.pop("pending_code", None)
+        if pc:
+            redeem_code(email, pc)  # best effort; failures surface on the redeem page
         return redirect("/")
     return render_template("login.html", app_name="TuneBox", mode="login")
 
@@ -251,6 +340,9 @@ def register():
                         "disabled": False}
         _rate_clear(ip)
         new_session(email)
+        pc = session.pop("pending_code", None)
+        if pc:
+            redeem_code(email, pc)  # best effort; failures surface on the redeem page
         return redirect("/")
     return render_template("login.html", app_name="TuneBox", mode="register")
 
@@ -430,6 +522,7 @@ def admin():
     err = request.args.get("err")
     errmsg = {"notaudio": "That file couldn't be read as audio. Please choose an MP3, M4A, MP4, WAV, FLAC or OGG file.",
               "nofile": "No file was chosen — please pick a file first."}.get(err)
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return render_template(
         "admin.html", need_login=False, errmsg=errmsg,
         reset_email=request.args.get("reset_email"),
@@ -438,10 +531,17 @@ def admin():
                     for tid, t in sorted(tracks.items(),
                                          key=lambda kv: kv[1]["title"].lower())],
         user_list=[(email, u.get("created", "")[:16].replace("T", " "),
-                    len(playlists.get(email, [])), bool(u.get("disabled")))
+                    len(playlists.get(email, [])), bool(u.get("disabled")),
+                    (access_until(email) or "")[:10])
                    for email, u in sorted(users.items())],
+        code_list=[(c, e.get("label", ""), e.get("days", 30),
+                    e.get("used_by"), (e.get("expires_at") or "")[:10],
+                    invite_link(c)) for c, e in sorted(codes.items())],
         stats={"tracks": len(tracks), "plays": total_plays,
-               "users": len(users)},
+               "users": len(users),
+               "codes": len(codes),
+               "active_codes": sum(1 for e in codes.values()
+                                  if e.get("used_by") and (e.get("expires_at") or "") > now_iso)},
         top=[(tid, t["title"], t["artist"], t.get("plays", 0)) for tid, t in top],
         max_mb=MAX_UPLOAD_MB)
 
@@ -519,6 +619,38 @@ def admin_delete(tid):
                     p["tids"].remove(tid)
         save_all()
     return redirect("/admin")
+
+
+@app.route("/admin/codes", methods=["POST"])
+def admin_codes():
+    if not admin_ok():
+        abort(403)
+    n = max(1, min(100, int(request.form.get("n") or 1)))
+    days = max(1, min(3650, int(request.form.get("days") or 30)))
+    label = (request.form.get("label") or "").strip()[:60]
+    for _ in range(n):
+        c = make_code()
+        codes[c] = {"label": label, "days": days,
+                    "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "used_by": None, "used_at": None, "expires_at": None}
+    save_all()
+    return redirect("/admin")
+
+
+@app.route("/admin/revoke/<code>", methods=["POST"])
+def admin_revoke(code):
+    if not admin_ok():
+        abort(403)
+    codes.pop((code or "").strip().upper(), None)
+    save_all()
+    return redirect("/admin")
+
+
+@app.route("/api/me")
+def api_me():
+    email = require_listener()
+    au = access_until(email) or ""
+    return jsonify({"email": email, "access_until": au[:10] if au else ""})
 
 
 @app.route("/admin/users/reset", methods=["POST"])

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ app_name }} — Access code</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0f; color: #fff; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+         min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { background: #14141c; border: 1px solid #26263a; border-radius: 16px; padding: 40px 36px;
+          width: 100%; max-width: 380px; text-align: center; }
+  .logo { width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 18px;
+          background: linear-gradient(135deg, #7c3aed, #06b6d4);
+          display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  h1 { font-size: 26px; margin-bottom: 6px; }
+  p.sub { color: #9a9ab0; font-size: 14px; margin-bottom: 24px; }
+  p.me { color: #9a9ab0; font-size: 13px; margin-bottom: 16px; }
+  input { width: 100%; padding: 13px 14px; border-radius: 10px; border: 1px solid #33334d;
+          background: #0d0d14; color: #fff; font-size: 16px; text-align: center;
+          letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  input:focus { outline: none; border-color: #7c3aed; }
+  button { width: 100%; padding: 13px; border: none; border-radius: 10px; font-size: 16px;
+           font-weight: 700; color: #fff; cursor: pointer;
+           background: linear-gradient(135deg, #7c3aed, #06b6d4); }
+  button:active { transform: scale(.98); }
+  .err { background: #3d1420; border: 1px solid #7f2d3f; color: #ff9db0;
+         padding: 10px; border-radius: 10px; font-size: 13px; margin-bottom: 14px; }
+  .out { margin-top: 18px; font-size: 14px; }
+  .out a { color: #9a9ab0; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🎵</div>
+    <h1>{{ app_name }}</h1>
+    {% if expired %}
+    <p class="sub">Your access has expired.<br>Enter a new code to keep listening.</p>
+    {% else %}
+    <p class="sub">Enter your access code to start listening.</p>
+    {% endif %}
+    {% if email %}<p class="me">Signed in as {{ email }}</p>{% endif %}
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <form method="post" action="/redeem">
+      <input name="code" placeholder="ACCESS CODE" maxlength="16" autocomplete="off" required>
+      <button type="submit">Activate</button>
+    </form>
+    <p class="out"><a href="/logout">Sign out</a></p>
+  </div>
+</body>
+</html>

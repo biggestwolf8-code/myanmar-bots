@@ -35,6 +35,7 @@
     {% if mode == "register" %}
     <p class="sub">Create your account to start listening.</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if note %}<div class="err" style="background:#10233d;border-color:#2d5a7f;color:#9dc9ff">{{ note }}</div>{% endif %}
     <form method="post" action="/register">
       <input name="email" type="email" placeholder="Email address" autocomplete="email" required>
       <input name="password" type="password" placeholder="Password (min 6 characters)"
@@ -45,6 +46,7 @@
     {% else %}
     <p class="sub">Sign in with your email to listen.</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if note %}<div class="err" style="background:#10233d;border-color:#2d5a7f;color:#9dc9ff">{{ note }}</div>{% endif %}
     <form method="post" action="/login">
       <input name="email" type="email" placeholder="Email address" autocomplete="email" required>
       <input name="password" type="password" placeholder="Password"

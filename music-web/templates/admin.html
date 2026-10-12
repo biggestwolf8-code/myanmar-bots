@@ -63,6 +63,7 @@
       <div class="stat"><b>{{ stats.tracks }}</b><span>tracks</span></div>
       <div class="stat"><b>{{ stats.plays }}</b><span>total plays</span></div>
       <div class="stat"><b>{{ stats.users }}</b><span>users</span></div>
+      <div class="stat"><b>{{ stats.active_codes }}/{{ stats.codes }}</b><span>codes active</span></div>
     </div>
   </div>
 
@@ -113,12 +114,13 @@
     <h2>Users</h2>
     {% if reset_pw %}<div class="ok">New password for <b>{{ reset_email }}</b>: <b class="code">{{ reset_pw }}</b><br><span style="font-size:12px">Share it with them once — it won't be shown again.</span></div>{% endif %}
     <table>
-      <tr><th>Email</th><th>Signed up</th><th>Playlists</th><th>Status</th><th></th></tr>
-      {% for email, created, npl, disabled in user_list %}
+      <tr><th>Email</th><th>Signed up</th><th>Playlists</th><th>Access until</th><th>Status</th><th></th></tr>
+      {% for email, created, npl, disabled, access in user_list %}
       <tr>
         <td><b>{{ email }}</b></td>
         <td style="color:#9a9ab0;font-size:11px">{{ created or "—" }}</td>
         <td>{{ npl }}</td>
+        <td>{{ access or "—" }}</td>
         <td>{{ "🔴 disabled" if disabled else "🟢 active" }}</td>
         <td style="white-space:nowrap">
           <form class="inline" method="post" action="/admin/users/reset"
@@ -131,6 +133,32 @@
       {% endfor %}
     </table>
     {% if not user_list %}<p class="sub" style="margin:10px 0 0">No users yet — share your app link and people can sign up with their email.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Access codes <span style="color:#9a9ab0;font-weight:400;font-size:12px">(each code grants listening access for its duration)</span></h2>
+    <form method="post" action="/admin/codes" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <input type="number" name="n" value="5" min="1" max="100" style="width:70px" title="How many codes">
+      <input type="number" name="days" value="30" min="1" max="3650" style="width:90px" title="Access duration in days">
+      <input type="text" name="label" placeholder="Label, e.g. May batch" maxlength="60" style="flex:1;min-width:160px">
+      <button type="submit">Generate</button>
+    </form>
+    <table>
+      <tr><th>Code</th><th>Label</th><th>Days</th><th>Status</th><th>Expires</th><th>Link</th><th></th></tr>
+      {% for code, label, days, used_by, expires, link in code_list %}
+      <tr>
+        <td class="code">{{ code }}</td>
+        <td>{{ label or "—" }}</td>
+        <td>{{ days }}</td>
+        <td>{{ ("🟢 " + used_by) if used_by else "⚪ fresh" }}</td>
+        <td style="color:#9a9ab0;font-size:11px">{{ expires or "—" }}</td>
+        <td><span class="link">{{ link }}</span></td>
+        <td><form class="inline" method="post" action="/admin/revoke/{{ code }}"
+              onsubmit="return confirm('Revoke this code? The user loses access.')"><button class="danger small" type="submit">Revoke</button></form></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% if not code_list %}<p class="sub" style="margin:10px 0 0">No codes yet — generate some to sell or share.</p>{% endif %}
   </div>
   {% endif %}
 </div>
