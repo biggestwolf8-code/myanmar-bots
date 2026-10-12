@@ -62,7 +62,11 @@ SYSTEM_PROMPT = (
     "```\n"
     "The word 'image' must come immediately after the opening triple backticks. Keep any chat "
     "text brief and OUTSIDE the code block — the image carries the content. Only do this when "
-    "the user actually wants an image generated, never for ordinary answers."
+    "the user actually wants an image generated, never for ordinary answers. "
+    "If the user asks for an image but leaves out details (style, composition, "
+    "etc.), do NOT ask clarifying questions — pick sensible defaults and generate "
+    "the image immediately in the same reply. Never make the user answer follow-up "
+    "questions before you generate."
 )
 
 
@@ -206,29 +210,45 @@ BLOCK_RE = re.compile(r"```(excel|pdf|image)[ \t]*\n(.*?)```", re.DOTALL | re.IG
 def looks_like_image_request(text):
     """Heuristic: did the user ask for an image to be generated?"""
     t = (text or "").lower()
+    # draw/paint/sketch are inherently visual verbs
+    if any(w in t for w in ("draw", "paint", "sketch")):
+        return True
     wants_visual = any(w in t for w in (
         "image", "picture", "photo", "logo", "illustration",
-        "drawing", "painting", "artwork", "portrait"))
+        "drawing", "painting", "artwork", "portrait", "icon"))
     wants_made = any(w in t for w in (
-        "generat", "creat", "draw", "make", "design", "paint", "produce"))
+        "generat", "creat", "make", "design", "produce"))
     return wants_visual and wants_made
 
 
 FENCE_RE = re.compile(r"```\w*[ \t]*\n(.*?)```", re.DOTALL)
 
 
-def extract_image_fallback(user_text, reply):
-    """Fallback: user asked for an image but the model didn't use the ```image
-    fence (e.g. a plain code block). Returns (prompt|None, clean_reply)."""
-    if not looks_like_image_request(user_text):
+CODE_FENCE_TAGS = {"python", "py", "javascript", "js", "typescript", "ts", "java",
+                   "html", "css", "json", "sql", "bash", "sh", "shell", "cpp", "c++",
+                   "c", "go", "rust", "php", "ruby", "swift", "kotlin", "yaml",
+                   "xml", "code"}
+
+
+def extract_image_fallback(user_text, reply, force=False):
+    """Fallback: user asked for an image (or force=True, e.g. they just answered
+    a follow-up question about an image request) but the model didn't use the
+    ```image fence. Returns (prompt|None, clean_reply), using the last
+    non-code fenced block as the prompt."""
+    if not force and not looks_like_image_request(user_text):
         return None, reply
-    fences = list(FENCE_RE.finditer(reply))
-    if not fences:
+    cands = []
+    for m in FENCE_RE.finditer(reply):
+        tag = m.group(0).split("\n", 1)[0].strip().strip("`").strip().lower()
+        if tag not in CODE_FENCE_TAGS:
+            cands.append(m)
+    if not cands:
         return None, reply
-    prompt = fences[-1].group(1).strip()
+    last = cands[-1]
+    prompt = last.group(1).strip()
     if not prompt or len(prompt) > 2000:
         return None, reply
-    clean = (reply[:fences[-1].start()] + reply[fences[-1].end():]).strip()
+    clean = (reply[:last.start()] + reply[last.end():]).strip()
     return prompt, clean
 
 

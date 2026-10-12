@@ -217,18 +217,31 @@ def track_images(code, n=1):
     u["cost"] += brain.IMAGE_COST * n
 
 
-def split_blocks(reply, user_text):
-    """Split fenced blocks; if the user asked for an image but the model didn't
-    use the ```image fence, fall back to its last fenced block as the prompt."""
+def split_blocks(reply, user_text, pending_image=False):
+    """Split fenced blocks; if the user asked for an image (this turn, or an
+    earlier turn still pending) but the model didn't use the ```image fence,
+    fall back to its last non-code fenced block as the prompt."""
     clean, blocks = brain.extract_blocks(reply)
     img_blocks = [content for kind, content in blocks if kind == "image"]
     if not img_blocks:
-        fb_prompt, fb_clean = brain.extract_image_fallback(user_text, reply)
+        fb_prompt, fb_clean = brain.extract_image_fallback(
+            user_text, reply, force=pending_image)
         if fb_prompt:
             img_blocks = [fb_prompt]
             clean = fb_clean
     doc_blocks = [(kind, content) for kind, content in blocks if kind != "image"]
     return clean, img_blocks, doc_blocks
+
+
+def update_pending_image(convo, text, img_blocks, files):
+    """Remember an unfulfilled image request so a follow-up answer
+    (e.g. 'photorealistic') still triggers generation."""
+    if img_blocks and files:
+        convo["pending_image"] = False
+    elif brain.looks_like_image_request(text):
+        convo["pending_image"] = True
+    elif len(text) > 80:
+        convo["pending_image"] = False
 
 
 def cleanup_files():
@@ -437,7 +450,8 @@ def api_chat():
     bump_daily(code)
     record_usage(code, api_usage)
 
-    clean, img_blocks, doc_blocks = split_blocks(reply, text)
+    clean, img_blocks, doc_blocks = split_blocks(
+        reply, text, pending_image=bool(convo.get("pending_image")))
     files = []
     if img_blocks or doc_blocks:
         cleanup_files()
@@ -455,6 +469,7 @@ def api_chat():
         _save_json("gptfiles.json", filemeta)
     amsg["files"] = files
     amsg["content"] = clean or amsg["content"]
+    update_pending_image(convo, text, img_blocks, files)
     save_all()
     if (img_blocks or doc_blocks) and not files:
         return jsonify({"ok": True, "reply": reply, "files": [],
@@ -533,7 +548,8 @@ def api_upload_chat():
     bump_daily(code)
     record_usage(code, api_usage)
 
-    clean, img_blocks, doc_blocks = split_blocks(reply, text)
+    clean, img_blocks, doc_blocks = split_blocks(
+        reply, text, pending_image=bool(convo.get("pending_image")))
     files = []
     if img_blocks or doc_blocks:
         cleanup_files()
@@ -550,6 +566,7 @@ def api_upload_chat():
         _save_json("gptfiles.json", filemeta)
     amsg["files"] = files
     amsg["content"] = clean or amsg["content"]
+    update_pending_image(convo, text, img_blocks, files)
     save_all()
     if (img_blocks or doc_blocks) and not files:
         return jsonify({"ok": True, "reply": reply, "files": [],
