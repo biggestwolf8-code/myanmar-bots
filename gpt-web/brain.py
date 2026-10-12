@@ -175,7 +175,15 @@ def generate_image(prompt, size="1024x1024"):
     except urllib.error.HTTPError as e:
         err = e.read().decode(errors="replace")
         raise RuntimeError(f"OpenAI image API error {e.code}: {err[:300]}")
-    url = out["data"][0]["url"]
+    url = None
+    d = (out.get("data") or [{}])[0]
+    if d.get("b64_json"):
+        import base64
+        return base64.b64decode(d["b64_json"])
+    elif d.get("url"):
+        url = d["url"]
+    else:
+        raise RuntimeError(f"OpenAI image API: unexpected response keys {list(d.keys())}")
     # download right away — OpenAI image URLs expire
     with urllib.request.urlopen(url, timeout=120) as r:
         return r.read()
