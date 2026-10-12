@@ -36,6 +36,32 @@
   .powered { margin-top: 18px; font-size: 12px; color: var(--muted); letter-spacing: .2px; }
   .powered strong { color: var(--ink); font-weight: 600; }
 
+  /* ---------- sidebar ---------- */
+  #chat { display: flex; height: 100dvh; }
+  #sidebar { width: 282px; flex-shrink: 0; background: rgba(255,255,255,.96); border-right: 1px solid var(--line); display: flex; flex-direction: column; z-index: 50; }
+  #sidebar .side-head { padding: 14px 14px 6px; }
+  #newChatBtn { width: 100%; padding: 11px; border: 1.5px dashed #c9cdf7; background: #f6f6ff; border-radius: 12px; font-weight: 700; color: var(--accent-dark); cursor: pointer; font-size: 14px; }
+  #newChatBtn:hover { background: #eef0ff; }
+  #convoList { flex: 1; overflow-y: auto; padding: 8px 10px 14px; display: flex; flex-direction: column; gap: 3px; }
+  .convo { padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 13.5px; display: flex; align-items: center; gap: 8px; color: var(--ink); border: 0; background: none; width: 100%; text-align: left; font-family: inherit; }
+  .convo:hover { background: #f4f3fb; }
+  .convo.active { background: #eef0ff; font-weight: 600; }
+  .convo .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .convo .del { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 6px; display: none; }
+  .convo:hover .del { display: block; }
+  .convo .del:hover { background: #fee2e2; color: #dc2626; }
+  #sidebar .side-foot { padding: 12px 16px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); }
+  #chatWrap { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100dvh; }
+  #scrim { display: none; }
+  #hamburger { display: none; border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 7px 11px; font-size: 15px; cursor: pointer; color: var(--ink); }
+  @media (max-width: 860px) {
+    #sidebar { position: fixed; left: 0; top: 0; bottom: 0; transform: translateX(-105%); transition: transform .22s ease; box-shadow: 0 0 40px rgba(0,0,0,.18); }
+    body.side-open #sidebar { transform: none; }
+    #scrim { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .22s; }
+    body.side-open #scrim { opacity: 1; pointer-events: auto; }
+    #hamburger { display: block; }
+  }
+
   /* ---------- chat ---------- */
   header { background: rgba(255,255,255,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; align-items: center; gap: 11px; }
   header .dot { width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 19px; box-shadow: 0 3px 10px rgba(79,70,229,.30); }
@@ -83,15 +109,22 @@
   <div class="powered">Powered by <strong>OpenAI</strong></div>
 </div>
 
-<div id="chat" class="hidden" style="display:flex;flex-direction:column;height:100dvh;">
+<div id="chat" class="hidden">
+  <div id="scrim" onclick="document.body.classList.remove('side-open')"></div>
+  <aside id="sidebar">
+    <div class="side-head"><button id="newChatBtn" onclick="newChat()">+ New chat</button></div>
+    <div id="convoList"></div>
+    <div class="side-foot">Powered by <strong>OpenAI</strong></div>
+  </aside>
+  <div id="chatWrap">
   <header>
+    <button id="hamburger" onclick="document.body.classList.toggle('side-open')" title="Conversations">☰</button>
     <div class="dot">G</div>
     <div>
       <div class="title">Chat GPT Plus API <span class="pill">API</span></div>
       <div class="sub">your AI co-worker</div>
     </div>
     <div class="spacer"></div>
-    <button onclick="newChat()">+ New chat</button>
     <button onclick="logout()">Log out</button>
   </header>
   <div id="msgs"></div>
@@ -109,6 +142,7 @@
     </div>
   </div>
   <div id="foot">Powered by <strong>OpenAI</strong></div>
+  </div>
 </div>
 
 <script>
@@ -158,6 +192,7 @@ function addMsg(who, text, files){
   box.appendChild(d); box.scrollTop = box.scrollHeight;
   return d;
 }
+const WELCOME = "👋 Hi! I'm your AI co-worker, powered by OpenAI API.\n\nAsk me anything — drafting, writing, translations, planning, ideas. I can also make Excel spreadsheets, PDF files, and generate images — just ask! You can attach photos or documents with the 📎 button and I'll read them.";
 async function boot(){
   const r = await fetch('/api/me');
   const j = await r.json();
@@ -165,9 +200,47 @@ async function boot(){
   document.getElementById('chat').classList.toggle('hidden', !j.ok);
   if (j.ok && !window._welcomed){
     window._welcomed = true;
-    addMsg('bot', "👋 Hi! I'm your AI co-worker, powered by OpenAI API.\n\nAsk me anything — drafting, writing, translations, planning, ideas. I can also make Excel spreadsheets, PDF files, and generate images — just ask! You can attach photos or documents with the 📎 button and I'll read them.");
+    await loadConvos(true);
     document.getElementById('msgInput').focus();
   }
+}
+async function loadConvos(openActive){
+  const r = await fetch('/api/convos');
+  const j = await r.json();
+  if (!j.ok) return;
+  const list = document.getElementById('convoList');
+  list.innerHTML = '';
+  for (const c of j.convos){
+    const b = document.createElement('button');
+    b.className = 'convo' + (c.id === j.active ? ' active' : '');
+    const t = document.createElement('span'); t.className = 't'; t.textContent = c.title;
+    const del = document.createElement('span'); del.className = 'del'; del.textContent = '✕'; del.title = 'Delete';
+    del.onclick = (ev) => deleteConvo(c.id, ev);
+    b.appendChild(t); b.appendChild(del);
+    b.onclick = () => openConvo(c.id);
+    list.appendChild(b);
+  }
+  if (openActive) await openConvo(j.active, true);
+}
+async function openConvo(id, skipList){
+  const r = await fetch('/api/convos/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+  const j = await r.json();
+  if (!j.ok) return;
+  const box = document.getElementById('msgs');
+  box.innerHTML = '';
+  if (!j.messages.length) addMsg('bot', WELCOME);
+  else for (const m of j.messages) addMsg(m.role === 'user' ? 'user' : 'bot', m.content, m.files);
+  document.body.classList.remove('side-open');
+  if (!skipList) loadConvos(false);
+}
+async function deleteConvo(id, ev){
+  ev.stopPropagation();
+  if (!confirm('Delete this conversation?')) return;
+  const r = await fetch('/api/convos/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+  const j = await r.json();
+  if (!j.ok) return;
+  await loadConvos(false);
+  await openConvo(j.active, true);
 }
 async function redeem(){
   const code = document.getElementById('codeInput').value.trim();
@@ -231,16 +304,19 @@ async function send(){
       j = await r.json();
     }
     t.remove();
-    if (j.ok) addMsg('bot', j.reply, j.files);
+    if (j.ok){ addMsg('bot', j.reply, j.files); loadConvos(false); }
     else addMsg('bot', '⚠️ '+(j.error||'Something went wrong.'));
   } catch(e){ t.remove(); addMsg('bot','⚠️ Connection error — try again.'); }
   sending = false; document.getElementById('sendBtn').disabled = false;
   document.getElementById('msgInput').focus();
 }
 async function newChat(){
-  await fetch('/api/new',{method:'POST'});
+  const r = await fetch('/api/convos/new',{method:'POST'});
+  const j = await r.json();
   document.getElementById('msgs').innerHTML = '';
   addMsg('bot','✨ Fresh start! What would you like to work on?');
+  document.body.classList.remove('side-open');
+  loadConvos(false);
 }
 async function logout(){ await fetch('/api/logout',{method:'POST'}); location.reload(); }
 document.getElementById('codeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') redeem(); });
