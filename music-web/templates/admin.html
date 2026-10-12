@@ -68,11 +68,12 @@
   </div>
 
   <div class="card">
-    <h2>Upload track <span style="color:#9a9ab0;font-weight:400;font-size:12px">(MP3, M4A, MP4, WAV, FLAC, OGG — max {{ max_mb }} MB; files without an extension are fine too)</span></h2>
+    <h2>Upload tracks <span style="color:#9a9ab0;font-weight:400;font-size:12px">(MP3, M4A, MP4, WAV, FLAC, OGG — max {{ max_mb }} MB total; you can select many files at once)</span></h2>
     {% if errmsg %}<div class="err">{{ errmsg }}</div>{% endif %}
+    {% if okmsg %}<div class="ok">{{ okmsg }}</div>{% endif %}
     <form method="post" action="/admin/upload" enctype="multipart/form-data">
-      <input type="file" name="file" required>
-      <label>Title (leave blank to use the file name)</label>
+      <input type="file" name="file" multiple required>
+      <label>Title (leave blank to use the file name — single file only)</label>
       <input type="text" name="title" maxlength="120">
       <div class="row2">
         <div><label>Artist</label><input type="text" name="artist" maxlength="120" placeholder="Unknown artist"></div>

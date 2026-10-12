@@ -65,7 +65,7 @@ app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 app.permanent_session_lifetime = datetime.timedelta(days=90)
 
-TUNEBOX_VERSION = "3.0"
+TUNEBOX_VERSION = "3.1"
 
 
 # ---------------------------------------------------------------- storage
@@ -522,9 +522,14 @@ def admin():
     err = request.args.get("err")
     errmsg = {"notaudio": "That file couldn't be read as audio. Please choose an MP3, M4A, MP4, WAV, FLAC or OGG file.",
               "nofile": "No file was chosen — please pick a file first."}.get(err)
+    okmsg = None
+    if request.args.get("ok"):
+        okmsg = request.args["ok"] + " track(s) uploaded ✓"
+        if request.args.get("bad"):
+            okmsg += " (" + request.args["bad"] + " skipped — not audio)"
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return render_template(
-        "admin.html", need_login=False, errmsg=errmsg,
+        "admin.html", need_login=False, errmsg=errmsg, okmsg=okmsg,
         reset_email=request.args.get("reset_email"),
         reset_pw=request.args.get("reset_pw"),
         track_list=[(tid, public_track(tid, t), t.get("uploaded_at", ""))
@@ -556,12 +561,31 @@ def admin_logout():
 def admin_upload():
     if not admin_ok():
         abort(403)
-    f = request.files.get("file")
-    if not f or not f.filename:
+    files = [f for f in request.files.getlist("file") if f and f.filename]
+    if not files:
         return redirect("/admin?err=nofile")
-    # Save first, then validate the actual content (not just the extension):
-    # phones often send audio files with missing or odd filenames.
+    title = (request.form.get("title") or "").strip()
+    artist = (request.form.get("artist") or "").strip()[:120] or "Unknown artist"
+    album = (request.form.get("album") or "").strip()[:120]
     os.makedirs(TRACKS_DIR, exist_ok=True)
+    ok, bad = 0, 0
+    for f in files:
+        # a typed title only applies when uploading a single file
+        if _ingest_upload(f, title if len(files) == 1 else "", artist, album):
+            ok += 1
+        else:
+            bad += 1
+    save_all()
+    if ok == 0:
+        return redirect("/admin?err=notaudio")
+    url = "/admin?ok=" + str(ok)
+    if bad:
+        url += "&bad=" + str(bad)
+    return redirect(url)
+
+
+def _ingest_upload(f, title, artist, album):
+    """Validate and store one uploaded file. Returns True on success."""
     tmp = os.path.join(TRACKS_DIR, ".tmp_" + secrets.token_hex(8))
     f.save(tmp)
     try:
@@ -578,7 +602,7 @@ def admin_upload():
             os.remove(tmp)
         except OSError:
             pass
-        return redirect("/admin?err=notaudio")
+        return False
 
     duration = int(getattr(audio.info, "length", 0) or 0)
     ext = _upload_ext(f, audio)
@@ -587,11 +611,8 @@ def admin_upload():
     path = os.path.join(TRACKS_DIR, filename)
     os.replace(tmp, path)
 
-    title = (request.form.get("title") or "").strip()
     if not title:
         title = os.path.splitext(f.filename)[0][:120] or "Untitled"
-    artist = (request.form.get("artist") or "").strip()[:120] or "Unknown artist"
-    album = (request.form.get("album") or "").strip()[:120]
 
     tracks[tid] = {"title": title[:120], "artist": artist, "album": album,
                    "ext": ext, "file": filename,
@@ -599,8 +620,7 @@ def admin_upload():
                    "size": os.path.getsize(path),
                    "uploaded_at": datetime.datetime.now(datetime.timezone.utc).isoformat()[:16].replace("T", " "),
                    "plays": 0}
-    save_all()
-    return redirect("/admin")
+    return True
 
 
 @app.route("/admin/delete/<tid>", methods=["POST"])
