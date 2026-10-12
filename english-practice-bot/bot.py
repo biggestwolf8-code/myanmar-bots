@@ -260,17 +260,26 @@ def _whisper(audio_bytes, language=None):
     return out.get("text", "").strip(), out.get("language", "")
 
 
+# Languages our students actually speak. Anything else detected (e.g. "tibetan"
+# on a short clip) is a misdetection — retry forcing Myanmar.
+PLAUSIBLE_LANGS = {"english", "en", "burmese", "my", "myanmar"}
+
+
 def whisper_transcribe(audio_bytes, duration=0):
     # Auto-detect handles English, Myanmar, or a mix.
     text, lang = _whisper(audio_bytes)
+    lang_norm = (lang or "").strip().lower()
     print(f"whisper: detected={lang} chars={len(text)} dur={duration}s")
-    # Fallback: if the transcript is suspiciously short for the audio length,
-    # the language was probably misdetected — retry forcing Myanmar.
-    if duration >= 4 and len(text) < 12:
+    # Retry forcing Myanmar when the transcript is suspiciously short, or when
+    # the detected language is implausible for our students (misdetection —
+    # e.g. Tibetan on a 2s Myanmar clip). For this bot, a wrong language
+    # almost surely means Myanmar audio, so prefer the retry.
+    needs_retry = (duration >= 4 and len(text) < 12) or (lang_norm not in PLAUSIBLE_LANGS)
+    if needs_retry:
         try:
             alt, alt_lang = _whisper(audio_bytes, language="my")
-            if len(alt) > len(text):
-                print(f"whisper retry (my): detected={alt_lang} chars={len(alt)}")
+            print(f"whisper retry (my): was {lang}/{len(text)} chars, now {alt_lang}/{len(alt)} chars")
+            if len(alt) >= 2 and (lang_norm not in PLAUSIBLE_LANGS or len(alt) > len(text)):
                 text = alt
         except Exception as e:
             print("myanmar retry failed:", e)
