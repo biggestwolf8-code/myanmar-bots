@@ -29,6 +29,13 @@ Root directory: `claude-assistant-bot` · start command: `python bot.py`
 - `/users` — list activated users + unused invites
 - `/revoke CODE` (or `/revoke <telegram user id>`) — deactivate access
 
+## File creation
+
+Ask the bot for an Excel spreadsheet or a PDF document and it builds the file
+and sends it as an attachment. Excel comes from CSV data (via openpyxl);
+PDFs are rendered with the embedded Padauk font so Myanmar text displays
+correctly (via fpdf2 + HarfBuzz shaping).
+
 ## Notes
 
 - Per-user conversation history (last 10 exchanges) for natural follow-ups.
