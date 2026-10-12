@@ -10,12 +10,12 @@ the text, so corrections can be re-read).
 
 - Students just chat in English — the bot replies like a friendly tutor,
   corrects mistakes gently ("Small fix: ..."), and asks follow-up questions.
-- Voice messages: transcribed with auto language detection (English, Myanmar, or a mix;
-  no guiding prompt, since prompts can bias short utterances — plus a Myanmar-forced
-  retry when the transcript looks too short, and the detected language is logged)
-  → tutor reply (Claude) → spoken English answer in a male voice (TTS onyx),
-  with the full bilingual reply (English + 🇲🇲 Myanmar subtitle, using ကျွန်တော်) as text.
-  The admin also gets a "👂 Heard: ..." line showing the raw transcript for testing.
+- Voice messages: transcribed as English (Whisper, language forced to English for
+  reliability) → tutor reply (Claude) → spoken English answer in a male voice
+  (TTS onyx), with the full bilingual reply (English + 🇲🇲 Myanmar subtitle,
+  using ကျွန်တော်) as text. Students can still write in Myanmar via text —
+  only voice is English-only. The admin gets a "👂 Heard: ..." line showing
+  the raw transcript for testing.
 - Per-user conversation history (last 10 exchanges) for natural dialogue.
 - `/start` — welcome message, `/new` — fresh conversation.
 - Daily per-user message cap (`DAILY_LIMIT`, default 100) to bound API costs.

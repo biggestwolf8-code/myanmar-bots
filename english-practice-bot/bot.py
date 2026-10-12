@@ -241,13 +241,12 @@ def download_telegram_file(file_id):
         return r.read()
 
 
-def _whisper(audio_bytes, language=None):
-    # NOTE: no `prompt` here on purpose — a prompt can bias short utterances
-    # toward the prompt's language instead of transcribing the actual audio.
-    # verbose_json gives us the detected language for smarter retries.
-    data = {"model": "whisper-1", "response_format": "verbose_json", "temperature": 0}
-    if language:
-        data["language"] = language
+def _whisper(audio_bytes):
+    # Voice is English-only (user request): forcing English gives reliable
+    # transcription for speaking practice. Typed Myanmar still works — text
+    # messages go straight to the tutor, which understands Myanmar fine.
+    data = {"model": "whisper-1", "response_format": "verbose_json",
+            "temperature": 0, "language": "en"}
     r = requests.post(
         "https://api.openai.com/v1/audio/transcriptions",
         headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
@@ -260,29 +259,9 @@ def _whisper(audio_bytes, language=None):
     return out.get("text", "").strip(), out.get("language", "")
 
 
-# Languages our students actually speak. Anything else detected (e.g. "tibetan"
-# on a short clip) is a misdetection — retry forcing Myanmar.
-PLAUSIBLE_LANGS = {"english", "en", "burmese", "my", "myanmar"}
-
-
 def whisper_transcribe(audio_bytes, duration=0):
-    # Auto-detect handles English, Myanmar, or a mix.
     text, lang = _whisper(audio_bytes)
-    lang_norm = (lang or "").strip().lower()
     print(f"whisper: detected={lang} chars={len(text)} dur={duration}s")
-    # Retry forcing Myanmar when the transcript is suspiciously short, or when
-    # the detected language is implausible for our students (misdetection —
-    # e.g. Tibetan on a 2s Myanmar clip). For this bot, a wrong language
-    # almost surely means Myanmar audio, so prefer the retry.
-    needs_retry = (duration >= 4 and len(text) < 12) or (lang_norm not in PLAUSIBLE_LANGS)
-    if needs_retry:
-        try:
-            alt, alt_lang = _whisper(audio_bytes, language="my")
-            print(f"whisper retry (my): was {lang}/{len(text)} chars, now {alt_lang}/{len(alt)} chars")
-            if len(alt) >= 2 and (lang_norm not in PLAUSIBLE_LANGS or len(alt) > len(text)):
-                text = alt
-        except Exception as e:
-            print("myanmar retry failed:", e)
     return text
 
 
