@@ -86,6 +86,9 @@ def get_secret_key():
 
 
 app.secret_key = get_secret_key()
+# Logins persist across browser restarts (90 days) — invite codes are
+# single-use, so customers must not be locked out by closing the browser.
+app.permanent_session_lifetime = datetime.timedelta(days=90)
 
 codes = _load_json("gptcodes.json", {})
 sessions = _load_json("gptsessions.json", {})
@@ -264,6 +267,7 @@ def redeem_link(code):
     sessions[sid] = {"code": code, "created": e["used_at"]}
     save_all()
     session["sid"] = sid
+    session.permanent = True
     return redirect(url_for("index"))
 
 
@@ -303,6 +307,7 @@ def api_redeem():
     sessions[sid] = {"code": code, "created": e["used_at"]}
     save_all()
     session["sid"] = sid
+    session.permanent = True
     return jsonify({"ok": True})
 
 
@@ -584,6 +589,7 @@ def api_admin_login():
     data = request.get_json(force=True, silent=True) or {}
     if ADMIN_PASSWORD and data.get("password") == ADMIN_PASSWORD:
         session["admin"] = True
+        session.permanent = True
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "Wrong password."}), 403
 
