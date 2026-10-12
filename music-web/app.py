@@ -29,7 +29,7 @@ PORT = int(os.environ.get("PORT", "5000"))
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "300"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TRACKS_DIR = os.path.join(DATA_DIR, "tracks")
-ALLOWED_EXTS = {"mp3", "m4a", "aac", "ogg", "oga", "wav", "flac", "opus"}
+ALLOWED_EXTS = {"mp3", "m4a", "aac", "ogg", "oga", "wav", "flac", "opus", "mp4"}
 # MIME -> extension, used when the uploaded filename has no usable extension
 # (common when picking files from iOS).
 EXT_BY_MIME = {
@@ -39,6 +39,7 @@ EXT_BY_MIME = {
     "audio/ogg": "ogg", "audio/opus": "opus",
     "audio/wav": "wav", "audio/x-wav": "wav", "audio/wave": "wav",
     "audio/flac": "flac", "audio/x-flac": "flac",
+    "video/mp4": "mp4",
 }
 
 
@@ -59,7 +60,7 @@ def _upload_ext(f, audio):
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
-TUNEBOX_VERSION = "1.2"
+TUNEBOX_VERSION = "1.3"
 
 
 # ---------------------------------------------------------------- storage
@@ -371,7 +372,7 @@ def admin():
     top = sorted(tracks.items(), key=lambda kv: kv[1].get("plays", 0),
                  reverse=True)[:10]
     err = request.args.get("err")
-    errmsg = {"notaudio": "That file couldn't be read as audio. Please choose an MP3, M4A, WAV, FLAC or OGG file.",
+    errmsg = {"notaudio": "That file couldn't be read as audio. Please choose an MP3, M4A, MP4, WAV, FLAC or OGG file.",
               "nofile": "No file was chosen — please pick a file first."}.get(err)
     return render_template(
         "admin.html", need_login=False, errmsg=errmsg,
