@@ -241,16 +241,11 @@ def download_telegram_file(file_id):
         return r.read()
 
 
-WHISPER_PROMPT = (
-    "Hello, how are you doing today? What did you do this morning? "
-    "My favorite food is mohinga. "
-    "မင်္ဂလာပါ၊ ဒီနေ့ နေကောင်းလား။ မနက်က ဘာလုပ်ခဲ့လဲ။ "
-    "ကျွန်တော် အကြိုက်ဆုံး အစားအစာက မုန့်ဟင်းခါးပါ။"
-)
-
-
 def _whisper(audio_bytes, language=None):
-    data = {"model": "whisper-1", "prompt": WHISPER_PROMPT}
+    # NOTE: no `prompt` here on purpose — a prompt can bias short utterances
+    # toward the prompt's language instead of transcribing the actual audio.
+    # verbose_json gives us the detected language for smarter retries.
+    data = {"model": "whisper-1", "response_format": "verbose_json", "temperature": 0}
     if language:
         data["language"] = language
     r = requests.post(
@@ -261,20 +256,21 @@ def _whisper(audio_bytes, language=None):
         timeout=90,
     )
     r.raise_for_status()
-    return r.json().get("text", "").strip()
+    out = r.json()
+    return out.get("text", "").strip(), out.get("language", "")
 
 
 def whisper_transcribe(audio_bytes, duration=0):
-    # Auto-detect handles English, Myanmar, or a mix. The prompt nudges
-    # Whisper toward both languages so short utterances detect better.
-    text = _whisper(audio_bytes)
+    # Auto-detect handles English, Myanmar, or a mix.
+    text, lang = _whisper(audio_bytes)
+    print(f"whisper: detected={lang} chars={len(text)} dur={duration}s")
     # Fallback: if the transcript is suspiciously short for the audio length,
     # the language was probably misdetected — retry forcing Myanmar.
     if duration >= 4 and len(text) < 12:
         try:
-            alt = _whisper(audio_bytes, language="my")
+            alt, alt_lang = _whisper(audio_bytes, language="my")
             if len(alt) > len(text):
-                print(f"whisper retry (my): {len(text)} -> {len(alt)} chars")
+                print(f"whisper retry (my): detected={alt_lang} chars={len(alt)}")
                 text = alt
         except Exception as e:
             print("myanmar retry failed:", e)
@@ -353,6 +349,9 @@ def handle_voice(chat_id, user_id, voice, thread):
     if not transcript or len(transcript) < 2:
         send_text(chat_id, "I didn't catch any words there — say it once more? 🎤", thread)
         return
+    # Admin sees the raw transcript — makes it easy to check what was heard.
+    if is_admin(user_id):
+        send_text(chat_id, f"👂 Heard: {transcript}", thread)
     send_typing(chat_id)
     reply = tutor_reply(user_id, transcript)
     if not reply:
