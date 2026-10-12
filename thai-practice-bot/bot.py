@@ -351,9 +351,11 @@ def send_lesson_turn(chat_id, user_id, reply, thread):
     print(f"lesson voice: mode={get_mode(user_id)} speak_chars={len(speak)} reply_chars={len(reply)}")
     try:
         voice_bytes = tts_speak(speak)
-        send_voice(chat_id, voice_bytes, reply_to=thread)
+        print(f"TTS ok: {len(voice_bytes)} bytes")
+        res = send_voice(chat_id, voice_bytes, reply_to=thread)
+        print(f"sendVoice ok={bool(res and res.get('ok'))}")
     except Exception as e:
-        print("TTS failed:", e)
+        print(f"voice send failed: {type(e).__name__}: {e}")
     send_text(chat_id, reply, thread)
 
 
@@ -634,6 +636,8 @@ def main():
     if not ANTHROPIC_API_KEY:
         print("Set the ANTHROPIC_API_KEY env var (console.anthropic.com).")
         return
+    import sys
+    sys.stdout.reconfigure(line_buffering=True)  # never lose log lines to buffering
     offset = 0
     print("Thai practice tutor bot started. Polling...")
     while True:
