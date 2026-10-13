@@ -22,9 +22,17 @@ Deploy as a Railway worker. Env vars:
   DAILY_LIMIT        Max practice messages per user per day (default: 100)
 
 Admin commands (only ADMIN_CHAT_ID):
-  /newcodes 20     generate 20 single-use invite links
-  /users           list activated students
-  /revoke CODE     deactivate an invite code / student
+  /newcodes 20 [class]       generate single-use invite links, optionally tagged to a class
+  /users                     list activated students (with class)
+  /revoke CODE               deactivate an invite code / student
+  /setclass CLASS CODE...    tag students to a class: grammar | level1 | level2
+  /homework CLASS task...    assign homework to a class (broadcasts to its students); alias /hw
+  /homework                  list active homeworks
+  /homework clear CLASS      remove a class's active homework
+  /report [CLASS]            homework completion report (also auto-sent on each finish)
+
+Student commands:
+  /homework    show my current homework and progress
 """
 import datetime
 import html
@@ -174,7 +182,310 @@ def gate_check(chat_id, user_id):
     if now - gate_notices.get(user_id, 0) > 3600:
         send_text(chat_id, GATE_MSG)
         gate_notices[user_id] = now
+
     return False
+
+
+# ---------- classes & homework ----------
+
+CLASSES = {
+    "grammar": "Intermediate Golden Grammar",
+    "level1": "Level 1 Native Ways of Speaking",
+    "level2": "Level 2 Native Ways of Speaking",
+}
+HW_FILE = os.path.join(DATA_DIR, "homework.json")
+REMINDER_AFTER_HOURS = 20  # one nudge ~20h after assignment, if not done
+COMPLETION_MIN_EXCHANGES = 4  # don't judge before a real try
+COMPLETION_CHECK_EVERY = 4  # re-check every N exchanges
+
+
+def valid_class(key):
+    k = (key or "").strip().lower()
+    return k if k in CLASSES else None
+
+
+def class_name(key):
+    return CLASSES.get(key or "", key or "?")
+
+
+def load_hw():
+    try:
+        with open(HW_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {}
+    data.setdefault("homeworks", {})
+    data.setdefault("progress", {})
+    return data
+
+
+def save_hw(data):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = HW_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp, HW_FILE)
+
+
+def new_progress():
+    return {"status": "assigned", "exchanges": 0, "reminded": False,
+            "completed_at": None, "assessment": ""}
+
+
+def get_student_class(user_id):
+    codes = load_codes()
+    for entry in codes.values():
+        if entry.get("used_by") == user_id:
+            return entry.get("class")
+    return None
+
+
+def student_label(user_id):
+    codes = load_codes()
+    for entry in codes.values():
+        if entry.get("used_by") == user_id:
+            return entry.get("label") or str(user_id)
+    return str(user_id)
+
+
+def students_in_class(class_key):
+    codes = load_codes()
+    return [(e["used_by"], e.get("label") or "")
+            for e in codes.values()
+            if e.get("used_by") and e.get("class") == class_key]
+
+
+def active_hw_for_class(class_key):
+    data = load_hw()
+    cands = [h for h in data["homeworks"].values()
+             if h.get("active") and h.get("class") == class_key]
+    return max(cands, key=lambda h: h["assigned_at"]) if cands else None
+
+
+def active_hw_for_user(user_id):
+    ck = get_student_class(user_id)
+    return active_hw_for_class(ck) if ck else None
+
+
+def get_progress(hw_id, user_id):
+    return load_hw()["progress"].get(hw_id, {}).get(str(user_id))
+
+
+def homework_student_msg(hw):
+    return (
+        f"📚 New homework from Sayar Arkar — {class_name(hw['class'])}:\n\n"
+        f"{hw['text']}\n\n"
+        "Practice it with me right here — just talk to me and I'll guide you through! 🎤"
+    )
+
+
+def assign_homework(class_key, text):
+    """Replace the class's active homework and broadcast it. Returns (hw, sent, failed)."""
+    data = load_hw()
+    for hw in data["homeworks"].values():
+        if hw.get("active") and hw.get("class") == class_key:
+            hw["active"] = False
+    hw = {
+        "id": "hw" + secrets.token_hex(4),
+        "class": class_key,
+        "text": text,
+        "assigned_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "active": True,
+    }
+    data["homeworks"][hw["id"]] = hw
+    data["progress"].setdefault(hw["id"], {})
+    save_hw(data)
+    sent, failed = 0, []
+    for uid, label in students_in_class(class_key):
+        if send_text(uid, homework_student_msg(hw)) is None:
+            failed.append(label or str(uid))
+        else:
+            sent += 1
+    return hw, sent, failed
+
+
+HOMEWORK_STEER = (
+    "\n\nThe student's current homework for their {cls} class is: \"{task}\". "
+    "Gently steer the conversation so they complete this homework through speaking "
+    "practice with you. Weave it in naturally — don't lecture about it. If they drift "
+    "off topic, kindly bring them back to the homework."
+)
+
+
+def tutor_system_for(user_id):
+    hw = active_hw_for_user(user_id)
+    if not hw:
+        return SYSTEM_PROMPT
+    prog = get_progress(hw["id"], user_id)
+    if prog and prog.get("status") == "done":
+        return SYSTEM_PROMPT
+    return SYSTEM_PROMPT + HOMEWORK_STEER.format(cls=class_name(hw["class"]), task=hw["text"])
+
+
+CLASSIFIER_SYSTEM = (
+    "You grade an English speaking homework. You get the homework task and the recent "
+    "tutor-student conversation. Decide whether the student has genuinely completed "
+    "the homework task.\n"
+    "Reply with exactly two lines. First line: DONE or NOTDONE (one word only). "
+    "Second line: one short sentence assessing their English in this session "
+    "(one strength + one thing to fix)."
+)
+
+
+def classify_completion(hw, user_id):
+    history = histories.get(user_id, [])
+    convo = "\n".join(
+        ("Student" if m["role"] == "user" else "Tutor") + ": " + m["content"]
+        for m in history[-10:])
+    try:
+        out = ask_claude(
+            [{"role": "user",
+              "content": "Homework task: \"" + hw["text"] + "\"\n\nRecent conversation:\n" + convo}],
+            max_tokens=150,
+            system=CLASSIFIER_SYSTEM,
+        ).strip().splitlines()
+    except Exception as e:
+        print("completion check failed:", e)
+        return False, ""
+    verdict = out[0].strip().upper() if out else ""
+    assessment = out[1].strip() if len(out) > 1 else ""
+    return verdict == "DONE", assessment
+
+
+def complete_homework(user_id, hw, assessment, exchanges):
+    data = load_hw()
+    prog = data["progress"].setdefault(hw["id"], {}).setdefault(str(user_id), new_progress())
+    prog["status"] = "done"
+    prog["completed_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+    prog["assessment"] = assessment
+    save_hw(data)
+    label = student_label(user_id)
+    send_text(user_id,
+              "🎉 Homework complete — great work!\n\n"
+              + (f"Tutor note: {assessment}\n\n" if assessment else "")
+              + "Keep practicing — see you in class! 💪")
+    if ADMIN_CHAT_ID:
+        send_text(ADMIN_CHAT_ID,
+                  f"✅ Homework done — {label} ({class_name(hw['class'])})\n"
+                  f"Task: {hw['text']}\n"
+                  f"Exchanges: {exchanges}"
+                  + (f"\nTutor note: {assessment}" if assessment else ""))
+
+
+def homework_exchange(user_id):
+    """Call after each tutor reply: tracks progress, detects completion."""
+    hw = active_hw_for_user(user_id)
+    if not hw:
+        return
+    data = load_hw()
+    prog = data["progress"].setdefault(hw["id"], {}).setdefault(str(user_id), new_progress())
+    if prog.get("status") == "done":
+        return
+    prog["status"] = "in_progress"
+    prog["exchanges"] = prog.get("exchanges", 0) + 1
+    save_hw(data)
+    n = prog["exchanges"]
+    if n >= COMPLETION_MIN_EXCHANGES and n % COMPLETION_CHECK_EVERY == 0:
+        done, assessment = classify_completion(hw, user_id)
+        if done:
+            complete_homework(user_id, hw, assessment, n)
+
+
+def format_report(class_key=None):
+    keys = [class_key] if class_key else list(CLASSES)
+    data = load_hw()
+    blocks = []
+    for ck in keys:
+        hw = active_hw_for_class(ck)
+        if not hw:
+            continue
+        pmap = data["progress"].get(hw["id"], {})
+        done, doing, idle = [], [], []
+        for uid, label in students_in_class(ck):
+            p = pmap.get(str(uid), {})
+            nm = label or str(uid)
+            st = p.get("status", "assigned")
+            if st == "done":
+                done.append(nm + (f" — {p['assessment']}" if p.get("assessment") else ""))
+            elif st == "in_progress":
+                doing.append(f"{nm} ({p.get('exchanges', 0)} exchanges)")
+            else:
+                idle.append(nm)
+        blocks.append(
+            f"📚 {class_name(ck)}: \"{hw['text']}\"\n"
+            f"✅ Done ({len(done)}): " + (", ".join(done) if done else "—") + "\n"
+            f"🔄 Doing ({len(doing)}): " + (", ".join(doing) if doing else "—") + "\n"
+            f"⏳ Not started ({len(idle)}): " + (", ".join(idle) if idle else "—"))
+    if not blocks:
+        return "No active homeworks right now."
+    return ("📊 Homework report\n\n" + "\n\n".join(blocks))[:4000]
+
+
+def maybe_send_reminders():
+    data = load_hw()
+    now = datetime.datetime.now()
+    changed = False
+    for hw in data["homeworks"].values():
+        if not hw.get("active"):
+            continue
+        try:
+            assigned = datetime.datetime.fromisoformat(hw["assigned_at"])
+        except ValueError:
+            continue
+        if (now - assigned).total_seconds() < REMINDER_AFTER_HOURS * 3600:
+            continue
+        pmap = data["progress"].setdefault(hw["id"], {})
+        for uid, label in students_in_class(hw["class"]):
+            prog = pmap.setdefault(str(uid), new_progress())
+            if prog.get("status") == "done" or prog.get("reminded"):
+                continue
+            if send_text(uid,
+                         f"⏰ Friendly reminder — your {class_name(hw['class'])} homework "
+                         f"is still waiting:\n\n{hw['text']}\n\nCome practice with me! 🎤") is None:
+                continue
+            prog["reminded"] = True
+            changed = True
+    if changed:
+        save_hw(data)
+
+
+def tag_students(class_key, targets):
+    """Tag invite codes (or telegram user ids) to a class.
+    Returns (tagged[(uid_or_None, label)], unknown[target])."""
+    codes = load_codes()
+    tagged, unknown = [], []
+    for t in targets:
+        tu = t.strip().upper()
+        entry = codes.get(tu)
+        if entry is None:
+            try:
+                uid = int(t)
+            except ValueError:
+                unknown.append(t)
+                continue
+            entry = next((e for e in codes.values() if e.get("used_by") == uid), None)
+        if entry is None:
+            unknown.append(t)
+            continue
+        entry["class"] = class_key
+        tagged.append((entry.get("used_by"), entry.get("label") or tu))
+    save_codes(codes)
+    return tagged, unknown
+
+
+def student_homework_status(user_id):
+    hw = active_hw_for_user(user_id)
+    if not hw:
+        return "📚 No homework assigned to your class right now. Keep practicing! 💪"
+    prog = get_progress(hw["id"], user_id) or new_progress()
+    st = prog.get("status", "assigned")
+    if st == "done":
+        extra = "✅ Done — nice work!"
+    elif st == "in_progress":
+        extra = f"🔄 In progress ({prog.get('exchanges', 0)} exchanges so far) — keep going!"
+    else:
+        extra = "⏳ Not started yet — let's do it!"
+    return f"📚 Your homework ({class_name(hw['class'])}):\n\n{hw['text']}\n\n{extra}"
 
 
 # ---------- AI ----------
@@ -278,7 +589,7 @@ def tutor_reply(user_id, user_text):
     history.append({"role": "user", "content": user_text})
     history[:] = history[-20:]  # keep last 10 exchanges
     try:
-        reply = ask_claude(history).strip()
+        reply = ask_claude(history, system=tutor_system_for(user_id)).strip()
     except Exception as e:
         print("Claude API failed:", e)
         history.pop()  # don't keep the failed turn
@@ -297,7 +608,8 @@ START_MSG = (
     "Just chat with me in English — type, or hold the 🎤 mic button and talk! "
     "I'll gently correct your mistakes and help you sound more natural.\n\n"
     "Commands:\n"
-    "/new — start a fresh conversation"
+    "/new — start a fresh conversation\n"
+    "/homework — see your current homework"
 )
 
 LIMIT_MSG = (
@@ -349,6 +661,7 @@ def handle_voice(chat_id, user_id, voice, thread):
     if not reply:
         send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
         return
+    homework_exchange(user_id)
     # Voice answer first, then the text so they can re-read corrections.
     try:
         voice_bytes = tts_speak(reply)
@@ -366,20 +679,23 @@ def handle_admin_command(chat_id, user_id, text):
     cmd = parts[0].lower()
 
     if cmd == "/newcodes":
-        try:
-            n = int(parts[1]) if len(parts) > 1 else 10
-        except ValueError:
-            n = 10
-        n = max(1, min(n, 50))
+        n, class_key = 10, None
+        for p in parts[1:]:
+            if p.isdigit():
+                n = max(1, min(int(p), 50))
+            elif valid_class(p):
+                class_key = valid_class(p)
         codes = load_codes()
         fresh = []
         while len(fresh) < n:
             c = make_code()
             if c not in codes:
-                codes[c] = {"used_by": None, "label": "", "created": datetime.datetime.now().isoformat(timespec="seconds")}
+                codes[c] = {"used_by": None, "label": "", "class": class_key,
+                            "created": datetime.datetime.now().isoformat(timespec="seconds")}
                 fresh.append(c)
         save_codes(codes)
-        lines = [f"🎟️ {n} single-use invite links (each works once, then locks to that student):",
+        tag = f" (tagged: {class_name(class_key)})" if class_key else ""
+        lines = [f"🎟️ {n} single-use invite links{tag} (each works once, then locks to that student):",
                  ""]
         lines += [invite_link(c) for c in fresh]
         lines += ["", "Send one link per student, privately — not in a group!"]
@@ -405,7 +721,8 @@ def handle_admin_command(chat_id, user_id, text):
         lines = [f"👥 Activated students ({len(used)}), {unused} invite(s) left:", ""]
         for c, e in sorted(used, key=lambda x: x[1].get("used_at", "")):
             label = f" ({e['label']})" if e.get("label") else ""
-            lines.append(f"• {c} → {e['used_by']}{label}")
+            cls = f" [{e['class']}]" if e.get("class") else " [no class]"
+            lines.append(f"• {c} → {e['used_by']}{label}{cls}")
         send_text(chat_id, "\n".join(lines)[:4000])
         return True
 
@@ -432,6 +749,87 @@ def handle_admin_command(chat_id, user_id, text):
             histories.pop(uid, None)
             send_text(chat_id, f"🚫 Deactivated {len(found)} invite(s) for user {uid}."
                                if found else "That user has no active invite.")
+        return True
+
+    if cmd == "/setclass":
+        if len(parts) < 3:
+            send_text(chat_id, "Usage: /setclass <grammar|level1|level2> <CODE1> <CODE2> ...")
+            return True
+        class_key = valid_class(parts[1])
+        if not class_key:
+            send_text(chat_id, "Unknown class. Use one of: " + ", ".join(CLASSES))
+            return True
+        tagged, unknown = tag_students(class_key, parts[2:])
+        lines = [f"🏷️ Tagged {len(tagged)} student(s) to {class_name(class_key)}: "
+                 + (", ".join(l for _, l in tagged) if tagged else "—")]
+        if unknown:
+            lines.append("⚠️ Not found: " + ", ".join(unknown))
+        hw = active_hw_for_class(class_key)
+        if hw:
+            data = load_hw()
+            pmap = data["progress"].setdefault(hw["id"], {})
+            notified = 0
+            for uid, _label in tagged:
+                if not uid:
+                    continue
+                p = pmap.get(str(uid), {})
+                if p.get("status") not in (None, "assigned") or p.get("exchanges"):
+                    continue
+                if send_text(uid, homework_student_msg(hw)) is not None:
+                    notified += 1
+            if notified:
+                lines.append(f"📨 Sent the active homework to {notified} of them.")
+        send_text(chat_id, "\n".join(lines))
+        return True
+
+    if cmd in ("/homework", "/hw"):
+        rest = text.split(None, 2)
+        if len(rest) < 2:
+            data = load_hw()
+            act = [h for h in data["homeworks"].values() if h.get("active")]
+            if not act:
+                send_text(chat_id, "No active homeworks.\nUsage: /homework <grammar|level1|level2> <task...>")
+            else:
+                lines = ["📚 Active homeworks:", ""]
+                for h in sorted(act, key=lambda x: x["assigned_at"]):
+                    n = len(students_in_class(h["class"]))
+                    lines.append(f"• {class_name(h['class'])} ({n} students): \"{h['text']}\"")
+                send_text(chat_id, "\n".join(lines)[:4000])
+            return True
+        if rest[1].lower() == "clear":
+            class_key = valid_class(rest[2] if len(rest) > 2 else "")
+            if not class_key:
+                send_text(chat_id, "Usage: /homework clear <grammar|level1|level2>")
+                return True
+            data = load_hw()
+            n = 0
+            for h in data["homeworks"].values():
+                if h.get("active") and h.get("class") == class_key:
+                    h["active"] = False
+                    n += 1
+            save_hw(data)
+            send_text(chat_id, f"🧹 Cleared {n} active homework(s) for {class_name(class_key)}.")
+            return True
+        class_key = valid_class(rest[1])
+        if not class_key or len(rest) < 3 or not rest[2].strip():
+            send_text(chat_id, "Usage: /homework <grammar|level1|level2> <homework task...>")
+            return True
+        hw, sent, failed = assign_homework(class_key, rest[2].strip())
+        total = len(students_in_class(class_key))
+        msg = (f"📚 Homework assigned to {class_name(class_key)} ({total} student(s)):\n"
+               f"\"{hw['text']}\"\n📨 Broadcast: {sent} sent"
+               + (f", failed: {', '.join(failed)}" if failed else "."))
+        if total == 0:
+            msg += "\n⚠️ No students tagged in this class yet — use /setclass first."
+        send_text(chat_id, msg)
+        return True
+
+    if cmd == "/report":
+        class_key = valid_class(parts[1]) if len(parts) > 1 else None
+        if len(parts) > 1 and not class_key:
+            send_text(chat_id, "Unknown class. Use one of: " + ", ".join(CLASSES))
+            return True
+        send_text(chat_id, format_report(class_key))
         return True
 
     return False
@@ -464,6 +862,9 @@ def handle_update(u):
                 send_text(chat_id,
                           f"🎉 Welcome, {html.escape(name)}! Your invite is activated.\n\n" + START_MSG,
                           thread)
+                hw_now = active_hw_for_user(user_id)
+                if hw_now:
+                    send_text(chat_id, homework_student_msg(hw_now), thread)
             elif result == "already_yours":
                 send_text(chat_id, "You're already activated — let's practice! 💪\n\n" + START_MSG,
                           thread)
@@ -491,6 +892,9 @@ def handle_update(u):
         histories.pop(user_id, None)
         send_text(chat_id, "✨ Fresh start! What would you like to talk about?", thread)
         return
+    if text.startswith("/homework"):
+        send_text(chat_id, student_homework_status(user_id), thread)
+        return
     if text.startswith("/"):
         return
 
@@ -502,6 +906,7 @@ def handle_update(u):
     reply = tutor_reply(user_id, text)
     if reply:
         send_text(chat_id, reply, thread)
+        homework_exchange(user_id)
     else:
         send_text(chat_id, "Hmm, I lost my train of thought 😅 — try sending that again!", thread)
 
@@ -514,6 +919,7 @@ def main():
         print("Set the ANTHROPIC_API_KEY env var (console.anthropic.com).")
         return
     offset = 0
+    last_reminder_check = 0
     print("Practice tutor bot started. Polling...")
     while True:
         try:
@@ -527,6 +933,12 @@ def main():
         except Exception as e:
             print("poll error:", e)
             time.sleep(3)
+        if time.time() - last_reminder_check > 900:
+            try:
+                maybe_send_reminders()
+            except Exception as e:
+                print("reminder check failed:", e)
+            last_reminder_check = time.time()
 
 
 if __name__ == "__main__":
