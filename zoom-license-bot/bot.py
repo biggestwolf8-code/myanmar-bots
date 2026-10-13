@@ -180,13 +180,14 @@ def get_me(access_token):
 
 
 def authorize_url(state=""):
+    # Exact format of the Marketplace-generated install URL. NOTE: do NOT add
+    # a scope parameter — the hand-built URL with scope=user:read:user failed
+    # with "Application not found" for non-owner accounts (2026-10-13); the
+    # generated URL without scope works and applies the app's configured scopes.
     q = urllib.parse.urlencode({
         "response_type": "code",
         "client_id": ZOOM_CLIENT_ID,
         "redirect_uri": ZOOM_REDIRECT_URI,
-        # granular scope as granted in the Marketplace (legacy "user:read"
-        # no longer exists in the scope picker)
-        "scope": "user:read:user",
         "state": state,
     })
     return f"{ZOOM_AUTH_URL}?{q}"
