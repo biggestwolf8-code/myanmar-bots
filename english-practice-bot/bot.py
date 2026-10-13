@@ -26,6 +26,7 @@ Admin commands (only ADMIN_CHAT_ID):
   /users                     list activated students (with class)
   /revoke CODE               deactivate an invite code / student
   /setclass CLASS CODE...    tag students to a class: grammar | level1 | level2
+  /askclasses                ask all untagged students to tap their class (one-tap, no codes)
   /homework CLASS task...    assign homework to a class (broadcasts to its students); alias /hw
   /homework                  list active homeworks
   /homework clear CLASS      remove a class's active homework
@@ -488,6 +489,48 @@ def student_homework_status(user_id):
     return f"📚 Your homework ({class_name(hw['class'])}):\n\n{hw['text']}\n\n{extra}"
 
 
+CLASS_BUTTONS = ["Grammar", "Level 1", "Level 2"]
+BUTTON_TO_KEY = {"grammar": "grammar", "level 1": "level1", "level 2": "level2"}
+
+
+def class_keyboard():
+    return json.dumps({
+        "keyboard": [[{"text": b} for b in CLASS_BUTTONS]],
+        "one_time_keyboard": True,
+        "resize_keyboard": True,
+    })
+
+
+def send_with_keyboard(chat_id, text, keyboard_json, reply_to=None):
+    params = {"chat_id": chat_id, "text": text, "reply_markup": keyboard_json}
+    if reply_to:
+        params["reply_to_message_id"] = reply_to
+    try:
+        return tg("sendMessage", params)
+    except Exception as e:
+        print("sendMessage failed:", e)
+        return None
+
+
+def ask_all_untagged():
+    """Ask every activated-but-untagged student to tap their class.
+    Returns (asked, failed_names)."""
+    codes = load_codes()
+    asked, failed = 0, []
+    for e in codes.values():
+        uid = e.get("used_by")
+        if not uid or e.get("class"):
+            continue
+        if send_with_keyboard(uid,
+                              "👋 Quick question — which class are you in?\n"
+                              "Tap one button below:",
+                              class_keyboard()) is None:
+            failed.append(e.get("label") or str(uid))
+        else:
+            asked += 1
+    return asked, failed
+
+
 # ---------- AI ----------
 
 def ask_claude(messages, model=None, max_tokens=400, system=None):
@@ -832,6 +875,16 @@ def handle_admin_command(chat_id, user_id, text):
         send_text(chat_id, format_report(class_key))
         return True
 
+    if cmd == "/askclasses":
+        asked, failed = ask_all_untagged()
+        msg = f"📨 Asked {asked} untagged student(s) to tap their class."
+        if failed:
+            msg += f"\n⚠️ Couldn't reach: {', '.join(failed)}"
+        if asked == 0 and not failed:
+            msg = "Everyone is already tagged to a class. ✅"
+        send_text(chat_id, msg)
+        return True
+
     return False
 
 
@@ -865,6 +918,11 @@ def handle_update(u):
                 hw_now = active_hw_for_user(user_id)
                 if hw_now:
                     send_text(chat_id, homework_student_msg(hw_now), thread)
+                elif not get_student_class(user_id):
+                    send_with_keyboard(chat_id,
+                                       "👋 One quick question — which class are you in?\n"
+                                       "Tap one button below:",
+                                       class_keyboard(), thread)
             elif result == "already_yours":
                 send_text(chat_id, "You're already activated — let's practice! 💪\n\n" + START_MSG,
                           thread)
@@ -895,6 +953,18 @@ def handle_update(u):
     if text.startswith("/homework"):
         send_text(chat_id, student_homework_status(user_id), thread)
         return
+    if not get_student_class(user_id):
+        tapped = BUTTON_TO_KEY.get(text.strip().lower())
+        if tapped:
+            tag_students(tapped, [str(user_id)])
+            send_with_keyboard(chat_id,
+                               f"✅ Got it — you're in {class_name(tapped)}! "
+                               "I'll send your class homework here.",
+                               json.dumps({"remove_keyboard": True}), thread)
+            hw_now = active_hw_for_class(tapped)
+            if hw_now:
+                send_text(chat_id, homework_student_msg(hw_now), thread)
+            return
     if text.startswith("/"):
         return
 
