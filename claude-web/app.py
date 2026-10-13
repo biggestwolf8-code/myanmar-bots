@@ -382,6 +382,15 @@ def api_upload_chat():
     history = histories.setdefault(sid, [])
     history.append({"role": "user", "content": text})
     history[:] = history[-20:]
+    # Re-send images attached earlier this session on EVERY turn (including
+    # upload turns). If the model ever sees an "[Image attached]" placeholder
+    # without the image data, it falsely concludes it hallucinated earlier
+    # descriptions and "retracts" them.
+    prior = session_images.get(sid, [])
+    if ext in IMAGE_EXTS:
+        prior = prior[:-1]  # the just-uploaded image is already in attachments
+    for mime0, b640 in prior:
+        attachments.append({"kind": "image", "mime": mime0, "b64": b640})
     try:
         reply, api_usage = brain.ask_claude(history, attachments=attachments)
         reply = reply.strip()
