@@ -67,6 +67,7 @@
   #composer input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217,119,6,.12); }
   #composer button { padding: 0 24px; font-size: 15px; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff; border: 0; border-radius: 14px; cursor: pointer; font-weight: 700; box-shadow: 0 3px 10px rgba(217,119,6,.28); }
   #composer button:disabled { opacity: .6; }
+  #attachBtn { padding: 0 14px !important; font-size: 20px !important; background: #fff !important; color: var(--ink) !important; border: 1.5px solid var(--line) !important; box-shadow: none !important; }
   #foot { text-align: center; font-size: 11.5px; color: var(--muted); padding: 8px 16px calc(10px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.95); letter-spacing: .2px; }
   #foot strong { font-weight: 600; color: #57534e; }
 </style>
@@ -97,9 +98,11 @@
   <div id="msgs"></div>
   <div id="composer">
     <div class="row">
+      <button id="attachBtn" title="Attach photo or file" onclick="document.getElementById('fileInput').click()">📎</button>
       <input id="msgInput" placeholder="Ask anything…" autocomplete="off" onkeydown="if(event.key==='Enter')send()">
       <button id="sendBtn" onclick="send()">Send</button>
     </div>
+    <input type="file" id="fileInput" style="display:none" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.markdown,.csv" onchange="sendFile(this)">
   </div>
   <div id="foot">Powered by <strong>Claude Sonnet</strong> by Anthropic</div>
 </div>
@@ -152,7 +155,7 @@ async function boot(){
   document.getElementById('chat').classList.toggle('hidden', !j.ok);
   if (j.ok && !window._welcomed){
     window._welcomed = true;
-    addMsg('bot', "👋 Hi! I'm Claude, your AI co-worker.\n\nAsk me anything — drafting, writing, translations, planning, ideas. I can also make Excel spreadsheets and PDF files, just ask!");
+    addMsg('bot', "👋 Hi! I'm Claude, your AI co-worker.\n\nAsk me anything — drafting, writing, translations, planning, ideas. Tap 📎 to attach photos or documents and I'll read them. I can also make Excel spreadsheets and PDF files, just ask!");
     document.getElementById('msgInput').focus();
   }
 }
@@ -167,6 +170,27 @@ async function redeem(){
   else document.getElementById('loginErr').textContent = j.error || 'Something went wrong.';
 }
 let sending = false;
+async function sendFile(input){
+  const file = input.files[0]; input.value = '';
+  if (!file || sending) return;
+  const inp = document.getElementById('msgInput');
+  const text = inp.value.trim(); inp.value = '';
+  sending = true; document.getElementById('sendBtn').disabled = true;
+  addMsg('user', '📎 ' + file.name + (text ? '\n' + text : ''));
+  const t = document.createElement('div'); t.className='typing'; t.innerHTML='<span>●</span> <span>●</span> <span>●</span>';
+  const box = document.getElementById('msgs'); box.appendChild(t); box.scrollTop = box.scrollHeight;
+  try {
+    const fd = new FormData();
+    fd.append('file', file); fd.append('message', text);
+    const r = await fetch('/api/upload_chat',{method:'POST',body:fd});
+    const j = await r.json();
+    t.remove();
+    if (j.ok) addMsg('bot', j.reply, j.files);
+    else addMsg('bot', '⚠️ '+(j.error||'Something went wrong.'));
+  } catch(e){ t.remove(); addMsg('bot','⚠️ Connection error — try again.'); }
+  sending = false; document.getElementById('sendBtn').disabled = false;
+  document.getElementById('msgInput').focus();
+}
 async function send(){
   if (sending) return;
   const inp = document.getElementById('msgInput');

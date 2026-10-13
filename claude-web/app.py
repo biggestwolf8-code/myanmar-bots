@@ -16,7 +16,9 @@ Env vars:
 Invite links look like: https://<host>/i/<CODE>  (single use, like Telegram)
 Admin panel: https://<host>/admin
 """
+import base64
 import datetime
+import io
 import json
 import os
 import secrets
@@ -25,6 +27,24 @@ import time
 from flask import Flask, jsonify, redirect, request, send_file, session, url_for
 
 import brain
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif",
+                ".pdf", ".txt", ".md", ".markdown", ".csv"}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+
+def shrink_image(data, ext):
+    """Downscale large images to bound vision cost. Returns (mime, bytes)."""
+    from PIL import Image
+    img = Image.open(io.BytesIO(data))
+    img.thumbnail((2048, 2048))
+    buf = io.BytesIO()
+    if ext in (".png", ".gif"):
+        img.save(buf, "PNG")
+        return "image/png", buf.getvalue()
+    img.convert("RGB").save(buf, "JPEG", quality=85)
+    return "image/jpeg", buf.getvalue()
 
 DATA_DIR = os.environ.get("DATA_DIR", ".")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -293,6 +313,95 @@ def api_chat():
     save_all()
     if blocks and not files:
         # nothing built — send the raw text so nothing is lost
+        return jsonify({"ok": True, "reply": reply, "files": []})
+    return jsonify({"ok": True, "reply": clean or "Here you go! 📎", "files": files})
+
+
+@app.route("/api/upload_chat", methods=["POST"])
+def api_upload_chat():
+    """Chat turn with a file attachment (photo or document). Multipart form."""
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False, "error": "Not signed in."}), 401
+    code = code_for_sid(sid)
+    text = (request.form.get("message") or "").strip()
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "No file attached."}), 400
+    if len(text) > 6000:
+        return jsonify({"ok": False, "error": "Message too long (6000 chars max)."}), 400
+    if over_daily_limit(code):
+        return jsonify({"ok": False,
+                         "error": "You've reached today's message limit — come back tomorrow!"}), 429
+    ext = os.path.splitext(f.filename or "")[1].lower()
+    if ext not in ALLOWED_EXTS:
+        return jsonify({"ok": False,
+                         "error": "That file type isn't supported (photos, PDF, TXT, Markdown, CSV)."}), 400
+    data = f.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        return jsonify({"ok": False, "error": "File too big (10MB max)."}), 400
+    if not data:
+        return jsonify({"ok": False, "error": "Empty file."}), 400
+
+    attachments = []
+    stored_label = ""
+    try:
+        if ext in IMAGE_EXTS:
+            mime, img_bytes = shrink_image(data, ext)
+            attachments.append({"kind": "image", "mime": mime,
+                                "b64": base64.b64encode(img_bytes).decode()})
+            stored_label = f"[Image attached: {f.filename}]"
+        elif ext == ".pdf":
+            attachments.append({"kind": "pdf",
+                                "b64": base64.b64encode(data).decode()})
+            stored_label = f"[PDF attached: {f.filename}]"
+        else:
+            ok, doc_text = brain.extract_doc_text(f.filename, data)
+            if not ok:
+                return jsonify({"ok": False, "error": f"Couldn't read that file: {doc_text}"}), 400
+            attachments.append({"kind": "doc", "name": f.filename, "text": doc_text})
+            stored_label = f"[Document attached: {f.filename}]"
+    except Exception as e:
+        print("upload processing failed:", e)
+        return jsonify({"ok": False, "error": "Couldn't process that file."}), 400
+
+    history = histories.setdefault(sid, [])
+    history.append({"role": "user", "content": text})
+    history[:] = history[-20:]
+    try:
+        reply, api_usage = brain.ask_claude(history, attachments=attachments)
+        reply = reply.strip()
+    except Exception as ex:
+        print("Claude API failed:", ex)
+        history.pop()
+        return jsonify({"ok": False,
+                         "error": "The AI didn't respond — try again in a moment."}), 502
+    if not reply:
+        history.pop()
+        return jsonify({"ok": False, "error": "Empty reply — try again."}), 502
+    # store a placeholder instead of the base64 payload
+    history[-1] = {"role": "user",
+                   "content": (stored_label + " " + text).strip() or stored_label}
+    history.append({"role": "assistant", "content": reply})
+    history[:] = history[-20:]
+    bump_daily(code)
+    record_usage(code, api_usage)
+
+    clean, blocks = brain.extract_blocks(reply)
+    files = []
+    if blocks:
+        cleanup_files()
+        for kind, fname, fbytes, mime in brain.build_files(blocks):
+            fid = secrets.token_hex(8)
+            os.makedirs(os.path.join(DATA_DIR, "files"), exist_ok=True)
+            with open(os.path.join(DATA_DIR, "files", fid), "wb") as fh:
+                fh.write(fbytes)
+            filemeta[fid] = {"name": fname, "mime": mime, "sid": sid,
+                             "created": time.time()}
+            files.append({"id": fid, "name": fname, "mime": mime})
+        _save_json("webfiles.json", filemeta)
+    save_all()
+    if blocks and not files:
         return jsonify({"ok": True, "reply": reply, "files": []})
     return jsonify({"ok": True, "reply": clean or "Here you go! 📎", "files": files})
 

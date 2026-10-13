@@ -18,14 +18,16 @@ MODEL = os.environ.get("MODEL", "claude-sonnet-5-5")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "4000"))
 
 SYSTEM_PROMPT = (
-    "You are Claude, acting as the user's AI co-worker on a web app. You are the ideal "
-    "colleague: sharp, reliable, proactive, and easy to work with. Help with real work — "
-    "drafting messages and emails, writing and editing, summarizing, planning, organizing "
-    "ideas, brainstorming, translating, researching, and answering questions. Be efficient "
-    "and direct: get to the point, structure your work clearly with short paragraphs and "
-    "simple lists where they help, and suggest a sensible next step when one exists. "
-    "Match your depth to the task: quick answers for quick questions, thorough and "
-    "complete work for bigger ones. "
+    "You are Claude, the user's AI co-worker on a web app — powered by Claude Sonnet "
+    "by Anthropic. You are the ideal colleague: sharp, reliable, proactive, and easy "
+    "to work with. Help with real work — drafting messages and emails, writing and "
+    "editing, summarizing, planning, organizing ideas, brainstorming, translating, "
+    "researching, and answering questions. "
+    "Answer like the best version of Claude. For substantive questions, be thorough "
+    "and well-structured: use short paragraphs, headings, and lists where they help, "
+    "cover the important angles, give concrete examples, and suggest a sensible next "
+    "step when one exists. For quick questions and small talk, keep it brief and "
+    "natural. Never give a thin answer to a serious question. "
     "Reply in the same language the user writes in: English, Myanmar (Burmese), Thai, "
     "or mixed — match their language naturally. "
     "If asked what you are, say you are Claude, the user's AI co-worker. "
@@ -36,7 +38,11 @@ SYSTEM_PROMPT = (
     "document, end your reply with a fenced block that starts with ```pdf whose first line "
     "is the document title, then a blank line, then the body text. Keep your chat text "
     "brief when you attach a file — the file carries the content. Only use these blocks "
-    "when the user actually wants a file, never for ordinary answers."
+    "when the user actually wants a file, never for ordinary answers. "
+ "ATTACHMENTS: The user can attach photos (sent as image blocks) and documents "
+ "(PDFs sent as document blocks, or text files whose contents are included in "
+ "brackets). Read them carefully and answer about their actual contents — "
+ "describe images in detail, summarize or analyze documents as asked."
 )
 
 # ($ per 1M input tokens, $ per 1M output tokens)
@@ -51,13 +57,46 @@ def cost_for(model, input_tokens, output_tokens):
     return input_tokens / 1e6 * r_in + output_tokens / 1e6 * r_out
 
 
-def ask_claude(messages, max_tokens=None):
-    """Returns (reply_text, usage_dict). Raises on API failure."""
+def ask_claude(messages, max_tokens=None, attachments=None):
+    """Returns (reply_text, usage_dict). Raises on API failure.
+
+    attachments: optional list applied to the LAST user message:
+      {"kind": "image", "mime": "...", "b64": "..."}  (photo/screenshot)
+      {"kind": "pdf", "b64": "..."}                   (PDF as native document block)
+      {"kind": "doc", "name": "...", "text": "..."}    (extracted text file)
+    """
+    api_messages = []
+    for m in messages[:-1]:
+        api_messages.append({"role": m["role"], "content": m.get("content", "")})
+    last = messages[-1]
+    text = last.get("content") or ""
+    if attachments and last.get("role") == "user":
+        for a in attachments:
+            if a["kind"] == "doc":
+                text = f"[Attached document \"{a['name']}\":\n{a['text']}]\n\n{text}"
+        if not text.strip():
+            text = "Describe this image in detail."
+        blocks = [{"type": "text", "text": text}]
+        has_media = False
+        for a in attachments:
+            if a["kind"] == "image":
+                has_media = True
+                blocks.append({"type": "image", "source": {
+                    "type": "base64", "media_type": a["mime"], "data": a["b64"]}})
+            elif a["kind"] == "pdf":
+                has_media = True
+                blocks.append({"type": "document", "source": {
+                    "type": "base64", "media_type": "application/pdf",
+                    "data": a["b64"]}})
+        api_messages.append({"role": "user",
+                             "content": blocks if has_media else text})
+    else:
+        api_messages.append({"role": last.get("role", "user"), "content": text})
     body = json.dumps({
         "model": MODEL,
         "max_tokens": max_tokens or MAX_TOKENS,
         "system": SYSTEM_PROMPT,
-        "messages": messages,
+        "messages": api_messages,
     }).encode()
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
@@ -72,6 +111,24 @@ def ask_claude(messages, max_tokens=None):
         out = json.load(r)
     text = "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
     return text, out.get("usage", {})
+
+
+def extract_doc_text(filename, data, max_chars=20000):
+    """Extract readable text from a plain-text upload. Returns (ok, text_or_error)."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    try:
+        if ext in (".txt", ".md", ".markdown", ".csv"):
+            text = data.decode("utf-8", errors="replace")
+        else:
+            return False, "unsupported file type"
+    except Exception as e:
+        return False, f"could not read file: {e}"
+    text = text.strip()
+    if not text:
+        return False, "no readable text found"
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n[...truncated]"
+    return True, text
 
 
 BLOCK_RE = re.compile(r"```(excel|pdf)\n(.*?)```", re.DOTALL | re.IGNORECASE)
