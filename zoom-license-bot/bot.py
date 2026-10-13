@@ -34,6 +34,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import threading
 import time
 import urllib.parse
@@ -317,6 +318,55 @@ def fmt_changes(changes):
     return "\n".join(lines)
 
 
+LICENSE_CYCLE_DAYS = 14
+WARN_DAYS_BEFORE = 1
+
+
+def _parse_ts(ts):
+    try:
+        dt = datetime.datetime.fromisoformat(str(ts))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def expiry_warnings(store, now=None):
+    """Accounts whose 14-day license is expiring tomorrow (or overdue).
+
+    Returns list of (email, days_licensed, kind) where kind is
+    'expiring' (13 days) or 'overdue' (14+ days but still marked Licensed).
+    """
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    warns = []
+    for email, acc in store["accounts"].items():
+        if acc.get("last_type") != "Licensed":
+            continue
+        since = _parse_ts(acc.get("licensed_since"))
+        if not since:
+            continue
+        days = (now - since).days
+        if days == LICENSE_CYCLE_DAYS - WARN_DAYS_BEFORE:
+            warns.append((email, days, "expiring"))
+        elif days >= LICENSE_CYCLE_DAYS:
+            warns.append((email, days, "overdue"))
+    return sorted(warns)
+
+
+def fmt_warnings(warns):
+    exp = [(e, d) for e, d, k in warns if k == "expiring"]
+    over = [(e, d) for e, d, k in warns if k == "overdue"]
+    lines = []
+    if exp:
+        lines.append(f"\u23f0 {len(exp)} license(s) expire TOMORROW (day 14):")
+        lines.append(_id_list([e for e, _ in exp], limit=40))
+    if over:
+        lines.append(f"\u26a0\ufe0f {len(over)} license(s) past day 14 but still show Licensed — verify:")
+        lines.append(_id_list([e for e, _ in over], limit=40))
+    return "\n".join(lines)
+
+
 def handle_message(msg):
     chat_id = msg["chat"]["id"]
     if not is_admin(msg):
@@ -338,6 +388,9 @@ def handle_message(msg):
              "/status — status counts summary\n"
              "/accounts — authorization coverage\n"
              "/list licensed|basic|problems — list accounts by status\n"
+             "/expiring — licenses expiring within 2 days\n"
+             "/backdate YYYY-MM-DD — set license start date for all\n"
+             "  currently-Licensed accounts (corrects the 14-day clock)\n"
              "/reauth <email> — authorize link (for OAuth mode)\n"
              "/alerts on|off — change alerts on/off")
     elif cmd == "/check":
@@ -409,6 +462,39 @@ def handle_message(msg):
             send(chat_id, "\n".join(lines) if len(lines) > 1 else "\u2705 No problem accounts.")
         else:
             send(chat_id, "Usage: /list licensed|basic|problems")
+    elif cmd == "/expiring":
+        store = load_store()
+        warns = expiry_warnings(store)
+        if not warns:
+            send(chat_id, "\u2705 No licenses expiring within the next 2 days.")
+        else:
+            send(chat_id, fmt_warnings(warns))
+    elif cmd == "/backdate":
+        # /backdate 2026-10-10 -> licensed_since = that date 00:00 UTC
+        # for all currently-Licensed accounts.
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", arg.strip())
+        if not m:
+            send(chat_id, "Usage: /backdate YYYY-MM-DD\n"
+                         "Sets the 14-day clock start for all currently-Licensed accounts.")
+            return
+        try:
+            dt = datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                                   tzinfo=datetime.timezone.utc)
+        except ValueError:
+            send(chat_id, "Invalid date. Usage: /backdate YYYY-MM-DD")
+            return
+        if dt > datetime.datetime.now(datetime.timezone.utc):
+            send(chat_id, "Date can't be in the future.")
+            return
+        store = load_store()
+        n = 0
+        for acc in store["accounts"].values():
+            if acc.get("last_type") == "Licensed":
+                acc["licensed_since"] = dt.isoformat()
+                n += 1
+        save_store(store)
+        send(chat_id, f"\u2705 14-day clock set to {arg} for {n} Licensed account(s). "
+                      f"Expiry warnings will fire 1 day before day 14.")
     elif cmd == "/accounts":
         store = load_store()
         emails = sorted(set(SEED_EMAILS) | set(store["accounts"].keys()))
@@ -524,6 +610,10 @@ def daily_check_job():
                     when = f"swept {ls[:16].replace('T', ' ')} UTC" if ls else "no sweep yet"
                     send(ADMIN_CHAT_ID,
                          f"\u2705 Daily Zoom summary ({total} accounts, {when}): {summary}.")
+                # 1-day advance expiry warnings (14-day license cycle)
+                warns = expiry_warnings(store)
+                if warns and store.get("alerts_on", True):
+                    send(ADMIN_CHAT_ID, fmt_warnings(warns))
         except Exception:
             log.exception("daily check error")
         time.sleep(60)
@@ -573,6 +663,14 @@ def ingest():
         acc["sweep_detail"] = detail
         acc["last_sweep"] = swept_at
         if status in ("Licensed", "Basic"):
+            if status == "Licensed" and prev != "Licensed":
+                # (Re)licensed: start the 14-day clock. If the license was
+                # granted before this sweep, use /backdate to correct it.
+                acc["licensed_since"] = swept_at
+            elif status == "Basic":
+                if prev == "Licensed":
+                    acc["last_lapsed_at"] = swept_at
+                acc.pop("licensed_since", None)
             acc["last_type"] = status
             acc["last_check"] = swept_at
             updated += 1
