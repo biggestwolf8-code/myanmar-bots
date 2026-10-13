@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — Invoice Maker</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="wrap" style="max-width:760px">
+  <h1>Invoice Maker — Admin</h1>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  {% if need_login %}
+  <div class="card">
+    <form method="post">
+      <label>Admin password</label>
+      <input type="password" name="password" required>
+      <p><button class="btn" type="submit">Sign in</button></p>
+    </form>
+  </div>
+  {% else %}
+  <p><a href="/admin/logout">Log out of admin</a></p>
+  <div class="card">
+    <h2>Invite codes</h2>
+    <form method="post" action="/admin/codes" style="display:flex;gap:8px;flex-wrap:wrap">
+      <input type="number" name="n" value="1" min="1" max="100" style="width:90px" title="How many">
+      <input type="text" name="label" placeholder="Label (optional)" style="flex:1;min-width:160px">
+      <button class="btn" type="submit">Create</button>
+    </form>
+    <div class="tbl-scroll"><table class="tbl" style="margin-top:12px">
+      <thead><tr><th>Code</th><th>Label</th><th>Used by</th><th>Used at</th><th>Invite link</th><th></th></tr></thead>
+      <tbody>
+      {% for code, label, used_by, used_at, link in code_list %}
+      <tr>
+        <td><code>{{ code }}</code></td>
+        <td>{{ label }}</td>
+        <td>{{ used_by or "—" }}</td>
+        <td>{{ used_at or "—" }}</td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="{{ link }}">{{ link }}</a></td>
+        <td><form class="inline" method="post" action="/admin/revoke/{{ code }}"><button class="btn danger small" type="submit">Revoke</button></form></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">No codes yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <h2>Users</h2>
+    <div class="tbl-scroll"><table class="tbl">
+      <thead><tr><th>Email</th><th>Created</th><th>Docs</th><th>Clients</th><th>Expenses</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for em, created, dc, cc, ec, disabled in user_list %}
+      <tr>
+        <td>{{ em }}</td><td>{{ created }}</td><td>{{ dc }}</td><td>{{ cc }}</td><td>{{ ec }}</td>
+        <td>{{ "disabled" if disabled else "active" }}</td>
+        <td style="white-space:nowrap">
+          <form class="inline" method="post" action="/admin/users/toggle"><input type="hidden" name="email" value="{{ em }}"><button class="btn ghost small" type="submit">{{ "Enable" if disabled else "Disable" }}</button></form>
+          <form class="inline" method="post" action="/admin/users/delete"><input type="hidden" name="email" value="{{ em }}"><button class="btn danger small" type="submit" onclick="return confirm('Delete user {{ em }} and ALL their data?')">Delete</button></form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">No users yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  {% endif %}
+</main>
+</body>
+</html>

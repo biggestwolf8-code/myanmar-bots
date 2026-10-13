@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Recurring invoices — Invoice Maker{% endblock %}
+{% block apptitle %}Recurring invoices{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>How it works</h2>
+  <p class="qr-note">Pick an invoice or estimate as a template. A new draft copy is created automatically every month, starting on the next date below.</p>
+  {% for r, tpl in rows %}
+  <div class="report-month">
+    <span class="m">{{ tpl.number if tpl else "?" }} <span class="qr-note">{{ type_titles.get(tpl.type, "") if tpl }}</span><br>
+      <span class="qr-note">Next: {{ fmt_date(r.next_date, dformat) }} · {{ "Active" if r.active else "Paused" }}</span></span>
+    <span class="nums">
+      <form class="inline" method="post" action="/recurring/{{ r.id }}/toggle"><button class="btn ghost small" type="submit">{{ "Pause" if r.active else "Resume" }}</button></form>
+      <form class="inline" method="post" action="/recurring/{{ r.id }}/delete"><button class="btn danger small" type="submit" onclick="return confirm('Delete this recurring schedule?')">Delete</button></form>
+    </span>
+  </div>
+  {% else %}
+  <p class="qr-note">No recurring schedules yet.</p>
+  {% endfor %}
+</div>
+<div class="card">
+  <h2>New recurring schedule</h2>
+  <form method="post">
+    <label>Template document</label>
+    <select name="doc_id" required>
+      {% for t in templates %}
+      <option value="{{ t.id }}">{{ t.number }} — {{ type_titles.get(t.type, "") }} ({{ t.issue_date }})</option>
+      {% endfor %}
+    </select>
+    <label>First issue date</label>
+    <input type="date" name="start_date" value="{{ today }}">
+    <p><button class="btn block" type="submit">Add schedule</button></p>
+  </form>
+</div>
+{% endblock %}

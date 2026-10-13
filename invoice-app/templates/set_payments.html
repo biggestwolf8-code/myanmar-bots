@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Manual payment methods — Invoice Maker{% endblock %}
+{% block apptitle %}Payment methods{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<form method="post">
+<div class="card">
+  <label>Payment instructions (shown on every invoice)</label>
+  <textarea name="payment_details" rows="6" placeholder="e.g.&#10;KBZPay: 09 xxx xxx xxx&#10;WavePay: 09 xxx xxx xxx&#10;Bank transfer: …">{{ biz.payment_details }}</textarea>
+  <p><button class="btn block" type="submit">Save</button></p>
+</div>
+</form>
+{% endblock %}

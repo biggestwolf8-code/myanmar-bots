@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Region — Invoice Maker{% endblock %}
+{% block apptitle %}Region{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<form method="post">
+<div class="card">
+  <label>Currency</label>
+  <select name="currency">
+    {% for code, sym in currencies.items() %}
+    <option value="{{ code }}" {% if biz.currency == code %}selected{% endif %}>{{ code }} ({{ sym }})</option>
+    {% endfor %}
+  </select>
+  <label>Date format</label>
+  <select name="date_format">
+    <option value="DD-MM-YYYY" {% if biz.date_format == "DD-MM-YYYY" %}selected{% endif %}>DD-MM-YYYY (05-10-2026)</option>
+    <option value="YYYY-MM-DD" {% if biz.date_format == "YYYY-MM-DD" %}selected{% endif %}>YYYY-MM-DD (2026-10-05)</option>
+  </select>
+  <p><button class="btn block" type="submit">Save</button></p>
+</div>
+</form>
+{% endblock %}

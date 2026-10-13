@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}Invoice Maker{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="phone">
+  <header class="appbar">
+    <a class="iconbtn" href="/settings" aria-label="Settings">&#9881;</a>
+    <h1>{% block apptitle %}Invoices{% endblock %}</h1>
+    <button class="iconbtn" id="searchbtn" aria-label="Search" type="button">&#8981;</button>
+  </header>
+  {% block presearch %}{% endblock %}
+  <main class="content">
+    {% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  {% block fab %}
+  <button class="fab" id="fab" type="button" aria-label="New document">+</button>
+  <div class="sheet-bd" id="sheetbd" hidden></div>
+  <div class="sheet" id="sheet" hidden>
+    <a href="/docs/new?type=invoice">New invoice</a>
+    <a href="/docs/new?type=estimate">New estimate</a>
+    <a href="/docs/new?type=receipt">New receipt</a>
+    <button type="button" id="sheetclose">Cancel</button>
+  </div>
+  <script>
+  (function(){
+    var fab = document.getElementById("fab"),
+        sheet = document.getElementById("sheet"),
+        bd = document.getElementById("sheetbd"),
+        close = document.getElementById("sheetclose");
+    function open(){ sheet.hidden = false; bd.hidden = false; }
+    function hide(){ sheet.hidden = true; bd.hidden = true; }
+    if (fab) fab.addEventListener("click", open);
+    if (bd) bd.addEventListener("click", hide);
+    if (close) close.addEventListener("click", hide);
+    var sb = document.getElementById("searchbtn"),
+        bar = document.getElementById("searchbar");
+    if (sb) {
+      if (!bar) { sb.style.visibility = "hidden"; }
+      else sb.addEventListener("click", function(){
+        bar.hidden = !bar.hidden;
+        if (!bar.hidden) { var i = bar.querySelector("input"); if (i) i.focus(); }
+      });
+    }
+  })();
+  </script>
+  {% endblock %}
+</div>
+<nav class="tabbar">
+  <a href="/" class="{% if activetab == 'invoices' %}active{% endif %}"><span>&#x1F9FE;</span>Invoices</a>
+  <a href="/estimates" class="{% if activetab == 'estimates' %}active{% endif %}"><span>&#x1F4DD;</span>Estimates</a>
+  <a href="/expenses" class="{% if activetab == 'expenses' %}active{% endif %}"><span>&#x1F4B8;</span>Expenses</a>
+  <a href="/reports" class="{% if activetab == 'reports' %}active{% endif %}"><span>&#x1F4CA;</span>Reports</a>
+  <a href="/more" class="{% if activetab == 'more' %}active{% endif %}"><span>&#x2630;</span>More</a>
+</nav>
+</body>
+</html>

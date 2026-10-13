@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Reports — Invoice Maker{% endblock %}
+{% block apptitle %}Reports{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Overview</h2>
+  <div class="stat-grid">
+    <div class="stat"><div class="label">Invoiced</div><div class="value">{{ fmt_money(tot_invoiced, cur) }}</div></div>
+    <div class="stat"><div class="label">Paid</div><div class="value good">{{ fmt_money(tot_paid, cur) }}</div></div>
+    <div class="stat"><div class="label">Outstanding</div><div class="value warn">{{ fmt_money(tot_out, cur) }}</div></div>
+    <div class="stat"><div class="label">Expenses</div><div class="value">{{ fmt_money(exp_total, cur) }}</div></div>
+  </div>
+</div>
+<div class="card">
+  <h2>By month</h2>
+  {% for m, r in months %}
+  <div class="report-month">
+    <span class="m">{{ m }}</span>
+    <span class="nums">
+      Invoiced {{ fmt_money(r.invoiced, cur) }}<br>
+      <span class="qr-note">Paid {{ fmt_money(r.paid, cur) }} · Outstanding {{ fmt_money(r.outstanding, cur) }} · {{ r.count }} invoice{{ "s" if r.count != 1 }}</span>
+    </span>
+  </div>
+  {% else %}
+  <p class="qr-note">No invoices yet.</p>
+  {% endfor %}
+</div>
+{% endblock %}

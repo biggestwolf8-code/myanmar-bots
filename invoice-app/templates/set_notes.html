@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Default notes — Invoice Maker{% endblock %}
+{% block apptitle %}Default notes{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<form method="post">
+<div class="card">
+  <label>Default notes</label>
+  <textarea name="default_notes">{{ biz.default_notes }}</textarea>
+  <label>Default terms</label>
+  <textarea name="default_terms">{{ biz.default_terms }}</textarea>
+  <p class="qr-note">These are pre-filled on every new document.</p>
+  <p><button class="btn block" type="submit">Save</button></p>
+</div>
+</form>
+{% endblock %}

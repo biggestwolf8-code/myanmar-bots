@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Template — Invoice Maker{% endblock %}
+{% block apptitle %}Template{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<form method="post">
+<div class="card">
+  <h2>Invoice color</h2>
+  <p class="qr-note">Used on the invoice header in the app and the PDF.</p>
+  <div class="swatches" id="swatches">
+    {% for name, color in presets %}
+    <label title="{{ name }}" style="margin:0">
+      <input type="radio" name="preset" value="{{ color }}" {% if biz.accent_color == color %}checked{% endif %} style="display:none" onchange="document.querySelectorAll('#swatches .swatch').forEach(s=>s.classList.remove('sel')); this.parentElement.querySelector('.swatch').classList.add('sel')">
+      <div class="swatch {% if biz.accent_color == color %}sel{% endif %}" style="background:{{ color }}"></div>
+    </label>
+    {% endfor %}
+  </div>
+  <label>Or a custom color</label>
+  <input type="color" name="custom_color" value="{{ biz.accent_color or '#2563eb' }}">
+  <p class="qr-note">Pick a custom color and tap Save — it overrides the presets above.</p>
+  <p><button class="btn block" type="submit">Save</button></p>
+</div>
+</form>
+{% endblock %}

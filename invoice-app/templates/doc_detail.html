@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.number }} — Invoice Maker{% endblock %}
+{% block apptitle %}{{ doc.number }}{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<div class="doc-paper">
+  <div class="banner" style="background:{{ biz.accent_color or '#2563eb' }}">
+    <h2>{{ type_titles.get(doc.type, 'Document') }} {{ doc.number }}</h2>
+    <div><span class="badge {{ status }}">{{ statuses.get(status, status) }}</span></div>
+  </div>
+  <div class="body">
+    <div class="doc-head">
+      <div>
+        <div class="qr-note">BILL TO</div>
+        <strong>{{ client.name or client.company or '—' }}</strong><br>
+        {% if client.company and client.company != client.name %}{{ client.company }}<br>{% endif %}
+        {% if client.address %}{{ client.address | replace('\n', '<br>') | safe }}<br>{% endif %}
+        {% if client.email %}{{ client.email }}<br>{% endif %}
+        {% if client.phone %}{{ client.phone }}{% endif %}
+      </div>
+      <dl class="kv">
+        <dt>Issue date</dt><dd>{{ fmt_date(doc.issue_date, dformat) }}</dd>
+        {% if doc.due_date %}<dt>Due date</dt><dd>{{ fmt_date(doc.due_date, dformat) }}</dd>{% endif %}
+        {% if doc.paid_at %}<dt>Paid</dt><dd>{{ fmt_date(doc.paid_at, dformat) }}</dd>{% endif %}
+        <dt>From</dt><dd>{{ biz.name or '—' }}</dd>
+      </dl>
+    </div>
+    <div class="tbl-scroll" style="margin-top:14px">
+    <table class="tbl">
+      <thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+      <tbody>
+      {% for ln in doc.lines %}
+        <tr><td>{{ ln.desc }}</td><td class="r">{{ ln.qty }}</td>
+            <td class="r">{{ fmt_money(ln.rate, cur) }}</td>
+            <td class="r">{{ fmt_money(ln.qty * ln.rate, cur) }}</td></tr>
+      {% else %}
+        <tr><td colspan="4" class="qr-note">No line items.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="totals">
+      <div class="row"><span>Subtotal</span><span>{{ fmt_money(totals.subtotal, cur) }}</span></div>
+      {% if totals.discount %}<div class="row"><span>Discount</span><span>−{{ fmt_money(totals.discount, cur) }}</span></div>{% endif %}
+      {% if totals.tax %}<div class="row"><span>Tax</span><span>{{ fmt_money(totals.tax, cur) }}</span></div>{% endif %}
+      {% if totals.line_tax %}<div class="row"><span>Item tax</span><span>{{ fmt_money(totals.line_tax, cur) }}</span></div>{% endif %}
+      {% if totals.shipping %}<div class="row"><span>Shipping</span><span>{{ fmt_money(totals.shipping, cur) }}</span></div>{% endif %}
+      <div class="row grand"><span>Total</span><span>{{ fmt_money(totals.total, cur) }}</span></div>
+    </div>
+    {% if biz.payment_details %}
+    <h3>Payment details</h3><p style="white-space:pre-line">{{ biz.payment_details }}</p>
+    {% endif %}
+    {% if doc.notes %}<h3>Notes</h3><p style="white-space:pre-line">{{ doc.notes }}</p>{% endif %}
+    {% if doc.terms %}<h3>Terms</h3><p style="white-space:pre-line">{{ doc.terms }}</p>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Actions</h2>
+  <div class="actions">
+    <a class="btn" href="/docs/{{ doc.id }}/edit">Edit</a>
+    <form class="inline" method="post" action="/docs/{{ doc.id }}/duplicate"><button class="btn ghost" type="submit">Duplicate</button></form>
+    <a class="btn ghost" href="/docs/{{ doc.id }}/pdf">Download PDF</a>
+    {% if doc.type == "invoice" %}
+      {% if status != "paid" %}<form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="paid"><button class="btn ghost" type="submit">Mark paid</button></form>{% endif %}
+      {% if status == "draft" %}<form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="sent"><button class="btn ghost" type="submit">Mark sent</button></form>{% endif %}
+      {% if status not in ("paid", "cancelled") %}<form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="cancelled"><button class="btn danger" type="submit" onclick="return confirm('Cancel this invoice?')">Cancel</button></form>{% endif %}
+    {% elif doc.type == "estimate" %}
+      {% if status == "draft" %}<form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="sent"><button class="btn ghost" type="submit">Mark sent</button></form>{% endif %}
+      {% if status in ("draft", "sent") %}
+      <form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="accepted"><button class="btn ghost" type="submit">Accept</button></form>
+      <form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="declined"><button class="btn danger" type="submit">Decline</button></form>
+      <form class="inline" method="post" action="/docs/{{ doc.id }}/convert"><button class="btn" type="submit">Convert to invoice</button></form>
+      {% endif %}
+    {% endif %}
+    <form class="inline" method="post" action="/docs/{{ doc.id }}/delete"><button class="btn danger" type="submit" onclick="return confirm('Delete this document?')">Delete</button></form>
+  </div>
+  <h2>Share</h2>
+  <div class="share-link">
+    <input type="text" id="sharelink" value="{{ share_url }}" readonly>
+    <button class="btn ghost" type="button" onclick="navigator.clipboard.writeText(document.getElementById('sharelink').value); this.textContent='Copied!';">Copy link</button>
+  </div>
+  <p><a class="btn ghost" href="{{ wa_url }}" target="_blank" rel="noopener">Share on WhatsApp</a>
+     <a class="btn ghost" href="{{ mail_url }}">Share by email</a></p>
+  <p class="qr-note">Anyone with the link can view this document — no login needed.</p>
+</div>
+{% endblock %}

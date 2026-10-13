@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Estimates — Invoice Maker{% endblock %}
+{% block apptitle %}Estimates{% endblock %}
+{% block presearch %}
+<div class="searchbar" id="searchbar" hidden>
+  <form method="get" action="/estimates">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search number or client…">
+    <button class="btn ghost" type="submit">Go</button>
+  </form>
+</div>
+{% endblock %}
+{% block content %}
+<div class="ptabs">
+  <a href="/estimates?tab=all" class="{% if tab == 'all' %}active{% endif %}">All</a>
+  <a href="/estimates?tab=pending" class="{% if tab == 'pending' %}active{% endif %}">Pending</a>
+  <a href="/estimates?tab=accepted" class="{% if tab == 'accepted' %}active{% endif %}">Accepted</a>
+</div>
+{% for year, g in years %}
+<div class="yearhead"><span class="y">{{ year }}</span><span class="t">{{ fmt_money(g.total, cur) }}</span></div>
+<div>
+{% for doc, total, status in g.rows %}
+  {% set cname = namespace(v="") %}
+  {% for c in clients %}{% if c.id == doc.client_id %}{% set cname.v = c.name %}{% endif %}{% endfor %}
+  <a class="docrow" href="/docs/{{ doc.id }}">
+    <div class="l1"><span class="nm">{{ cname.v or "No client" }}</span><span class="amt">{{ fmt_money(total, cur) }}</span></div>
+    <div class="l2"><span>{{ doc.number }}</span>
+      <span class="st st-{{ status }}">{{ statuses.get(status, status) }} {{ fmt_date(doc.issue_date, dformat) }}</span></div>
+  </a>
+{% endfor %}
+</div>
+{% else %}
+<div class="empty"><div class="big">&#x1F4DD;</div>No estimates yet.<br>Tap + to create your first one.</div>
+{% endfor %}
+{% endblock %}

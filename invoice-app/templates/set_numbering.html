@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Invoice number — Invoice Maker{% endblock %}
+{% block apptitle %}Invoice number{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<form method="post">
+<div class="card">
+  <p class="qr-note">Numbers look like <strong>{{ preview.invoice }}</strong> — prefix followed by 4 digits.</p>
+  <div class="two">
+    <div><label>Invoice prefix</label><input type="text" name="inv_prefix" value="{{ biz.inv_prefix }}"></div>
+    <div><label>Next invoice #</label><input type="number" min="1" name="next_invoice" value="{{ nexts.invoice }}"></div>
+    <div><label>Estimate prefix</label><input type="text" name="est_prefix" value="{{ biz.est_prefix }}"></div>
+    <div><label>Next estimate #</label><input type="number" min="1" name="next_estimate" value="{{ nexts.estimate }}"></div>
+    <div><label>Receipt prefix</label><input type="text" name="rec_prefix" value="{{ biz.rec_prefix }}"></div>
+    <div><label>Next receipt #</label><input type="number" min="1" name="next_receipt" value="{{ nexts.receipt }}"></div>
+  </div>
+  <p class="qr-note">Next: {{ preview.invoice }} · {{ preview.estimate }} · {{ preview.receipt }}</p>
+  <p><button class="btn block" type="submit">Save</button></p>
+</div>
+</form>
+{% endblock %}

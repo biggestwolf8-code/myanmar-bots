@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Business details — Invoice Maker{% endblock %}
+{% block apptitle %}Business details{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<form method="post" enctype="multipart/form-data">
+<div class="card">
+  <label>Logo (PNG or JPG, max 2 MB)</label>
+  {% if biz.logo_path %}<div><img class="preview-img" src="/{{ biz.logo_path }}"></div>{% endif %}
+  <input type="file" name="logo" accept=".png,.jpg,.jpeg">
+  {% if biz.logo_path %}<p><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="remove_logo" style="width:auto"> Remove logo</label></p>{% endif %}
+  <label>Business name</label>
+  <input type="text" name="name" value="{{ biz.name }}">
+  <label>Address</label>
+  <textarea name="address">{{ biz.address }}</textarea>
+  <div class="two">
+    <div><label>Email</label><input type="email" name="email" value="{{ biz.email }}"></div>
+    <div><label>Phone</label><input type="text" name="phone" value="{{ biz.phone }}"></div>
+  </div>
+  <div class="two">
+    <div><label>Website</label><input type="text" name="website" value="{{ biz.website }}"></div>
+    <div><label>Tax ID</label><input type="text" name="tax_id" value="{{ biz.tax_id }}"></div>
+  </div>
+  <p><button class="btn block" type="submit">Save</button></p>
+</div>
+</form>
+{% endblock %}

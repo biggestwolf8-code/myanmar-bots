@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Contact us — Invoice Maker{% endblock %}
+{% block apptitle %}Contact us{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Need help?</h2>
+  {% if biz.email %}
+  <p>Reach us at <strong>{{ biz.email }}</strong></p>
+  <p><a class="btn block" href="mailto:{{ biz.email }}?subject=Invoice%20Maker%20support">Send email</a></p>
+  {% else %}
+  <p class="qr-note">Add your business email in <a href="/settings/business">Business details</a> and it will appear here.</p>
+  {% endif %}
+  {% if biz.phone %}<p>Phone: {{ biz.phone }}</p>{% endif %}
+  {% if biz.website %}<p>Web: {{ biz.website }}</p>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if mode == "login" %}Sign in{% else %}Create account{% endif %} — Invoice Maker</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="wrap">
+  <div class="card login-box">
+    <h1>Invoice Maker</h1>
+    <p class="qr-note">Simple invoices, estimates &amp; receipts.</p>
+    {% if note %}<div class="flash ok">{{ note }}</div>{% endif %}
+    {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+    {% if mode == "login" %}
+    <form method="post" action="/login">
+      <label>Email</label>
+      <input type="email" name="email" required autocomplete="email">
+      <label>Password</label>
+      <input type="password" name="password" required autocomplete="current-password">
+      <p><button class="btn" type="submit" style="width:100%">Sign in</button></p>
+    </form>
+    <p class="qr-note">Have an invite code? <a href="/register">Create an account</a></p>
+    {% else %}
+    <form method="post" action="/register">
+      <label>Invite code</label>
+      <input type="text" name="code" value="{{ code or '' }}" required
+             placeholder="8-character code" style="text-transform:uppercase">
+      <label>Email</label>
+      <input type="email" name="email" required autocomplete="email">
+      <label>Password <span class="qr-note">(min 6 characters)</span></label>
+      <input type="password" name="password" required autocomplete="new-password">
+      <p><button class="btn" type="submit" style="width:100%">Create account</button></p>
+    </form>
+    <p class="qr-note">Already have an account? <a href="/login">Sign in</a></p>
+    {% endif %}
+  </div>
+</main>
+</body>
+</html>

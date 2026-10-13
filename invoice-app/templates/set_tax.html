@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Tax — Invoice Maker{% endblock %}
+{% block apptitle %}Tax{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<form method="post">
+<div class="card">
+  <label>Default tax rate (%)</label>
+  <input type="number" step="any" min="0" name="default_tax" value="{{ biz.default_tax }}">
+  <p class="qr-note">Applied automatically to new documents. You can still change it per document.</p>
+  <p><button class="btn block" type="submit">Save</button></p>
+</div>
+</form>
+{% endblock %}

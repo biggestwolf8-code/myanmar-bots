@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Receipts — Invoice Maker{% endblock %}
+{% block apptitle %}Receipts{% endblock %}
+{% block content %}
+{% for doc, total, status in rows %}
+  <a class="docrow" href="/docs/{{ doc.id }}">
+    <div class="l1"><span class="nm">{{ client_names.get(doc.client_id, "No client") }}</span><span class="amt">{{ fmt_money(total, cur) }}</span></div>
+    <div class="l2"><span>{{ doc.number }}</span>
+      <span class="st st-paid">Paid {{ fmt_date(doc.paid_at or doc.issue_date, dformat) }}</span></div>
+  </a>
+{% else %}
+<div class="empty"><div class="big">&#x1F9FE;</div>No receipts yet.<br>Create one with the + button.</div>
+{% endfor %}
+{% endblock %}

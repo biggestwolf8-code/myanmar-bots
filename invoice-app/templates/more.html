@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}More — Invoice Maker{% endblock %}
+{% block apptitle %}More{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<div class="setsec">Manage</div>
+<div class="setlist">
+  <a class="setrow" href="/clients">Clients<span class="chev">›</span></a>
+  <a class="setrow" href="/items">Items<span class="chev">›</span></a>
+  <a class="setrow" href="/receipts">Receipts<span class="chev">›</span></a>
+  <a class="setrow" href="/recurring">Recurring invoices<span class="sub">Auto-create monthly from a template</span><span class="chev">›</span></a>
+</div>
+<div class="setsec">App</div>
+<div class="setlist">
+  <a class="setrow" href="/settings">Settings<span class="chev">›</span></a>
+  <a class="setrow danger" href="/logout">Log out</a>
+</div>
+<p class="qr-note" style="padding:0 4px">Signed in as {{ email }}</p>
+{% endblock %}

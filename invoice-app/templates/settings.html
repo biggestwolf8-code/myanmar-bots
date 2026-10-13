@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Settings — Invoice Maker{% endblock %}
+{% block apptitle %}Settings{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<div class="setsec">Support</div>
+<div class="setlist">
+  <a class="setrow" href="/settings/contact">Contact us<span class="chev">›</span></a>
+</div>
+<div class="setsec">Invoice</div>
+<div class="setlist">
+  <a class="setrow" href="/settings/business">Business details<span class="sub">Logo, name and contact information</span><span class="chev">›</span></a>
+  <a class="setrow" href="/settings/template">Template<span class="sub">Invoice design and color</span><span class="chev">›</span></a>
+  <a class="setrow" href="/settings/payments">Manual payment methods<span class="sub">Payment instructions on invoices</span><span class="chev">›</span></a>
+  <a class="setrow" href="/settings/tax">Tax<span class="sub">Default tax rate</span><span class="chev">›</span></a>
+  <a class="setrow" href="/settings/notes">Default notes<span class="chev">›</span></a>
+  <a class="setrow" href="/settings/numbering">Invoice number<span class="sub">Prefix and next number</span><span class="chev">›</span></a>
+  <a class="setrow" href="/settings/export/expenses.csv">Export expense summary<span class="sub">CSV download</span><span class="chev">&#8681;</span></a>
+  <a class="setrow" href="/settings/export/invoices.csv">Export invoice summary<span class="sub">CSV download</span><span class="chev">&#8681;</span></a>
+</div>
+<div class="setsec">Preferences</div>
+<div class="setlist">
+  <a class="setrow" href="/settings/email">Default email message<span class="chev">›</span></a>
+  <a class="setrow" href="/settings/region">Region<span class="sub">Currency and date format</span><span class="chev">›</span></a>
+  <a class="setrow" href="/settings/signature">Signature<span class="chev">›</span></a>
+</div>
+<div class="setsec">Data</div>
+<div class="setlist">
+  <a class="setrow" href="/settings/backup">Backup<span class="sub">Download all data as JSON</span><span class="chev">&#8681;</span></a>
+  <a class="setrow" href="/settings/about">About<span class="chev">›</span></a>
+  <a class="setrow danger" href="/logout">Log out</a>
+</div>
+{% endblock %}

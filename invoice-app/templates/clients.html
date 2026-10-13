@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Clients — Invoice Maker{% endblock %}
+{% block apptitle %}Clients{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Add client</h2>
+  <form method="post">
+    <label>Name</label><input type="text" name="name" required>
+    <label>Company</label><input type="text" name="company">
+    <div class="two">
+      <div><label>Email</label><input type="email" name="email"></div>
+      <div><label>Phone</label><input type="text" name="phone"></div>
+    </div>
+    <label>Address</label><textarea name="address"></textarea>
+    <p><button class="btn block" type="submit">Add client</button></p>
+  </form>
+</div>
+{% for c in clients %}
+<div class="card">
+  <strong>{{ c.name }}</strong>
+  {% if c.company %}<br><span class="qr-note">{{ c.company }}</span>{% endif %}
+  {% if c.email %}<br>{{ c.email }}{% endif %}
+  {% if c.phone %}<br>{{ c.phone }}{% endif %}
+  {% if c.address %}<br><span class="qr-note">{{ c.address }}</span>{% endif %}
+  <form class="inline" method="post" action="/clients/{{ c.id }}/delete">
+    <p><button class="btn danger small" type="submit" onclick="return confirm('Delete this client?')">Delete</button></p>
+  </form>
+</div>
+{% else %}
+<div class="empty">No clients yet.</div>
+{% endfor %}
+{% endblock %}

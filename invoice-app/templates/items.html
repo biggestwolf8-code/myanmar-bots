@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Items — Invoice Maker{% endblock %}
+{% block apptitle %}Items{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Add item</h2>
+  <form method="post">
+    <label>Name</label><input type="text" name="name" required>
+    <label>Description</label><input type="text" name="description">
+    <label>Rate</label><input type="number" step="any" min="0" name="rate" value="0">
+    <p><button class="btn block" type="submit">Add item</button></p>
+  </form>
+</div>
+{% for it in items %}
+<div class="card">
+  <div class="report-month">
+    <span class="m">{{ it.name }}<br><span class="qr-note">{{ it.description }}</span></span>
+    <span class="nums">{{ fmt_money(it.rate, cur) }}<br>
+      <form class="inline" method="post" action="/items/{{ it.id }}/delete">
+        <button class="btn danger small" type="submit" onclick="return confirm('Delete this item?')">Delete</button>
+      </form>
+    </span>
+  </div>
+</div>
+{% else %}
+<div class="empty">No items yet.</div>
+{% endfor %}
+{% endblock %}

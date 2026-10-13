@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Expenses — Invoice Maker{% endblock %}
+{% block apptitle %}Expenses{% endblock %}
+{% block content %}
+<div class="yearhead"><span class="y">Total</span><span class="t">{{ fmt_money(total, cur) }}</span></div>
+<div class="card">
+  <h2>Add expense</h2>
+  <form method="post">
+    <div class="two">
+      <div><label>Date</label><input type="date" name="date" value="{{ today }}"></div>
+      <div><label>Amount</label><input type="number" step="any" min="0" name="amount" required></div>
+    </div>
+    <div class="two">
+      <div><label>Category</label><input type="text" name="category" placeholder="e.g. Transport"></div>
+      <div><label>Vendor</label><input type="text" name="vendor"></div>
+    </div>
+    <label>Note</label><input type="text" name="note">
+    <p><button class="btn block" type="submit">Add expense</button></p>
+  </form>
+</div>
+{% for e in expenses %}
+<div class="docrow">
+  <div class="l1"><span class="nm">{{ e.category or e.vendor or "Expense" }}</span><span class="amt">{{ fmt_money(e.amount, cur) }}</span></div>
+  <div class="l2"><span>{{ e.vendor }}{% if e.note %} · {{ e.note }}{% endif %}</span>
+    <span class="st">{{ e.date }}
+      <form class="inline" method="post" action="/expenses/{{ e.id }}/delete" style="display:inline">
+        <button type="submit" class="row-del" onclick="return confirm('Delete this expense?')" title="Delete">&times;</button>
+      </form>
+    </span></div>
+</div>
+{% else %}
+<div class="empty"><div class="big">&#x1F4B8;</div>No expenses yet.</div>
+{% endfor %}
+{% endblock %}

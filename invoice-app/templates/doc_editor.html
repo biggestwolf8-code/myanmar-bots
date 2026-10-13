@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "new" %}New {{ doc.type }}{% else %}Edit {{ doc.number }}{% endif %} — Invoice Maker{% endblock %}
+{% block apptitle %}{% if mode == "new" %}New {{ doc.type }}{% else %}{{ doc.number }}{% endif %}{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<h1>{% if mode == "new" %}New document{% else %}Edit {{ doc.number }}{% endif %}</h1>
+<form method="post" id="docform">
+<div class="card">
+  <div class="two">
+    <div>
+      <label>Document type</label>
+      <select name="type" id="dtype">
+        <option value="invoice" {% if doc.type == "invoice" %}selected{% endif %}>Invoice</option>
+        <option value="estimate" {% if doc.type == "estimate" %}selected{% endif %}>Estimate</option>
+        <option value="receipt" {% if doc.type == "receipt" %}selected{% endif %}>Receipt</option>
+      </select>
+    </div>
+    <div>
+      <label>Client</label>
+      <select name="client_id" id="clientsel">
+        <option value="">— no client —</option>
+        {% for c in clients %}
+        <option value="{{ c.id }}" {% if doc.client_id == c.id %}selected{% endif %}>{{ c.name }}{% if c.company %} ({{ c.company }}){% endif %}</option>
+        {% endfor %}
+        <option value="__new__" {% if doc.client_id == "__new__" %}selected{% endif %}>+ New client…</option>
+      </select>
+    </div>
+  </div>
+  <div id="newclient" style="display:none">
+    <div class="two">
+      <div><label>Name</label><input type="text" name="new_client_name"></div>
+      <div><label>Company</label><input type="text" name="new_client_company"></div>
+      <div><label>Email</label><input type="email" name="new_client_email"></div>
+      <div><label>Phone</label><input type="text" name="new_client_phone"></div>
+    </div>
+    <label>Address</label><textarea name="new_client_address"></textarea>
+  </div>
+  <div class="two">
+    <div><label>Issue date</label><input type="date" name="issue_date" value="{{ doc.issue_date }}"></div>
+    <div><label>Due date</label><input type="date" name="due_date" value="{{ doc.due_date }}"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Line items</h2>
+  <div class="line-row head"><span>Description</span><span>Qty</span><span>Rate</span><span>Tax %</span><span></span></div>
+  <div id="lines"></div>
+  <button type="button" class="btn ghost small" id="addline">+ Add line</button>
+  <datalist id="itemlist">
+    {% for it in items %}<option value="{{ it.name }}">{% endfor %}
+  </datalist>
+</div>
+
+<div class="card">
+  <h2>Totals</h2>
+  <div class="two">
+    <div>
+      <label>Discount type</label>
+      <select name="discount_type" id="dtype2">
+        <option value="amount" {% if doc.discount_type == "amount" %}selected{% endif %}>Amount</option>
+        <option value="percent" {% if doc.discount_type == "percent" %}selected{% endif %}>Percent</option>
+      </select>
+    </div>
+    <div><label>Discount value</label><input type="number" step="any" min="0" name="discount_value" id="dval" value="{{ doc.discount_value }}"></div>
+    <div>
+      <label>Tax type</label>
+      <select name="tax_type" id="ttype">
+        <option value="percent" {% if doc.tax_type == "percent" %}selected{% endif %}>Percent</option>
+        <option value="amount" {% if doc.tax_type == "amount" %}selected{% endif %}>Amount</option>
+      </select>
+    </div>
+    <div><label>Tax value</label><input type="number" step="any" min="0" name="tax_value" id="tval" value="{{ doc.tax_value }}"></div>
+  </div>
+  <label>Shipping</label>
+  <input type="number" step="any" min="0" name="shipping" id="ship" value="{{ doc.shipping }}">
+  <div class="totals" style="margin-top:12px">
+    <div class="row"><span>Subtotal</span><span id="t-sub"></span></div>
+    <div class="row"><span>Discount</span><span id="t-disc"></span></div>
+    <div class="row"><span>Tax</span><span id="t-tax"></span></div>
+    <div class="row"><span>Shipping</span><span id="t-ship"></span></div>
+    <div class="row grand"><span>Total</span><span id="t-total"></span></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Notes &amp; terms</h2>
+  <label>Notes (visible on the document)</label>
+  <textarea name="notes">{{ doc.notes }}</textarea>
+  <label>Terms</label>
+  <textarea name="terms">{{ doc.terms }}</textarea>
+</div>
+
+<div class="actions">
+  <button class="btn" type="submit">{% if mode == "new" %}Create document{% else %}Save changes{% endif %}</button>
+  {% if edit_id %}<a class="btn ghost" href="/docs/{{ edit_id }}">Cancel</a>{% else %}<a class="btn ghost" href="/">Cancel</a>{% endif %}
+</div>
+</form>
+
+<script>
+const CLIENTS = {{ clients | tojson }};
+const ITEMS = {{ items | tojson }};
+const CUR = "{{ cur }}";
+const SYM = {{ {"MMK":"Ks","THB":"฿","USD":"$"} | tojson }}[CUR] || CUR + " ";
+const itemByName = {};
+ITEMS.forEach(it => { itemByName[it.name] = it; });
+
+function money(v){ return SYM + Number(v || 0).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+const linesEl = document.getElementById("lines");
+function addRow(desc, qty, rate, tax){
+  const row = document.createElement("div");
+  row.className = "line-row";
+  row.innerHTML =
+    '<input type="text" name="desc" list="itemlist" placeholder="Description" value="' + (desc||"").replace(/"/g, "&quot;") + '">' +
+    '<input type="number" step="any" min="0" name="qty" value="' + (qty ?? 1) + '">' +
+    '<input type="number" step="any" min="0" name="rate" value="' + (rate ?? 0) + '">' +
+    '<input type="number" step="any" min="0" name="tax_pct" value="' + (tax ?? 0) + '">' +
+    '<button type="button" class="row-del" title="Remove line">×</button>';
+  const descInput = row.querySelector('input[name=desc]');
+  const rateInput = row.querySelector('input[name=rate]');
+  descInput.addEventListener("input", () => {
+    const it = itemByName[descInput.value];
+    if (it) {
+      if (it.description && !descInput.dataset.touched) descInput.value = it.description;
+      if (rateInput.value === "" || rateInput.value === "0") rateInput.value = it.rate;
+      recalc();
+    }
+  });
+  row.querySelector(".row-del").addEventListener("click", () => { row.remove(); recalc(); });
+  row.querySelectorAll("input").forEach(i => i.addEventListener("input", recalc));
+  linesEl.appendChild(row);
+}
+document.getElementById("addline").addEventListener("click", () => addRow("", 1, 0, 0));
+
+function recalc(){
+  let sub = 0, lineTax = 0;
+  linesEl.querySelectorAll(".line-row").forEach(row => {
+    const q = parseFloat(row.querySelector('input[name=qty]').value) || 0;
+    const r = parseFloat(row.querySelector('input[name=rate]').value) || 0;
+    const t = parseFloat(row.querySelector('input[name=tax_pct]').value) || 0;
+    const lt = q * r;
+    sub += lt; lineTax += lt * t / 100;
+  });
+  const dtype = document.getElementById("dtype2").value;
+  const dval = parseFloat(document.getElementById("dval").value) || 0;
+  const disc = dtype === "percent" ? sub * dval / 100 : dval;
+  const after = sub - disc;
+  const ttype = document.getElementById("ttype").value;
+  const tval = parseFloat(document.getElementById("tval").value) || 0;
+  const tax = (ttype === "percent" ? after * tval / 100 : tval) + lineTax;
+  const ship = parseFloat(document.getElementById("ship").value) || 0;
+  document.getElementById("t-sub").textContent = money(sub);
+  document.getElementById("t-disc").textContent = "−" + money(disc);
+  document.getElementById("t-tax").textContent = money(tax);
+  document.getElementById("t-ship").textContent = money(ship);
+  document.getElementById("t-total").textContent = money(after + tax + ship);
+}
+["dtype2","dval","ttype","tval","ship"].forEach(id =>
+  document.getElementById(id).addEventListener("input", recalc));
+
+const csel = document.getElementById("clientsel");
+const ncd = document.getElementById("newclient");
+function toggleNewClient(){ ncd.style.display = csel.value === "__new__" ? "block" : "none"; }
+csel.addEventListener("change", toggleNewClient);
+toggleNewClient();
+
+{% for ln in doc.lines %}
+addRow({{ ln.desc | tojson }}, {{ ln.qty }}, {{ ln.rate }}, {{ ln.tax_pct }});
+{% endfor %}
+if (linesEl.children.length === 0) addRow("", 1, 0, 0);
+recalc();
+</script>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Default email message — Invoice Maker{% endblock %}
+{% block apptitle %}Email message{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<form method="post">
+<div class="card">
+  <label>Message template</label>
+  <textarea name="default_email_message" rows="8">{{ biz.default_email_message }}</textarea>
+  <p class="qr-note">Placeholders: {client} {type} {number} {total} {business} {link} — used when sharing a document.</p>
+  <p><button class="btn block" type="submit">Save</button></p>
+</div>
+</form>
+{% endblock %}

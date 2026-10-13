@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Signature — Invoice Maker{% endblock %}
+{% block apptitle %}Signature{% endblock %}
+{% block fab %}{% endblock %}
+{% block content %}
+<form method="post" id="sigform">
+<div class="card">
+  <label>Draw your signature (appears on PDFs)</label>
+  <canvas class="sig-pad" id="pad"></canvas>
+  <input type="hidden" name="signature_data" id="sigdata">
+  <div class="actions">
+    <button class="btn ghost small" type="button" id="clearpad">Clear</button>
+    {% if biz.signature_path %}
+    <img class="preview-img" src="/{{ biz.signature_path }}">
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="remove_signature" style="width:auto"> Remove</label>
+    {% endif %}
+  </div>
+  <p><button class="btn block" type="submit">Save signature</button></p>
+</div>
+</form>
+<script>
+(function(){
+  var pad = document.getElementById("pad"), ctx = pad.getContext("2d"),
+      drawing = false, drawn = false;
+  function size(){ pad.width = pad.offsetWidth * 2; pad.height = 300; ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.strokeStyle = "#111"; }
+  size();
+  function pos(e){ var r = pad.getBoundingClientRect();
+    var t = e.touches ? e.touches[0] : e;
+    return [(t.clientX - r.left) * 2, (t.clientY - r.top) * 2]; }
+  function start(e){ e.preventDefault(); drawing = true; var p = pos(e); ctx.beginPath(); ctx.moveTo(p[0], p[1]); }
+  function move(e){ if (!drawing) return; e.preventDefault(); var p = pos(e); ctx.lineTo(p[0], p[1]); ctx.stroke(); drawn = true; }
+  function end(){ drawing = false; }
+  pad.addEventListener("mousedown", start); pad.addEventListener("mousemove", move);
+  pad.addEventListener("mouseup", end); pad.addEventListener("mouseleave", end);
+  pad.addEventListener("touchstart", start, {passive: false});
+  pad.addEventListener("touchmove", move, {passive: false});
+  pad.addEventListener("touchend", end);
+  document.getElementById("clearpad").addEventListener("click", function(){ ctx.clearRect(0,0,pad.width,pad.height); drawn = false; });
+  document.getElementById("sigform").addEventListener("submit", function(){
+    if (drawn) document.getElementById("sigdata").value = pad.toDataURL("image/png");
+  });
+})();
+</script>
+{% endblock %}

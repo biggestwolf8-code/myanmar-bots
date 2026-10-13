@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ type_titles.get(doc.type, 'Document') }} {{ doc.number }} — {{ biz.name }}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="wrap" style="max-width:760px">
+  <div class="doc-paper">
+    <div class="banner" style="background:{{ biz.accent_color or '#2563eb' }}">
+      <h2>{{ biz.name or 'Invoice Maker' }}</h2>
+      <div>{{ type_titles.get(doc.type, 'Document') }} {{ doc.number }}
+        <span class="badge {{ status }}">{{ statuses.get(status, status) }}</span></div>
+    </div>
+    <div class="body">
+      <div class="doc-head">
+        <div>
+          <div class="qr-note">BILL TO</div>
+          <strong>{{ client.name or client.company or '—' }}</strong><br>
+          {% if client.company and client.company != client.name %}{{ client.company }}<br>{% endif %}
+          {% if client.address %}{{ client.address | replace('\n', '<br>') | safe }}<br>{% endif %}
+          {% if client.email %}{{ client.email }}<br>{% endif %}
+          {% if client.phone %}{{ client.phone }}{% endif %}
+        </div>
+        <dl class="kv">
+          <dt>Issue date</dt><dd>{{ doc.issue_date }}</dd>
+          {% if doc.due_date %}<dt>Due date</dt><dd>{{ doc.due_date }}</dd>{% endif %}
+        </dl>
+      </div>
+      <div class="tbl-scroll" style="margin-top:14px">
+      <table class="tbl">
+        <thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+        <tbody>
+        {% for ln in doc.lines %}
+          <tr><td>{{ ln.desc }}</td><td class="r">{{ ln.qty }}</td>
+              <td class="r">{{ fmt_money(ln.rate, cur) }}</td>
+              <td class="r">{{ fmt_money(ln.qty * ln.rate, cur) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><span>{{ fmt_money(totals.subtotal, cur) }}</span></div>
+        {% if totals.discount %}<div class="row"><span>Discount</span><span>−{{ fmt_money(totals.discount, cur) }}</span></div>{% endif %}
+        {% if totals.tax %}<div class="row"><span>Tax</span><span>{{ fmt_money(totals.tax, cur) }}</span></div>{% endif %}
+        {% if totals.line_tax %}<div class="row"><span>Item tax</span><span>{{ fmt_money(totals.line_tax, cur) }}</span></div>{% endif %}
+        {% if totals.shipping %}<div class="row"><span>Shipping</span><span>{{ fmt_money(totals.shipping, cur) }}</span></div>{% endif %}
+        <div class="row grand"><span>Total</span><span>{{ fmt_money(totals.total, cur) }}</span></div>
+      </div>
+      {% if biz.payment_details %}
+      <h3>Payment details</h3><p style="white-space:pre-line">{{ biz.payment_details }}</p>
+      {% endif %}
+      {% if doc.notes %}<h3>Notes</h3><p style="white-space:pre-line">{{ doc.notes }}</p>{% endif %}
+      {% if doc.terms %}<h3>Terms</h3><p style="white-space:pre-line">{{ doc.terms }}</p>{% endif %}
+    </div>
+  </div>
+  <p class="foot">Shared via Invoice Maker</p>
+</main>
+</body>
+</html>
