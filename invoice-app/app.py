@@ -20,6 +20,7 @@ import os
 import re
 import secrets
 import time
+from urllib.parse import quote
 
 from flask import (Flask, Response, abort, jsonify, redirect, request,
                    send_file, session, render_template)
@@ -168,6 +169,11 @@ def current_user():
 def require_user():
     email = current_user()
     if not email:
+        if request.method == "GET":
+            nxt = request.full_path or "/"
+            if not nxt.startswith("/"):
+                nxt = "/"
+            abort(redirect("/login?next=" + quote(nxt, safe="")))
         abort(401)
     return email
 
@@ -245,8 +251,14 @@ def login():
         if pc:
             redeem_code_for(email, pc)  # best effort
             save_all()
-        return redirect("/")
-    return render_template("auth.html", mode="login")
+        nxt = (request.form.get("next") or "").strip()
+        if not nxt.startswith("/") or nxt.startswith("//"):
+            nxt = "/"
+        return redirect(nxt)
+    nxt = (request.args.get("next") or "").strip()
+    if not nxt.startswith("/"):
+        nxt = ""
+    return render_template("auth.html", mode="login", next=nxt)
 
 
 @app.route("/register", methods=["GET", "POST"])
