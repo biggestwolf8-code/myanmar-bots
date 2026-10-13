@@ -259,13 +259,27 @@ def api_new():
         return jsonify({"ok": False}), 401
     histories.pop(sid, None)
     session_images.pop(sid, None)
+    persist_images(sid)
     _save_json("webhistories.json", histories)
     return jsonify({"ok": True})
 
 
 # Images stay visible for follow-up questions (like Claude Pro): the latest
 # attached images are re-sent with every later message in the same session.
-session_images = {}
+# Persisted to disk (not just memory) so a server restart/redeploy mid-chat
+# can't silently "forget" them.
+session_images = _load_json("webimages.json", {})
+
+
+def persist_images(sid):
+    imgs = session_images.get(sid, [])[-3:]
+    if imgs:
+        session_images[sid] = imgs
+    else:
+        session_images.pop(sid, None)
+    for s in [s for s in session_images if s not in sessions]:
+        session_images.pop(s, None)
+    _save_json("webimages.json", session_images)
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -360,7 +374,8 @@ def api_upload_chat():
             mime, img_bytes = shrink_image(data, ext)
             b64 = base64.b64encode(img_bytes).decode()
             attachments.append({"kind": "image", "mime": mime, "b64": b64})
-            session_images.setdefault(sid, []).append((mime, b64))
+            session_images.setdefault(sid, []).append([mime, b64])
+            persist_images(sid)
             stored_label = f"[Image attached: {f.filename}]"
         elif ext == ".pdf":
             attachments.append({"kind": "pdf",
