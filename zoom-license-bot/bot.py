@@ -2,19 +2,16 @@
 """
 Zoom License Monitor — Telegram bot.
 
-Watches the license status (Licensed vs Basic) of a set of Zoom accounts via
-Zoom OAuth (one app, authorized once per account) and alerts the admin when a
-license lapses.
+Watches the license status (Licensed vs Basic) of a fleet of Zoom accounts
+and alerts the admin when a license lapses.
 
-How it works:
-  1. A Zoom OAuth app (user-managed) is created once in the Zoom Marketplace
-     with redirect URI = ZOOM_REDIRECT_URI. The app's configured scopes apply.
-  2. Each Zoom account authorizes the app once (via /reauth link or a browser
-     session). The OAuth callback (/oauth/callback) captures the code and the
-     bot stores the refresh token (Fernet-encrypted) per account.
-  3. /check (or the daily auto-check) calls GET /v2/users/me for each stored
-     refresh token and reads the `type` field: 1 = Basic, 2 = Licensed.
-  4. Any status change since the last check is reported to the admin.
+Two data paths (OAuth is the future; sweeps work today):
+  A. Zoom OAuth (one app, authorized once per account). The OAuth callback
+     (/oauth/callback) captures the code and the bot stores the refresh token
+     (Fernet-encrypted) per account. Live checks call GET /v2/users/me.
+  B. Credential sweeps: a scheduled browser job signs into each account and
+     reads the license status, then POSTs results to /ingest (protected by
+     INGEST_SECRET). The bot records them and alerts on changes.
 
 Env vars:
     BOT_TOKEN         Telegram bot token from @BotFather (required)
@@ -25,7 +22,8 @@ Env vars:
     ENCRYPTION_KEY    Fernet key for token storage (required; generate with
                       python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
     DATA_DIR          Directory for tokens.json (default ./data; on Railway use /data volume)
-    CHECK_HOUR        Hour (Asia/Bangkok) for the daily auto-check (default 9)
+    CHECK_HOUR        Hour (Asia/Bangkok) for the daily summary (default 9)
+    INGEST_SECRET     Shared secret protecting POST /ingest (required)
 
 Run: pip install -r requirements.txt && python bot.py
 Railway: Procfile `web: python bot.py`, volume mounted at /data, DATA_DIR=/data
@@ -54,10 +52,12 @@ ZOOM_REDIRECT_URI = os.environ.get("ZOOM_REDIRECT_URI", "").strip()
 ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", "").strip()
 DATA_DIR = os.environ.get("DATA_DIR", "./data").strip() or "./data"
 CHECK_HOUR = int(os.environ.get("CHECK_HOUR", "9") or 9)
+INGEST_SECRET = os.environ.get("INGEST_SECRET", "").strip()
 
 for name, val in [("BOT_TOKEN", BOT_TOKEN), ("ADMIN_CHAT_ID", ADMIN_CHAT_ID),
                   ("ZOOM_CLIENT_ID", ZOOM_CLIENT_ID), ("ZOOM_CLIENT_SECRET", ZOOM_CLIENT_SECRET),
-                  ("ZOOM_REDIRECT_URI", ZOOM_REDIRECT_URI), ("ENCRYPTION_KEY", ENCRYPTION_KEY)]:
+                  ("ZOOM_REDIRECT_URI", ZOOM_REDIRECT_URI), ("ENCRYPTION_KEY", ENCRYPTION_KEY),
+                  ("INGEST_SECRET", INGEST_SECRET)]:
     if not val:
         raise SystemExit(f"Set the {name} env var.")
 
@@ -331,31 +331,48 @@ def handle_message(msg):
     if cmd == "/start":
         send(chat_id,
              "\U0001f50d Zoom License Monitor\n\n"
-             "Watches your Zoom accounts and alerts you when a license lapses.\n\n"
-             "/check — check all licenses now\n"
-             "/status — last known statuses (no API calls)\n"
+             "Watches your Zoom accounts and alerts you when a license lapses.\n"
+             "Statuses come from periodic license sweeps (change alerts are\n"
+             "sent automatically when a sweep finds one).\n\n"
+             "/check — last known license statuses\n"
+             "/status — status counts summary\n"
              "/accounts — authorization coverage\n"
              "/list licensed|basic|problems — list accounts by status\n"
-             "/reauth <email|c62> — authorize link for one account\n"
-             "/alerts on|off — daily auto-check alerts")
+             "/reauth <email> — authorize link (for OAuth mode)\n"
+             "/alerts on|off — change alerts on/off")
     elif cmd == "/check":
-        send(chat_id, "\u23f3 Checking all accounts, this takes a minute or so...")
-        results = check_all()
         store = load_store()
-        prev = {e: a.get("last_type") for e, a in store["accounts"].items()}
-        changes = []
-        for email, (status, detail) in results.items():
-            if status in ("Licensed", "Basic") and prev.get(email) and prev[email] != status:
-                changes.append((email, prev[email], status, ""))
-            if status in ("Licensed", "Basic"):
-                store["accounts"].setdefault(email, {})["last_type"] = status
-                store["accounts"][email]["last_check"] = datetime.datetime.now(
-                    datetime.timezone.utc).isoformat()
-        save_store(store)
-        out = fmt_table(results)
-        if changes:
-            out += "\n\n" + fmt_changes(changes)
-        send(chat_id, out)
+        oauth_accounts = [e for e, a in store["accounts"].items() if a.get("refresh_token")]
+        if oauth_accounts:
+            send(chat_id, "\u23f3 Checking OAuth-linked accounts live...")
+            results = {}
+            for email in sorted(oauth_accounts):
+                try:
+                    results[email] = check_one_account(email, store["accounts"][email])
+                except Exception as e:
+                    results[email] = ("ERROR", str(e)[:200])
+            for email, (status, _) in results.items():
+                if status in ("Licensed", "Basic"):
+                    store["accounts"][email]["last_type"] = status
+                    store["accounts"][email]["last_check"] = datetime.datetime.now(
+                        datetime.timezone.utc).isoformat()
+            save_store(store)
+            send(chat_id, fmt_table(results) + "\n\n(live OAuth check)")
+        else:
+            # Sweep mode: report last known results from credential sweeps.
+            results = {}
+            for email in sorted(set(SEED_EMAILS) | set(store["accounts"].keys())):
+                a = store["accounts"].get(email, {})
+                st = a.get("last_type")
+                if st in ("Licensed", "Basic"):
+                    results[email] = (st, "")
+                else:
+                    results[email] = (a.get("sweep_status") or "UNKNOWN",
+                                      a.get("sweep_detail") or "no sweep data yet")
+            out = fmt_table(results)
+            ls = store.get("last_sweep_at", "")
+            out += f"\n\nLast sweep: {ls[:16].replace('T', ' ')} UTC" if ls else "\n\nNo sweep yet."
+            send(chat_id, out)
     elif cmd == "/status":
         store = load_store()
         emails = sorted(set(SEED_EMAILS) | set(store["accounts"].keys()))
@@ -453,7 +470,11 @@ def poll_loop():
 # ---------------------------------------------------------------- scheduler
 
 def daily_check_job():
-    """Runs every minute; fires the auto-check once per day at CHECK_HOUR BKK."""
+    """Runs every minute; at CHECK_HOUR BKK sends the daily license summary.
+
+    In sweep mode this summarizes the last sweep (change alerts are sent at
+    ingest time). If any accounts have OAuth tokens, they are checked live.
+    """
     last_run_date = None
     while True:
         try:
@@ -462,33 +483,47 @@ def daily_check_job():
                 last_run_date = now.date()
                 store = load_store()
                 if not store.get("alerts_on", True):
-                    log.info("alerts off, skipping daily check")
+                    log.info("alerts off, skipping daily summary")
                     continue
-                if not any(a.get("refresh_token") for a in store["accounts"].values()):
-                    log.info("no authorized accounts yet, skipping daily check")
-                    continue
-                log.info("running daily license check")
-                results = check_all()
-                prev = {e: a.get("last_type") for e, a in store["accounts"].items()}
-                changes = []
-                for email, (status, detail) in results.items():
-                    if status in ("Licensed", "Basic"):
-                        if prev.get(email) and prev[email] != status:
-                            changes.append((email, prev[email], status, ""))
-                        store["accounts"].setdefault(email, {})["last_type"] = status
-                        store["accounts"][email]["last_check"] = datetime.datetime.now(
-                            datetime.timezone.utc).isoformat()
-                    elif status in ("NEEDS_REAUTH", "ERROR"):
-                        changes.append((email, prev.get(email, "?"), status, detail))
-                save_store(store)
-                if changes:
-                    send(ADMIN_CHAT_ID, fmt_changes(changes) + "\n\n" + fmt_table(results))
-                else:
-                    n_lic = sum(1 for s, _ in results.values() if s == "Licensed")
-                    n_bas = sum(1 for s, _ in results.values() if s == "Basic")
+                oauth_accounts = [e for e, a in store["accounts"].items()
+                                  if a.get("refresh_token")]
+                if oauth_accounts:
+                    log.info("running daily live OAuth check")
+                    results = {}
+                    for email in sorted(oauth_accounts):
+                        try:
+                            results[email] = check_one_account(email, store["accounts"][email])
+                        except Exception as e:
+                            results[email] = ("ERROR", str(e)[:200])
+                    prev = {e: a.get("last_type") for e, a in store["accounts"].items()}
+                    changes = []
+                    for email, (status, detail) in results.items():
+                        if status in ("Licensed", "Basic"):
+                            if prev.get(email) and prev[email] != status:
+                                changes.append((email, prev[email], status, ""))
+                            store["accounts"][email]["last_type"] = status
+                            store["accounts"][email]["last_check"] = datetime.datetime.now(
+                                datetime.timezone.utc).isoformat()
+                    save_store(store)
+                    if changes:
+                        send(ADMIN_CHAT_ID, fmt_changes(changes))
+                        continue
+                # Sweep-mode summary (also sent when live check found no changes)
+                counts = {}
+                for a in store["accounts"].values():
+                    st = a.get("last_type", "unknown")
+                    counts[st] = counts.get(st, 0) + 1
+                ls = store.get("last_sweep_at", "")
+                total = sum(counts.values())
+                if total == 0:
                     send(ADMIN_CHAT_ID,
-                         f"\u2705 Daily Zoom check: no changes. "
-                         f"{n_lic} Licensed, {n_bas} Basic, {len(results)} total.")
+                         "\u2705 Daily Zoom summary: no accounts tracked yet. "
+                         "Run a sweep to populate license statuses.")
+                else:
+                    summary = ", ".join(f"{k} ({v})" for k, v in sorted(counts.items()))
+                    when = f"swept {ls[:16].replace('T', ' ')} UTC" if ls else "no sweep yet"
+                    send(ADMIN_CHAT_ID,
+                         f"\u2705 Daily Zoom summary ({total} accounts, {when}): {summary}.")
         except Exception:
             log.exception("daily check error")
         time.sleep(60)
@@ -501,6 +536,95 @@ app = Flask(__name__)
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+@app.post("/ingest")
+def ingest():
+    """Receive sweep results. Protected by INGEST_SECRET.
+
+    Body JSON: {"results": {"email": {"status": "Licensed"|"Basic"|"ERROR"|"BLOCKED",
+                                      "detail": "..."}}, "swept_at": "<iso>"}
+    Updates the store, alerts the admin on license changes.
+    """
+    if request.headers.get("X-Ingest-Secret", "") != INGEST_SECRET:
+        return {"ok": False, "error": "forbidden"}, 403
+    try:
+        body = request.get_json(force=True)
+    except Exception:
+        return {"ok": False, "error": "bad json"}, 400
+    results = body.get("results") or {}
+    swept_at = body.get("swept_at") or datetime.datetime.now(
+        datetime.timezone.utc).isoformat()
+    if not isinstance(results, dict):
+        return {"ok": False, "error": "results must be an object"}, 400
+
+    store = load_store()
+    changes = []
+    updated = 0
+    for email, info in results.items():
+        email = str(email).strip().lower()
+        if "@" not in email or not isinstance(info, dict):
+            continue
+        status = str(info.get("status", "")).strip()
+        detail = str(info.get("detail", ""))[:300]
+        acc = store["accounts"].setdefault(email, {})
+        prev = acc.get("last_type")
+        acc["sweep_status"] = status
+        acc["sweep_detail"] = detail
+        acc["last_sweep"] = swept_at
+        if status in ("Licensed", "Basic"):
+            acc["last_type"] = status
+            acc["last_check"] = swept_at
+            updated += 1
+            if prev and prev != status:
+                changes.append((email, prev, status, ""))
+        elif status in ("ERROR", "BLOCKED"):
+            # keep last known license, but note the sweep couldn't verify it
+            updated += 1
+    store["last_sweep_at"] = swept_at
+    save_store(store)
+    log.info("ingested %d accounts, %d changes", updated, len(changes))
+
+    if changes and store.get("alerts_on", True):
+        try:
+            send(ADMIN_CHAT_ID, fmt_changes(changes))
+        except Exception:
+            log.exception("alert send failed")
+    return {"ok": True, "updated": updated, "changes": len(changes)}
+
+
+@app.get("/privacy")
+def privacy():
+    return """<!doctype html><html><head><meta charset="utf-8">
+<title>Privacy Policy — Zoom License Monitor</title></head>
+<body style="font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 16px">
+<h1>Privacy Policy — Zoom License Monitor</h1>
+<p>Last updated: 13 October 2026</p>
+<h2>What this app does</h2>
+<p>Zoom License Monitor is a private tool for the owner of a fleet of Zoom
+accounts. It reads each account's license type (Licensed vs Basic) via the
+Zoom API so the owner can see which accounts have active licenses. It also
+provides a Telegram bot interface for viewing those statuses.</p>
+<h2>Data we collect</h2>
+<ul>
+<li>Zoom account email address, Zoom user ID, display name, and license type
+(Basic / Licensed), obtained via the Zoom API with the account owner's
+authorization.</li>
+<li>OAuth refresh tokens, stored encrypted.</li>
+<li>The Telegram chat ID of the bot administrator (for sending status alerts).</li>
+</ul>
+<h2>How data is used and stored</h2>
+<p>Data is used solely to display license statuses and send change alerts to
+the administrator. Tokens are encrypted at rest. Data is stored on the owner's
+private server and is never sold or shared with third parties.</p>
+<h2>Data retention and deletion</h2>
+<p>Data is retained while the app is in use. The owner may revoke the app's
+access at any time from Zoom's Marketplace settings, and may request deletion
+of stored data by contacting the owner.</p>
+<h2>Contact</h2>
+<p>For privacy questions, contact the app owner via the Zoom Marketplace
+listing.</p>
+</body></html>"""
 
 
 @app.get("/oauth/callback")
