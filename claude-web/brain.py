@@ -131,6 +131,24 @@ def extract_doc_text(filename, data, max_chars=20000):
     return True, text
 
 
+def extract_pdf_text(data, max_chars=6000):
+    """Extract text from a PDF for history/follow-ups. Returns (ok, text_or_error)."""
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        pages = []
+        for p in reader.pages[:20]:
+            pages.append(p.extract_text() or "")
+        text = "\n".join(pages).strip()
+    except Exception as e:
+        return False, f"could not read PDF: {e}"
+    if not text:
+        return False, "no readable text found"
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n[...truncated]"
+    return True, text
+
+
 BLOCK_RE = re.compile(r"```(excel|pdf)\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
 

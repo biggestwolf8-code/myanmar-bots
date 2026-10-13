@@ -3,3 +3,4 @@ openpyxl
 fpdf2
 uharfbuzz
 pillow
+pypdf

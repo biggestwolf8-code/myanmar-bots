@@ -258,8 +258,14 @@ def api_new():
     if not sid:
         return jsonify({"ok": False}), 401
     histories.pop(sid, None)
+    session_images.pop(sid, None)
     _save_json("webhistories.json", histories)
     return jsonify({"ok": True})
+
+
+# Images stay visible for follow-up questions (like Claude Pro): the latest
+# attached images are re-sent with every later message in the same session.
+session_images = {}
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -281,8 +287,11 @@ def api_chat():
     history = histories.setdefault(sid, [])
     history.append({"role": "user", "content": text})
     history[:] = history[-20:]
+    # re-send images attached earlier this session so follow-ups can see them
+    attachments = [{"kind": "image", "mime": mime, "b64": b64}
+                   for mime, b64 in session_images.get(sid, [])]
     try:
-        reply, api_usage = brain.ask_claude(history)
+        reply, api_usage = brain.ask_claude(history, attachments=attachments or None)
         reply = reply.strip()
     except Exception as ex:
         print("Claude API failed:", ex)
@@ -345,21 +354,26 @@ def api_upload_chat():
 
     attachments = []
     stored_label = ""
+    stored_extra = ""
     try:
         if ext in IMAGE_EXTS:
             mime, img_bytes = shrink_image(data, ext)
-            attachments.append({"kind": "image", "mime": mime,
-                                "b64": base64.b64encode(img_bytes).decode()})
+            b64 = base64.b64encode(img_bytes).decode()
+            attachments.append({"kind": "image", "mime": mime, "b64": b64})
+            session_images.setdefault(sid, []).append((mime, b64))
             stored_label = f"[Image attached: {f.filename}]"
         elif ext == ".pdf":
             attachments.append({"kind": "pdf",
                                 "b64": base64.b64encode(data).decode()})
+            ok, pdf_text = brain.extract_pdf_text(data)
+            stored_extra = pdf_text if ok else ""
             stored_label = f"[PDF attached: {f.filename}]"
         else:
             ok, doc_text = brain.extract_doc_text(f.filename, data)
             if not ok:
                 return jsonify({"ok": False, "error": f"Couldn't read that file: {doc_text}"}), 400
             attachments.append({"kind": "doc", "name": f.filename, "text": doc_text})
+            stored_extra = doc_text[:6000]
             stored_label = f"[Document attached: {f.filename}]"
     except Exception as e:
         print("upload processing failed:", e)
@@ -379,9 +393,13 @@ def api_upload_chat():
     if not reply:
         history.pop()
         return jsonify({"ok": False, "error": "Empty reply — try again."}), 502
-    # store a placeholder instead of the base64 payload
-    history[-1] = {"role": "user",
-                   "content": (stored_label + " " + text).strip() or stored_label}
+    # store the document text (not just a placeholder) so follow-up
+    # questions work; images are re-sent from session_images instead
+    if stored_extra:
+        stored_content = (f"{stored_label}\n{stored_extra}\n\n{text}").strip()
+    else:
+        stored_content = (stored_label + " " + text).strip() or stored_label
+    history[-1] = {"role": "user", "content": stored_content}
     history.append({"role": "assistant", "content": reply})
     history[:] = history[-20:]
     bump_daily(code)
