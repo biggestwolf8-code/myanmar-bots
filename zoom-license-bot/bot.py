@@ -332,12 +332,25 @@ def _parse_ts(ts):
         return None
 
 
+def account_expiry_date(acc):
+    """Effective license expiry date for an account, or None if unknown.
+
+    Prefers the real expiration date from billing settings; falls back to
+    licensed_since + 14 days.
+    """
+    exp = _parse_ts(acc.get("license_expires_at"))
+    if exp:
+        return exp.date()
+    since = _parse_ts(acc.get("licensed_since"))
+    if since:
+        return (since + datetime.timedelta(days=LICENSE_CYCLE_DAYS)).date()
+    return None
+
+
 def expiry_warnings(store, now=None):
     """Accounts whose license expires tomorrow (or is overdue).
 
-    Prefers the real expiration date from the account's billing settings
-    (license_expires_at); falls back to licensed_since + 14 days.
-    Returns list of (email, days_left_or_over, kind) where kind is
+    Returns list of (email, days_left, kind) where kind is
     'expiring' (1 day left) or 'overdue' (expired but still marked Licensed).
     """
     now = now or datetime.datetime.now(datetime.timezone.utc)
@@ -346,14 +359,10 @@ def expiry_warnings(store, now=None):
     for email, acc in store["accounts"].items():
         if acc.get("last_type") != "Licensed":
             continue
-        exp = _parse_ts(acc.get("license_expires_at"))
-        if exp:
-            days_left = (exp.date() - today).days
-        else:
-            since = _parse_ts(acc.get("licensed_since"))
-            if not since:
-                continue
-            days_left = LICENSE_CYCLE_DAYS - (today - since.date()).days
+        exp_date = account_expiry_date(acc)
+        if not exp_date:
+            continue
+        days_left = (exp_date - today).days
         if days_left == WARN_DAYS_BEFORE:
             warns.append((email, days_left, "expiring"))
         elif days_left <= 0:
@@ -617,10 +626,23 @@ def daily_check_job():
                     when = f"swept {ls[:16].replace('T', ' ')} UTC" if ls else "no sweep yet"
                     send(ADMIN_CHAT_ID,
                          f"\u2705 Daily Zoom summary ({total} accounts, {when}): {summary}.")
-                # 1-day advance expiry warnings (14-day license cycle)
+                # 1-day advance expiry warnings (14-day license cycle).
+                # Each expiry warns once (ingest-time urgent alerts and the
+                # daily job share the warned_for_expiry marker).
                 warns = expiry_warnings(store)
-                if warns and store.get("alerts_on", True):
-                    send(ADMIN_CHAT_ID, fmt_warnings(warns))
+                fresh = []
+                for email, dl, kind in warns:
+                    acc = store["accounts"][email]
+                    exp_date = account_expiry_date(acc)
+                    key = exp_date.isoformat() if exp_date else None
+                    if acc.get("warned_for_expiry") != key:
+                        fresh.append((email, dl, kind))
+                        if key:
+                            acc["warned_for_expiry"] = key
+                if fresh:
+                    save_store(store)
+                    if store.get("alerts_on", True):
+                        send(ADMIN_CHAT_ID, fmt_warnings(fresh))
         except Exception:
             log.exception("daily check error")
         time.sleep(60)
@@ -702,6 +724,36 @@ def ingest():
             send(ADMIN_CHAT_ID, fmt_changes(changes))
         except Exception:
             log.exception("alert send failed")
+
+    # Immediate alert for licenses expiring within 1 day (don't wait for the
+    # daily job — a sweep may land after the morning summary ran).
+    today = datetime.datetime.now(datetime.timezone.utc).date()
+    urgent = []
+    for email in results:
+        email = str(email).strip().lower()
+        acc = store["accounts"].get(email)
+        if not acc or acc.get("last_type") != "Licensed":
+            continue
+        exp_date = account_expiry_date(acc)
+        if not exp_date:
+            continue
+        days_left = (exp_date - today).days
+        key = exp_date.isoformat()
+        if days_left <= WARN_DAYS_BEFORE and acc.get("warned_for_expiry") != key:
+            urgent.append((email, days_left))
+            acc["warned_for_expiry"] = key
+    if urgent:
+        save_store(store)
+        if store.get("alerts_on", True):
+            lines = ["\u23f0 Licenses expiring soon:"]
+            for email, dl in sorted(urgent):
+                when = "TOMORROW" if dl == 1 else ("TODAY" if dl == 0 else f"{-dl}d OVERDUE")
+                lines.append(f"{short_email(email)}: expires {when}")
+            try:
+                send(ADMIN_CHAT_ID, "\n".join(lines))
+            except Exception:
+                log.exception("urgent expiry alert failed")
+
     return {"ok": True, "updated": updated, "changes": len(changes)}
 
 
