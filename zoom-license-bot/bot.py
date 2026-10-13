@@ -333,24 +333,31 @@ def _parse_ts(ts):
 
 
 def expiry_warnings(store, now=None):
-    """Accounts whose 14-day license is expiring tomorrow (or overdue).
+    """Accounts whose license expires tomorrow (or is overdue).
 
-    Returns list of (email, days_licensed, kind) where kind is
-    'expiring' (13 days) or 'overdue' (14+ days but still marked Licensed).
+    Prefers the real expiration date from the account's billing settings
+    (license_expires_at); falls back to licensed_since + 14 days.
+    Returns list of (email, days_left_or_over, kind) where kind is
+    'expiring' (1 day left) or 'overdue' (expired but still marked Licensed).
     """
     now = now or datetime.datetime.now(datetime.timezone.utc)
+    today = now.date()
     warns = []
     for email, acc in store["accounts"].items():
         if acc.get("last_type") != "Licensed":
             continue
-        since = _parse_ts(acc.get("licensed_since"))
-        if not since:
-            continue
-        days = (now - since).days
-        if days == LICENSE_CYCLE_DAYS - WARN_DAYS_BEFORE:
-            warns.append((email, days, "expiring"))
-        elif days >= LICENSE_CYCLE_DAYS:
-            warns.append((email, days, "overdue"))
+        exp = _parse_ts(acc.get("license_expires_at"))
+        if exp:
+            days_left = (exp.date() - today).days
+        else:
+            since = _parse_ts(acc.get("licensed_since"))
+            if not since:
+                continue
+            days_left = LICENSE_CYCLE_DAYS - (today - since.date()).days
+        if days_left == WARN_DAYS_BEFORE:
+            warns.append((email, days_left, "expiring"))
+        elif days_left <= 0:
+            warns.append((email, days_left, "overdue"))
     return sorted(warns)
 
 
@@ -359,10 +366,10 @@ def fmt_warnings(warns):
     over = [(e, d) for e, d, k in warns if k == "overdue"]
     lines = []
     if exp:
-        lines.append(f"\u23f0 {len(exp)} license(s) expire TOMORROW (day 14):")
+        lines.append(f"\u23f0 {len(exp)} license(s) expire TOMORROW:")
         lines.append(_id_list([e for e, _ in exp], limit=40))
     if over:
-        lines.append(f"\u26a0\ufe0f {len(over)} license(s) past day 14 but still show Licensed — verify:")
+        lines.append(f"\u26a0\ufe0f {len(over)} license(s) expired but still show Licensed — verify:")
         lines.append(_id_list([e for e, _ in over], limit=40))
     return "\n".join(lines)
 
@@ -389,8 +396,8 @@ def handle_message(msg):
              "/accounts — authorization coverage\n"
              "/list licensed|basic|problems — list accounts by status\n"
              "/expiring — licenses expiring within 2 days\n"
-             "/backdate YYYY-MM-DD — set license start date for all\n"
-             "  currently-Licensed accounts (corrects the 14-day clock)\n"
+             "/backdate YYYY-MM-DD — fallback: set license start date for\n"
+             "  currently-Licensed accounts lacking a real expiration date\n"
              "/reauth <email> — authorize link (for OAuth mode)\n"
              "/alerts on|off — change alerts on/off")
     elif cmd == "/check":
@@ -633,7 +640,8 @@ def ingest():
     """Receive sweep results. Protected by INGEST_SECRET.
 
     Body JSON: {"results": {"email": {"status": "Licensed"|"Basic"|"ERROR"|"BLOCKED",
-                                      "detail": "..."}}, "swept_at": "<iso>"}
+                                      "detail": "...",
+                                      "expires_at": "2026-10-27" (optional)}}, "swept_at": "<iso>"}
     Updates the store, alerts the admin on license changes.
     """
     if request.headers.get("X-Ingest-Secret", "") != INGEST_SECRET:
@@ -662,6 +670,12 @@ def ingest():
         acc["sweep_status"] = status
         acc["sweep_detail"] = detail
         acc["last_sweep"] = swept_at
+        # license expiration date from the account's billing settings, when known
+        exp = str(info.get("expires_at") or "").strip()
+        if re.match(r"^\d{4}-\d{2}-\d{2}", exp):
+            acc["license_expires_at"] = exp[:10]
+        elif status == "Basic":
+            acc.pop("license_expires_at", None)
         if status in ("Licensed", "Basic"):
             if status == "Licensed" and prev != "Licensed":
                 # (Re)licensed: start the 14-day clock. If the license was
