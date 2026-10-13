@@ -6,7 +6,7 @@ and an admin panel.
 
 Env vars:
   ANTHROPIC_API_KEY  Claude API key (console.anthropic.com)
-  MODEL              Claude model id (default: claude-sonnet-5-5)
+  MODEL              Claude model id (default: claude-fable-5-1)
   ADMIN_PASSWORD     Password for the /admin panel (required)
   DATA_DIR           Storage dir (default "."; use "/data" with a Railway
                      volume so codes/sessions/usage survive redeploys)

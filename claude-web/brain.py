@@ -14,7 +14,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_PATH = os.path.join(BASE_DIR, "fonts", "Padauk-Regular.ttf")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-MODEL = os.environ.get("MODEL", "claude-sonnet-5-5")
+MODEL = os.environ.get("MODEL", "claude-fable-5-1")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "4000"))
 
 SYSTEM_PROMPT = (
@@ -47,6 +47,8 @@ SYSTEM_PROMPT = (
 
 # ($ per 1M input tokens, $ per 1M output tokens)
 MODEL_RATES = {
+    "claude-fable-5-1": (10.0, 50.0),
+    "claude-opus-5-5": (4.0, 20.0),
     "claude-sonnet-5-5": (2.0, 10.0),
     "claude-haiku-4-5-20251001": (1.0, 5.0),
 }
