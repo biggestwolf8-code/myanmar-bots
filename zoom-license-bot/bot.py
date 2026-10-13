@@ -8,7 +8,7 @@ license lapses.
 
 How it works:
   1. A Zoom OAuth app (user-managed) is created once in the Zoom Marketplace
-     with redirect URI = ZOOM_REDIRECT_URI and scope `user:read`.
+     with redirect URI = ZOOM_REDIRECT_URI. The app's configured scopes apply.
   2. Each Zoom account authorizes the app once (via /reauth link or a browser
      session). The OAuth callback (/oauth/callback) captures the code and the
      bot stores the refresh token (Fernet-encrypted) per account.
