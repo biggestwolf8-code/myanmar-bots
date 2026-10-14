@@ -70,30 +70,14 @@ def check_account_playwright(email, password):
 
 
 def get_at_risk_accounts(store, fleet_emails_fn, short_email_fn):
-    """Return emails that need re-checking:
-    - Licensed accounts expiring within 2 days
-    - Accounts marked Basic (may have been renewed)
-    - Accounts with unknown/BLOCKED status
+    """Return accounts marked Basic — they may have been renewed since the
+    last sweep. Expiring Licensed accounts are NOT re-checked: their expiry
+    dates are already known from the last sweep.
     """
-    import datetime
     at_risk = []
-    now = datetime.datetime.now(datetime.timezone.utc).date()
     for email in fleet_emails_fn(store):
         acc = store["accounts"].get(email, {})
-        st = acc.get("last_type", "unknown")
-        if st == "Licensed":
-            exp = acc.get("license_expires_at")
-            if exp:
-                try:
-                    exp_date = datetime.date.fromisoformat(exp[:10])
-                    if (exp_date - now).days <= 2:
-                        at_risk.append(email)
-                except Exception:
-                    at_risk.append(email)
-            else:
-                # No expiry date — check it
-                at_risk.append(email)
-        elif st in ("Basic", "unknown", "BLOCKED"):
+        if acc.get("last_type") == "Basic":
             at_risk.append(email)
     return at_risk
 

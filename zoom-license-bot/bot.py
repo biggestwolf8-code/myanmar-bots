@@ -941,11 +941,9 @@ def oauth_callback():
 
 
 def sweep_job():
-    """Every 6 hours, run a targeted sweep of at-risk accounts.
-
-    Only checks accounts that need it (expiring soon, marked Basic, or
-    unknown) to avoid triggering Zoom's rate limits. Requires ZOOM_CREDS
-    env var with account passwords.
+    """Every 6 hours, re-check accounts marked Basic (they may have been
+    renewed). Expiring Licensed accounts are not re-checked — their expiry
+    dates are already known from the last sweep.
     """
     import time as _time
     # Wait for bot to fully start
