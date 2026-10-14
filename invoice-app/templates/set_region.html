@@ -13,6 +13,8 @@
   </select>
   <label>Date format</label>
   <select name="date_format">
+    <option value="DD Mon YYYY" {% if biz.date_format == "DD Mon YYYY" %}selected{% endif %}>English (05 Oct 2026)</option>
+    <option value="Mon DD, YYYY" {% if biz.date_format == "Mon DD, YYYY" %}selected{% endif %}>English US (Oct 05, 2026)</option>
     <option value="DD-MM-YYYY" {% if biz.date_format == "DD-MM-YYYY" %}selected{% endif %}>DD-MM-YYYY (05-10-2026)</option>
     <option value="YYYY-MM-DD" {% if biz.date_format == "YYYY-MM-DD" %}selected{% endif %}>YYYY-MM-DD (2026-10-05)</option>
   </select>

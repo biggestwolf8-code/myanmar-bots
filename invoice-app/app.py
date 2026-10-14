@@ -104,7 +104,7 @@ def default_business():
             "accent_color": "#2563eb",
             "inv_prefix": "INV", "est_prefix": "EST", "rec_prefix": "REC",
             "default_tax": 0, "default_notes": "", "default_terms": "",
-            "date_format": "DD-MM-YYYY",
+            "date_format": "DD Mon YYYY",
             "default_email_message": (
                 "Hello {client},\n\n"
                 "Please find your {type} {number} for {total} here: {link}\n\n"
@@ -121,6 +121,11 @@ def user_data(email):
     b = d.setdefault("business", default_business())
     for k, v in default_business().items():
         b.setdefault(k, v)
+    # one-time migration: the old numeric default becomes the English
+    # month-name format; an explicit later choice in Region sticks
+    if b.get("date_format") == "DD-MM-YYYY" and not b.get("_date_fmt_en"):
+        b["date_format"] = "DD Mon YYYY"
+        b["_date_fmt_en"] = True
     d.setdefault("clients", [])
     d.setdefault("items", [])
     d.setdefault("documents", [])
@@ -409,7 +414,7 @@ def next_number(d, dtype):
     return "%s%04d" % (prefixes.get(dtype, "DOC"), n)
 
 
-def fmt_date(date_str, date_format="DD-MM-YYYY"):
+def fmt_date(date_str, date_format="DD Mon YYYY"):
     """Format an ISO date per the business date-format setting."""
     if not date_str:
         return ""
@@ -417,9 +422,14 @@ def fmt_date(date_str, date_format="DD-MM-YYYY"):
         dt = datetime.date.fromisoformat(str(date_str)[:10])
     except ValueError:
         return str(date_str)
-    if (date_format or "DD-MM-YYYY") == "DD-MM-YYYY":
+    fmt = date_format or "DD Mon YYYY"
+    if fmt == "DD-MM-YYYY":
         return dt.strftime("%d-%m-%Y")
-    return dt.strftime("%Y-%m-%d")
+    if fmt == "YYYY-MM-DD":
+        return dt.strftime("%Y-%m-%d")
+    if fmt == "Mon DD, YYYY":
+        return dt.strftime("%b %d, %Y")
+    return dt.strftime("%d %b %Y")
 
 
 def share_message(d, doc, share_url):
@@ -911,14 +921,14 @@ def render_doc_pdf(d, doc):
     pdf.set_text_color(110, 110, 110)
     pdf.cell(30, 6, "Issue date:", align="R")
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(38, 6, doc.get("issue_date", ""), new_x=XPos.LMARGIN,
-             new_y=YPos.NEXT, align="R")
+    pdf.cell(38, 6, fmt_date(doc.get("issue_date", ""), biz.get("date_format")),
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R")
     pdf.set_x(130)
     pdf.set_text_color(110, 110, 110)
     pdf.cell(30, 6, "Due date:", align="R")
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(38, 6, doc.get("due_date") or "-", new_x=XPos.LMARGIN,
-             new_y=YPos.NEXT, align="R")
+    pdf.cell(38, 6, fmt_date(doc.get("due_date") or "", biz.get("date_format")) or "-",
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R")
     if doc.get("type") == "invoice":
         pdf.set_x(130)
         pdf.set_text_color(110, 110, 110)
@@ -1399,9 +1409,10 @@ def settings_region():
         cur = request.form.get("currency") or "MMK"
         if cur in CURRENCIES:
             b["currency"] = cur
-        df = request.form.get("date_format") or "DD-MM-YYYY"
-        if df in ("DD-MM-YYYY", "YYYY-MM-DD"):
+        df = request.form.get("date_format") or "DD Mon YYYY"
+        if df in ("DD Mon YYYY", "Mon DD, YYYY", "DD-MM-YYYY", "YYYY-MM-DD"):
             b["date_format"] = df
+            b["_date_fmt_en"] = True  # explicit choice; skip one-time migration
         msg = "Region settings saved."
         save_all()
     return render_template("set_region.html", email=email, biz=b, msg=msg,

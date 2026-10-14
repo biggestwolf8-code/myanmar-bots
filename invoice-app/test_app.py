@@ -136,6 +136,28 @@ check("paid tab empty", b"INV0001" not in r.data)
 r = c.get("/")
 check("list shows K currency + DD-MM-YYYY", b"K1,147,000.00" in r.data and b"12-10-2026" in r.data)
 
+# english date format option
+c.post("/settings/region", data={"currency": "MMK", "date_format": "DD Mon YYYY"}, follow_redirects=True)
+r = c.get("/")
+check("list shows English date", b"12 Oct 2026" in r.data)
+reader = PdfReader(io.BytesIO(c.get(f"/docs/{doc['id']}/pdf").data))
+etext = "\n".join(p.extract_text() or "" for p in reader.pages)
+check("pdf has English date", "12 Oct 2026" in etext)
+c.post("/settings/region", data={"currency": "MMK", "date_format": "Mon DD, YYYY"}, follow_redirects=True)
+check("US English date", b"Oct 12, 2026" in c.get("/").data)
+r = c.get("/settings/region")
+check("region offers English formats", b"05 Oct 2026" in r.data and b"Oct 05, 2026" in r.data)
+
+# one-time migration: legacy default becomes English, explicit choice sticks
+A.invdata["user@example.com"]["business"].update({"date_format": "DD-MM-YYYY"})
+A.invdata["user@example.com"]["business"].pop("_date_fmt_en", None)
+c.get("/")
+b = A.invdata["user@example.com"]["business"]
+check("legacy default migrated", b["date_format"] == "DD Mon YYYY" and b.get("_date_fmt_en") is True)
+c.post("/settings/region", data={"currency": "MMK", "date_format": "DD-MM-YYYY"}, follow_redirects=True)
+c.get("/")
+check("explicit DD-MM-YYYY sticks", A.invdata["user@example.com"]["business"]["date_format"] == "DD-MM-YYYY")
+
 # mark paid
 c.post(f"/docs/{doc['id']}/mark", data={"action": "paid"}, follow_redirects=True)
 check("mark paid", A.eff_status(doc) == "paid")
