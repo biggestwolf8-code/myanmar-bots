@@ -39,7 +39,7 @@ Admin commands (only ADMIN_CHAT_ID):
   /student <name|CODE|id>    per-student homework card: class, current homework,
                              progress, voice count, tutor notes, last done
   Tap /exchange_<id> in any done/homework message to read that student's
-  full exchange with the tutor.
+  full exchange with the tutor. /exchange <name> works too, anytime.
 
 Student commands:
   /homework    show my current homework and progress
@@ -741,7 +741,9 @@ def student_homework_card(user_id, entry):
     """Per-student homework dossier for the teacher."""
     label = entry.get("label") or str(user_id)
     ck = entry.get("class")
-    lines = [f"👤 {label}" + (f" · {class_name(ck)}" if ck else " · no class")]
+    lines = [f"👤 {label}" + (f" · {class_name(ck)}" if ck else " · no class"),
+             f"🆔 ID: {user_id}",
+             f"💬 Exchange: /exchange_{user_id}"]
     data = load_hw()
     hw = active_hw_for_class(ck) if ck else None
     if not hw:
@@ -792,6 +794,20 @@ def get_student_transcript(user_id):
             if best is None or key > (best.get("completed_at") or ""):
                 best = p
     return [dict(m) for m in best["transcript"][-20:]] if best else []
+
+
+def send_exchange(chat_id, user_id):
+    """Send a student's recent exchange with the tutor to the admin."""
+    transcript = get_student_transcript(user_id)
+    if not transcript:
+        send_text(chat_id, f"No saved conversation for ID {user_id} yet.")
+        return
+    label = student_label(user_id)
+    lines = [f"💬 Exchange with {label} (ID {user_id}):", ""]
+    for m in transcript[-20:]:
+        who = "🎤 Student" if m.get("role") == "user" else "🤖 Tutor"
+        lines.append(f"{who}: {(m.get('content') or '')[:800]}")
+    send_long(chat_id, "\n\n".join(lines))
 
 
 def send_long(chat_id, text, limit=4000):
@@ -1116,16 +1132,24 @@ def handle_admin_command(chat_id, user_id, text):
         if not uid:
             send_text(chat_id, "Usage: /exchange_<student id>  (tap the link in the done message)")
             return True
-        transcript = get_student_transcript(uid)
-        if not transcript:
-            send_text(chat_id, f"No saved conversation for ID {uid} yet.")
+        send_exchange(chat_id, uid)
+        return True
+
+    if cmd == "/exchange":
+        if len(parts) < 2:
+            send_text(chat_id, "Usage: /exchange <name | CODE | user id>")
             return True
-        label = student_label(uid)
-        lines = [f"💬 Exchange with {label} (ID {uid}):", ""]
-        for m in transcript[-20:]:
-            who = "🎤 Student" if m.get("role") == "user" else "🤖 Tutor"
-            lines.append(f"{who}: {(m.get('content') or '')[:800]}")
-        send_long(chat_id, "\n\n".join(lines))
+        query = " ".join(parts[1:])
+        matches = find_students(query)
+        if not matches:
+            send_text(chat_id, f"No student found for \"{query}\".")
+        elif len(matches) > 1:
+            lines = [f"Found {len(matches)} students — be more specific:", ""]
+            for code, e in matches[:10]:
+                lines.append(f"• {code} → {e.get('label')} (ID {e['used_by']})")
+            send_text(chat_id, "\n".join(lines))
+        else:
+            send_exchange(chat_id, int(matches[0][1]["used_by"]))
         return True
 
     return False
