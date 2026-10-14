@@ -903,17 +903,70 @@ def group_title(chat_id):
     return load_hw().get("known_groups", {}).get(str(chat_id), {}).get("title", "Group")
 
 
-def groups_status_text():
+def groups_list_message():
+    """Text + inline keyboard for the /groups list. Tap a button to toggle that group."""
     data = load_hw()
     kg = data.get("known_groups", {})
     on = data.get("groups_on", {})
     if not kg:
-        return "👥 No groups seen yet — add me to a group and send any message there."
-    lines = ["👥 Groups:"]
+        return ("👥 No groups seen yet — add me to a group and send any message there.",
+                None)
+    lines = ["👥 Tap a group to turn it on/off:"]
+    buttons = []
     for cid, g in kg.items():
-        lines.append(f"• {g.get('title')} ({cid}): {'ON' if on.get(cid) else 'OFF'}")
-    lines += ["", "Toggle: /group on|off <id> — or just send /group on|off inside the group."]
-    return "\n".join(lines)
+        state = bool(on.get(cid))
+        lines.append(f"• {g.get('title')}: {'ON 🟢' if state else 'OFF 🔴'}")
+        buttons.append([{"text": f"{g.get('title')}: {'🟢 ON' if state else '🔴 OFF'}",
+                         "callback_data": f"grp:{cid}"}])
+    return "\n".join(lines), {"inline_keyboard": buttons}
+
+
+def send_groups_list(chat_id):
+    text, kb = groups_list_message()
+    if kb:
+        send_with_keyboard(chat_id, text, json.dumps(kb))
+    else:
+        send_text(chat_id, text)
+
+
+def handle_callback(cq):
+    """Tap handling for inline buttons (admin only)."""
+    data = cq.get("data", "")
+    user_id = cq.get("from", {}).get("id")
+    cq_id = cq.get("id")
+    msg = cq.get("message") or {}
+    chat_id = msg.get("chat", {}).get("id")
+    msg_id = msg.get("message_id")
+
+    def answer(text, alert=False):
+        try:
+            tg("answerCallbackQuery", {"callback_query_id": cq_id, "text": text,
+                                      "show_alert": alert})
+        except Exception as e:
+            print("answerCallbackQuery failed:", e)
+
+    if not is_admin(user_id):
+        answer("Only the admin can do that.", alert=True)
+        return
+    if data.startswith("grp:"):
+        cid = data[4:]
+        if cid not in load_hw().get("known_groups", {}):
+            answer("Unknown group.")
+            return
+        new_state = not group_chat_enabled(cid)
+        set_group_chat(cid, new_state)
+        answer(f"{group_title(cid)} is now {'ON 🟢' if new_state else 'OFF 🔴'}")
+        # Refresh the list so the buttons show the new state.
+        text, kb = groups_list_message()
+        params = {"chat_id": chat_id, "message_id": msg_id, "text": text}
+        if kb:
+            params["reply_markup"] = json.dumps(kb)
+        try:
+            tg("editMessageText", params)
+        except Exception as e:
+            print("editMessageText failed:", e)
+        return
+    answer("Unknown action.")
 
 
 def handle_group_toggle(chat_id, text):
@@ -1187,11 +1240,11 @@ def handle_admin_command(chat_id, user_id, text):
                       "Which group? See /groups for ids — or just send "
                       f"/group {parts[1].lower()} inside that group.")
         else:
-            send_text(chat_id, groups_status_text())
+            send_groups_list(chat_id)
         return True
 
     if cmd == "/groups":
-        send_text(chat_id, groups_status_text())
+        send_groups_list(chat_id)
         return True
 
     if cmd == "/student":
@@ -1300,6 +1353,10 @@ def handle_admin_command(chat_id, user_id, text):
 
 
 def handle_update(u):
+    cq = u.get("callback_query")
+    if cq:
+        handle_callback(cq)
+        return
     msg = u.get("message") or {}
     chat = msg.get("chat", {})
     chat_id = chat.get("id")
