@@ -391,7 +391,8 @@ def handle_message(msg):
     if not is_admin(msg):
         # Reply (not silent) so a wrong ADMIN_CHAT_ID is diagnosable.
         if text.split()[0].split("@")[0].lower() == "/start":
-            send(chat_id, "This bot is private.")
+            uid = msg.get("from", {}).get("id", "?")
+            send(chat_id, f"This bot is private. (your id: {uid})")
         return
     parts = text.split()
     cmd = parts[0].split("@")[0].lower()
