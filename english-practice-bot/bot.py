@@ -336,7 +336,8 @@ def homework_student_msg(hw):
     return (
         f"📚 New homework from Sayar Arkar — {class_name(hw['class'])}:\n\n"
         f"{hw['text']}\n\n"
-        "Practice it with me right here — just talk to me and I'll guide you through! 🎤"
+        "Practice it with me right here — just talk to me and I'll guide you through! 🎤\n\n"
+        "Send /pause anytime to take a break from the homework."
     )
 
 
@@ -379,12 +380,33 @@ HOMEWORK_STEER = (
 )
 
 
+def set_homework_pause(user_id, pause):
+    """Pause/resume a student's active homework. Returns a status string."""
+    hw = active_hw_for_user(user_id)
+    if not hw:
+        return "nohw"
+    data = load_hw()
+    prog = data["progress"].setdefault(hw["id"], {}).setdefault(str(user_id), new_progress())
+    if prog.get("status") == "done":
+        return "done"
+    if pause:
+        if prog.get("status") == "paused":
+            return "already"
+        prog["status"] = "paused"
+    else:
+        if prog.get("status") != "paused":
+            return "notpaused"
+        prog["status"] = "in_progress" if prog.get("exchanges") else "assigned"
+    save_hw(data)
+    return "ok"
+
+
 def tutor_system_for(user_id):
     hw = active_hw_for_user(user_id)
     if not hw:
         return SYSTEM_PROMPT
     prog = get_progress(hw["id"], user_id)
-    if prog and prog.get("status") == "done":
+    if prog and prog.get("status") in ("done", "paused"):
         return SYSTEM_PROMPT
     return SYSTEM_PROMPT + HOMEWORK_STEER.format(cls=class_name(hw["class"]), task=hw["text"])
 
@@ -450,7 +472,7 @@ def homework_exchange(user_id):
         return
     data = load_hw()
     prog = data["progress"].setdefault(hw["id"], {}).setdefault(str(user_id), new_progress())
-    if prog.get("status") == "done":
+    if prog.get("status") in ("done", "paused"):
         return
     prog["status"] = "in_progress"
     prog["exchanges"] = prog.get("exchanges", 0) + 1
@@ -471,13 +493,15 @@ def format_report(class_key=None):
         if not hw:
             continue
         pmap = data["progress"].get(hw["id"], {})
-        done, doing, idle = [], [], []
+        done, doing, idle, paused = [], [], [], []
         for uid, label in students_in_class(ck):
             p = pmap.get(str(uid), {})
             nm = label or str(uid)
             st = p.get("status", "assigned")
             if st == "done":
                 done.append(nm + (f" — {p['assessment']}" if p.get("assessment") else ""))
+            elif st == "paused":
+                paused.append(nm)
             elif st == "in_progress":
                 doing.append(f"{nm} ({p.get('exchanges', 0)} exchanges)")
             else:
@@ -486,6 +510,7 @@ def format_report(class_key=None):
             f"📚 {class_name(ck)}: \"{hw['text']}\"\n"
             f"✅ Done ({len(done)}): " + (", ".join(done) if done else "—") + "\n"
             f"🔄 Doing ({len(doing)}): " + (", ".join(doing) if doing else "—") + "\n"
+            f"⏸️ Paused ({len(paused)}): " + (", ".join(paused) if paused else "—") + "\n"
             f"⏳ Not started ({len(idle)}): " + (", ".join(idle) if idle else "—"))
     if not blocks:
         return "No active homeworks right now."
@@ -508,7 +533,7 @@ def maybe_send_reminders():
         pmap = data["progress"].setdefault(hw["id"], {})
         for uid, label in students_in_class(hw["class"]):
             prog = pmap.setdefault(str(uid), new_progress())
-            if prog.get("status") == "done" or prog.get("reminded"):
+            if prog.get("status") in ("done", "paused") or prog.get("reminded"):
                 continue
             res = send_text(uid,
                             f"⏰ Friendly reminder — your {class_name(hw['class'])} homework "
@@ -556,6 +581,8 @@ def student_homework_status(user_id):
     st = prog.get("status", "assigned")
     if st == "done":
         extra = "✅ Done — nice work!"
+    elif st == "paused":
+        extra = "⏸️ Paused — send /resume when you're ready to continue!"
     elif st == "in_progress":
         extra = f"🔄 In progress ({prog.get('exchanges', 0)} exchanges so far) — keep going!"
     else:
@@ -739,7 +766,9 @@ START_MSG = (
     "I'll gently correct your mistakes and help you sound more natural.\n\n"
     "Commands:\n"
     "/new — start a fresh conversation\n"
-    "/homework — see your current homework"
+    "/homework — see your current homework\n"
+    "/pause — pause your homework\n"
+    "/resume — resume your homework"
 )
 
 LIMIT_MSG = (
@@ -758,7 +787,7 @@ def maybe_forward_homework_voice(user_id, msg_id, transcript):
     if not hw or not msg_id:
         return False
     prog = get_progress(hw["id"], user_id)
-    if prog and prog.get("status") == "done":
+    if prog and prog.get("status") in ("done", "paused"):
         return False
     label = student_label(user_id)
     try:
@@ -782,7 +811,7 @@ def bump_homework_voice_count(user_id):
         return
     data = load_hw()
     prog = data["progress"].setdefault(hw["id"], {}).setdefault(str(user_id), new_progress())
-    if prog.get("status") == "done":
+    if prog.get("status") in ("done", "paused"):
         return
     prog["voice_msgs"] = prog.get("voice_msgs", 0) + 1
     save_hw(data)
@@ -798,7 +827,7 @@ def record_homework_audio(user_id, file_id):
         return None
     data = load_hw()
     prog = data["progress"].setdefault(hw["id"], {}).setdefault(str(user_id), new_progress())
-    if prog.get("status") == "done":
+    if prog.get("status") in ("done", "paused"):
         return None
     log = data.setdefault("audio_log", [])
     log.append({"uid": user_id, "hid": hw["id"], "fid": file_id,
@@ -858,6 +887,8 @@ def student_homework_card(user_id, entry):
         elif st == "in_progress":
             lines.append(f"🔄 In progress — {prog.get('exchanges', 0)} exchanges, "
                          f"{prog.get('voice_msgs', 0)} voice notes")
+        elif st == "paused":
+            lines.append("⏸️ Paused by student")
         else:
             lines.append("⏳ Not started yet")
         tap_aids = audio_links_for(hw["id"], user_id)
@@ -1547,6 +1578,30 @@ def handle_update(u):
         return
     if text.startswith("/homework"):
         send_text(chat_id, student_homework_status(user_id), thread)
+        return
+    if text.startswith("/pause"):
+        res = set_homework_pause(user_id, True)
+        send_text(chat_id, {
+            "nohw": "📚 No active homework right now — nothing to pause. Just chat with me! 💪",
+            "done": "✅ You've already finished this homework — nothing to pause! 🎉",
+            "already": "⏸️ Already paused. Send /resume whenever you're ready!",
+            "ok": "⏸️ Homework paused — I'll stop nudging you about it. Just chat normally, "
+                  "and send /resume whenever you want to continue. 👍",
+        }[res], thread)
+        return
+    if text.startswith("/resume"):
+        res = set_homework_pause(user_id, False)
+        if res == "ok":
+            hw = active_hw_for_user(user_id)
+            send_text(chat_id,
+                      f"▶️ Homework resumed! Let's pick up where you left off:\n\n{hw['text']}",
+                      thread)
+        else:
+            send_text(chat_id, {
+                "nohw": "📚 No active homework right now.",
+                "done": "✅ You've already finished this homework! 🎉",
+                "notpaused": "Your homework isn't paused — you're good to go! 💪",
+            }[res], thread)
         return
     if not get_student_class(user_id):
         tapped = BUTTON_TO_KEY.get(text.strip().lower())
