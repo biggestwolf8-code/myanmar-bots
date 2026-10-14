@@ -893,7 +893,10 @@ def render_doc_pdf(d, doc):
     pdf.set_xy(12, 9)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("ns", "B", 17)
-    pdf.cell(150, 9, biz.get("name") or "Invoice Maker", new_x=XPos.LMARGIN,
+    seller = (biz.get("name") or "").strip()
+    doc_title = TYPE_TITLES.get(doc.get("type"), "Document")
+    banner = "%s By %s" % (doc_title, seller) if seller else doc_title
+    pdf.cell(150, 9, banner, new_x=XPos.LMARGIN,
              new_y=YPos.NEXT)
     pdf.set_x(12)
     pdf.set_font("ns", "", 9)
