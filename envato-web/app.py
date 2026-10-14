@@ -12,6 +12,7 @@ Env vars:
 """
 
 import datetime
+import hashlib
 import html
 import json
 import os
@@ -30,6 +31,7 @@ PORT = int(os.environ.get("PORT", "8080"))
 SECRET = os.environ.get("FLASK_SECRET", secrets.token_hex(16))
 
 CODES_FILE = os.path.join(DATA_DIR, "web_codes.json")
+USERS_FILE = os.path.join(DATA_DIR, "web_users.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -91,17 +93,54 @@ def login_required(fn):
 
     @wraps(fn)
     def wrapper(*a, **k):
-        if not session.get("code"):
+        if not session.get("code") and not session.get("email"):
             return redirect("/login")
         # verify code still valid
-        codes = load_codes()
-        entry = codes.get(session["code"])
-        if not entry or not entry.get("used_by"):
-            session.clear()
-            return redirect("/login")
+        if session.get("code"):
+            codes = load_codes()
+            entry = codes.get(session["code"])
+            if not entry or not entry.get("used_by"):
+                session.clear()
+                return redirect("/login")
+        if session.get("email"):
+            users = load_users()
+            if session["email"] not in users:
+                session.clear()
+                return redirect("/login")
         return fn(*a, **k)
 
     return wrapper
+
+
+# ---------- email users ----------
+
+def load_users():
+    try:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f).get("users", {})
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_users(users):
+    tmp = USERS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"users": users}, f, ensure_ascii=False)
+    os.replace(tmp, USERS_FILE)
+
+
+def hash_pw(pw, salt=None):
+    salt = salt or secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 200_000)
+    return f"{salt}${h.hex()}"
+
+
+def check_pw(pw, stored):
+    try:
+        salt, _ = stored.split("$", 1)
+    except ValueError:
+        return False
+    return hash_pw(pw, salt) == stored
 
 
 # ---------- routes ----------
@@ -113,7 +152,7 @@ def healthz():
 
 @app.route("/")
 def index():
-    if session.get("code"):
+    if session.get("code") or session.get("email"):
         return redirect("/app")
     return redirect("/login")
 
@@ -122,17 +161,53 @@ def index():
 def login():
     err = ""
     if request.method == "POST":
-        code = (request.form.get("code") or "").strip().upper()
-        codes = load_codes()
-        entry = codes.get(code)
-        if entry and not entry.get("used_by") and code_valid(entry):
-            entry["used_by"] = "web-user"
-            entry["used_at"] = _now_iso()
-            save_codes(codes)
-            session["code"] = code
-            return redirect("/app")
-        err = "Invalid, used, or expired code."
+        # Email login
+        email = (request.form.get("email") or "").strip().lower()
+        pw = request.form.get("password") or ""
+        if email and pw:
+            users = load_users()
+            u = users.get(email)
+            if u and check_pw(pw, u["pw"]):
+                session["email"] = email
+                return redirect("/app")
+            err = "Wrong email or password."
+        else:
+            # Invite code login
+            code = (request.form.get("code") or "").strip().upper()
+            codes = load_codes()
+            entry = codes.get(code)
+            if entry and not entry.get("used_by") and code_valid(entry):
+                entry["used_by"] = "web-user"
+                entry["used_at"] = _now_iso()
+                save_codes(codes)
+                session["code"] = code
+                return redirect("/app")
+            err = "Invalid, used, or expired code."
     return render_template("login.html", err=err)
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    err = ""
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        pw = request.form.get("password") or ""
+        pw2 = request.form.get("password2") or ""
+        users = load_users()
+        if not email or "@" not in email:
+            err = "Enter a valid email."
+        elif len(pw) < 6:
+            err = "Password must be at least 6 characters."
+        elif pw != pw2:
+            err = "Passwords don't match."
+        elif email in users:
+            err = "That email is already registered — just log in."
+        else:
+            users[email] = {"pw": hash_pw(pw), "created_at": _now_iso()}
+            save_users(users)
+            session["email"] = email
+            return redirect("/app")
+    return render_template("signup.html", err=err)
 
 
 @app.route("/i/<code>")

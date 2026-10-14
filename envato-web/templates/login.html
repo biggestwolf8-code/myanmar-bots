@@ -3,19 +3,46 @@
 <title>Envato Elements — Login</title>
 <style>
 *{box-sizing:border-box;margin:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f7f7f7;color:#333;display:flex;align-items:center;justify-content:center;min-height:100vh}
-.card{background:#fff;padding:40px;border-radius:12px;width:360px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.08)}
-.logo{font-size:26px;font-weight:800;margin-bottom:6px}.logo span{color:#82b440}
-.sub{color:#888;font-size:14px;margin-bottom:20px}
-input{width:100%;padding:13px;margin:8px 0;border:2px solid #e5e5e5;border-radius:8px;font-size:16px;text-align:center;letter-spacing:3px;outline:none}
+.card{background:#fff;padding:40px;border-radius:12px;width:380px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.logo{font-size:26px;font-weight:800;margin-bottom:6px;text-align:center}.logo span{color:#82b440}
+.sub{color:#888;font-size:14px;margin-bottom:20px;text-align:center}
+.tabs{display:flex;margin-bottom:16px;border-bottom:2px solid #eee}
+.tab{flex:1;text-align:center;padding:10px;cursor:pointer;font-weight:600;color:#888;font-size:14px}
+.tab.active{color:#82b440;border-bottom:2px solid #82b440;margin-bottom:-2px}
+input{width:100%;padding:13px;margin:8px 0;border:2px solid #e5e5e5;border-radius:8px;font-size:15px;outline:none}
 input:focus{border-color:#82b440}
+input.code{text-align:center;letter-spacing:3px;font-size:16px}
 button{width:100%;padding:13px;margin-top:8px;border:0;border-radius:8px;background:#82b440;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
 button:hover{background:#6fa033}
-.err{color:#d44;font-size:13px;min-height:20px}
+.err{color:#d44;font-size:13px;min-height:20px;text-align:center}
+.foot{text-align:center;margin-top:16px;font-size:14px;color:#888}
+.foot a{color:#82b440;text-decoration:none;font-weight:600}
+.hidden{display:none}
 </style></head>
 <body><div class="card">
 <div class="logo">envato<span>elements</span></div>
-<div class="sub">Enter your invite code to continue</div>
+<div class="sub">Log in to continue</div>
+<div class="tabs">
+  <div class="tab active" id="tab-email" onclick="show('email')">Email</div>
+  <div class="tab" id="tab-code" onclick="show('code')">Invite code</div>
+</div>
 <div class="err">{{ err }}</div>
-<form method="post"><input name="code" placeholder="XXXXXXXX" autocomplete="off" autofocus maxlength="8">
-<button type="submit">Continue</button></form>
-</div></body></html>
+<form method="post" id="form-email">
+  <input name="email" type="email" placeholder="Email address" autocomplete="email">
+  <input name="password" type="password" placeholder="Password" autocomplete="current-password">
+  <button type="submit">Log in</button>
+</form>
+<form method="post" id="form-code" class="hidden">
+  <input name="code" class="code" placeholder="XXXXXXXX" autocomplete="off" maxlength="8">
+  <button type="submit">Continue</button>
+</form>
+<div class="foot">No account? <a href="/signup">Sign up</a></div>
+</div>
+<script>
+function show(which){
+  document.getElementById("tab-email").classList.toggle("active",which==="email");
+  document.getElementById("tab-code").classList.toggle("active",which==="code");
+  document.getElementById("form-email").classList.toggle("hidden",which!=="email");
+  document.getElementById("form-code").classList.toggle("hidden",which!=="code");
+}
+</script></body></html>
