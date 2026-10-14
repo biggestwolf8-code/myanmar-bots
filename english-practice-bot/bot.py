@@ -1222,6 +1222,8 @@ def handle_update(u):
     chat_id = chat.get("id")
     if not chat_id:
         return
+    if chat.get("type") in ("group", "supergroup", "channel"):
+        return  # private chats only — the bot stays completely silent in groups
     user = msg.get("from", {})
     user_id = user.get("id")
     if not user_id:
