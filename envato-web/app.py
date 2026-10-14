@@ -19,8 +19,8 @@ import os
 import secrets
 import threading
 
-from flask import (Flask, abort, jsonify, redirect, render_template, request,
-                   send_file, session)
+from flask import (Flask, Response, abort, jsonify, redirect, render_template,
+                   request, send_file, session)
 
 import envato_client
 
@@ -148,6 +148,17 @@ def check_pw(pw, stored):
 @app.route("/healthz")
 def healthz():
     return {"ok": True, "service": "envato-web", "time": _now_iso()}
+
+
+@app.route("/robots.txt")
+def robots():
+    return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
+
+
+@app.after_request
+def add_robots_header(resp):
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    return resp
 
 
 @app.route("/")
