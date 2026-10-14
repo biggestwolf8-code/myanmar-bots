@@ -272,10 +272,13 @@ def tg(method, **params):
         return {"ok": False}
 
 
-def send(chat_id, text):
+def send(chat_id, text, parse_mode=None):
     # split long messages
     for i in range(0, len(text), 3900):
-        tg("sendMessage", chat_id=chat_id, text=text[i:i + 3900])
+        kw = {"chat_id": chat_id, "text": text[i:i + 3900]}
+        if parse_mode:
+            kw["parse_mode"] = parse_mode
+        tg("sendMessage", **kw)
 
 
 def is_admin(msg):
@@ -480,19 +483,24 @@ def handle_message(msg):
         full = "full" in parts_l
         def _fmt(emails, limit=200):
             if full:
+                # one per line in a code block — tap to copy in Telegram
                 lst = sorted(emails)
-            else:
-                lst = [short_email(e) for e in sorted(emails)]
+                body = "\n".join(lst[:limit])
+                if len(lst) > limit:
+                    body += f"\n…(+{len(lst) - limit} more)"
+                return "```\n" + body + "\n```" if body else "—"
+            lst = [short_email(e) for e in sorted(emails)]
             if len(lst) > limit:
                 return ", ".join(lst[:limit]) + f" …(+{len(lst) - limit} more)"
             return ", ".join(lst) or "—"
         emails = fleet_emails(store)
+        pm = "Markdown" if full else None
         if f == "licensed":
             ids = [e for e in emails if store["accounts"].get(e, {}).get("last_type") == "Licensed"]
-            send(chat_id, f"\u2705 Licensed ({len(ids)}):\n" + _fmt(ids))
+            send(chat_id, f"\u2705 Licensed ({len(ids)}):\n" + _fmt(ids), parse_mode=pm)
         elif f == "basic":
             ids = [e for e in emails if store["accounts"].get(e, {}).get("last_type") == "Basic"]
-            send(chat_id, f"\u26aa Basic ({len(ids)}):\n" + _fmt(ids))
+            send(chat_id, f"\u26aa Basic ({len(ids)}):\n" + _fmt(ids), parse_mode=pm)
         elif f in ("problems", "problem"):
             lines = ["\u2753 Needs attention:"]
             for e in emails:
