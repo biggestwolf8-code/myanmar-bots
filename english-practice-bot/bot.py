@@ -929,6 +929,24 @@ def send_groups_list(chat_id):
         send_text(chat_id, text)
 
 
+def handle_my_chat_member(mcm):
+    """Track groups the bot joins/leaves so /groups is always current."""
+    chat = mcm.get("chat", {})
+    cid = str(chat.get("id"))
+    status = mcm.get("new_chat_member", {}).get("status")
+    if status in ("member", "administrator"):
+        note_group(chat)
+        if ADMIN_CHAT_ID:
+            send_text(ADMIN_CHAT_ID,
+                      f"👥 I've been added to: {chat.get('title')} — "
+                      f"my replies there are OFF. /groups to manage.")
+    elif status in ("left", "kicked"):
+        data = load_hw()
+        data.get("known_groups", {}).pop(cid, None)
+        data.get("groups_on", {}).pop(cid, None)
+        save_hw(data)
+
+
 def handle_callback(cq):
     """Tap handling for inline buttons (admin only)."""
     data = cq.get("data", "")
@@ -1299,6 +1317,19 @@ def handle_admin_command(chat_id, user_id, text):
         send_text(chat_id, msg)
         return True
 
+    if cmd == "/audio":
+        data = load_hw()
+        log = data.get("audio_log", [])
+        if not log:
+            send_text(chat_id, "🎧 No homework audio recorded yet.")
+        else:
+            lines = ["🎧 Recent homework audio — tap to replay:"]
+            for i in range(len(log) - 1, max(len(log) - 11, -1), -1):
+                a = log[i]
+                lines.append(f"/audio_{i + 1} — {student_label(a['uid'])}")
+            send_text(chat_id, "\n".join(lines))
+        return True
+
     if cmd.startswith("/audio_"):
         try:
             aid = int(cmd.split("/audio_", 1)[1])
@@ -1353,6 +1384,10 @@ def handle_admin_command(chat_id, user_id, text):
 
 
 def handle_update(u):
+    mcm = u.get("my_chat_member")
+    if mcm:
+        handle_my_chat_member(mcm)
+        return
     cq = u.get("callback_query")
     if cq:
         handle_callback(cq)
