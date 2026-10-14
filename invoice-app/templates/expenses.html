@@ -7,7 +7,7 @@
   <h2>Add expense</h2>
   <form method="post">
     <div class="two">
-      <div><label>Date</label><input type="date" name="date" value="{{ today }}"></div>
+      <div><label>Date</label><div class="dp-wrap"><input type="text" class="dp-display" readonly placeholder="Pick a date"><input type="hidden" class="dp-value" name="date" value="{{ today }}"></div></div>
       <div><label>Amount</label><input type="number" step="any" min="0" name="amount" required></div>
     </div>
     <div class="two">

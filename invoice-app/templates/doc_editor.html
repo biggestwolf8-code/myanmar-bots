@@ -36,8 +36,8 @@
     <label>Address</label><textarea name="new_client_address"></textarea>
   </div>
   <div class="two">
-    <div><label>Issue date</label><input type="date" name="issue_date" value="{{ doc.issue_date }}"></div>
-    <div><label>Due date</label><input type="date" name="due_date" value="{{ doc.due_date }}"></div>
+    <div><label>Issue date</label><div class="dp-wrap"><input type="text" class="dp-display" readonly placeholder="Pick a date"><input type="hidden" class="dp-value" name="issue_date" value="{{ doc.issue_date }}"></div></div>
+    <div><label>Due date</label><div class="dp-wrap"><input type="text" class="dp-display" readonly placeholder="Pick a date"><input type="hidden" class="dp-value" name="due_date" value="{{ doc.due_date }}"></div></div>
   </div>
 </div>
 

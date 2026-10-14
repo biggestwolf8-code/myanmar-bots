@@ -29,7 +29,7 @@
       {% endfor %}
     </select>
     <label>First issue date</label>
-    <input type="date" name="start_date" value="{{ today }}">
+    <div class="dp-wrap"><input type="text" class="dp-display" readonly placeholder="Pick a date"><input type="hidden" class="dp-value" name="start_date" value="{{ today }}"></div>
     <p><button class="btn block" type="submit">Add schedule</button></p>
   </form>
 </div>
