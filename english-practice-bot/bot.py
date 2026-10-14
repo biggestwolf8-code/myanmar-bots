@@ -38,6 +38,8 @@ Admin commands (only ADMIN_CHAT_ID):
                              (audio + transcript); default ON
   /student <name|CODE|id>    per-student homework card: class, current homework,
                              progress, voice count, tutor notes, last done
+  Tap /exchange_<id> in any done/homework message to read that student's
+  full exchange with the tutor.
 
 Student commands:
   /homework    show my current homework and progress
@@ -372,6 +374,7 @@ def complete_homework(user_id, hw, assessment, exchanges):
     prog["status"] = "done"
     prog["completed_at"] = datetime.datetime.now().isoformat(timespec="seconds")
     prog["assessment"] = assessment
+    prog["transcript"] = [dict(m) for m in histories.get(user_id, [])[-20:]]
     save_hw(data)
     label = student_label(user_id)
     send_text(user_id,
@@ -381,9 +384,11 @@ def complete_homework(user_id, hw, assessment, exchanges):
     if ADMIN_CHAT_ID:
         send_text(ADMIN_CHAT_ID,
                   f"✅ Homework done — {label} ({class_name(hw['class'])})\n"
+                  f"🆔 ID: {user_id}\n"
                   f"Task: {hw['text']}\n"
                   f"Exchanges: {exchanges}"
-                  + (f"\nTutor note: {assessment}" if assessment else ""))
+                  + (f"\nTutor note: {assessment}" if assessment else "")
+                  + f"\n\n💬 See the exchange: /exchange_{user_id}")
 
 
 def homework_exchange(user_id):
@@ -773,6 +778,34 @@ def student_homework_card(user_id, entry):
     return "\n".join(lines)
 
 
+def get_student_transcript(user_id):
+    """Most recent conversation for a student: live history first, else last saved."""
+    live = histories.get(user_id)
+    if live:
+        return [dict(m) for m in live[-20:]]
+    data = load_hw()
+    best = None
+    for pmap in data["progress"].values():
+        p = pmap.get(str(user_id))
+        if p and p.get("transcript"):
+            key = p.get("completed_at") or ""
+            if best is None or key > (best.get("completed_at") or ""):
+                best = p
+    return [dict(m) for m in best["transcript"][-20:]] if best else []
+
+
+def send_long(chat_id, text, limit=4000):
+    chunk, size = [], 0
+    for para in text.split("\n\n"):
+        if size + len(para) + 2 > limit and chunk:
+            send_text(chat_id, "\n\n".join(chunk))
+            chunk, size = [], 0
+        chunk.append(para)
+        size += len(para) + 2
+    if chunk:
+        send_text(chat_id, "\n\n".join(chunk))
+
+
 def listen_enabled():
     return load_hw().get("listen", True)
 
@@ -1073,6 +1106,26 @@ def handle_admin_command(chat_id, user_id, text):
             msg += (f"\n⚠️ Couldn't delete from {bad_chats} chat(s) — Telegram only lets "
                     "bots delete messages sent within the last 48 hours.")
         send_text(chat_id, msg)
+        return True
+
+    if cmd.startswith("/exchange_"):
+        try:
+            uid = int(cmd.split("/exchange_", 1)[1])
+        except (ValueError, IndexError):
+            uid = 0
+        if not uid:
+            send_text(chat_id, "Usage: /exchange_<student id>  (tap the link in the done message)")
+            return True
+        transcript = get_student_transcript(uid)
+        if not transcript:
+            send_text(chat_id, f"No saved conversation for ID {uid} yet.")
+            return True
+        label = student_label(uid)
+        lines = [f"💬 Exchange with {label} (ID {uid}):", ""]
+        for m in transcript[-20:]:
+            who = "🎤 Student" if m.get("role") == "user" else "🤖 Tutor"
+            lines.append(f"{who}: {(m.get('content') or '')[:800]}")
+        send_long(chat_id, "\n\n".join(lines))
         return True
 
     return False
