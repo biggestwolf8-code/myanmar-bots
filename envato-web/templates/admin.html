@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Envato Web — Admin</title>
+<style>body{font-family:system-ui;background:#141414;color:#eee;margin:0;padding:20px}
+table{border-collapse:collapse;width:100%;margin-top:16px}td,th{border:1px solid #333;padding:8px;font-size:13px}
+th{background:#222}code{background:#222;padding:2px 6px;border-radius:4px}
+form.inline{display:inline}button{padding:6px 12px;border-radius:6px;border:0;cursor:pointer}
+.new{background:#1e1e1e;padding:16px;border-radius:10px;margin-bottom:8px}
+.new input{padding:8px;margin-right:8px;background:#111;border:1px solid #444;color:#fff;border-radius:6px;width:90px}
+.go{background:#87e64b;font-weight:700}.rev{background:#a33;color:#fff;font-size:12px}
+.used{color:#87e64b}.unused{color:#fc3}
+a{color:#87e64b}</style></head>
+<body>
+<h2>🎟️ Invite codes</h2>
+<div class="new"><form method="post" action="/admin/newcodes">
+<input name="n" value="5"> codes × <input name="days" value="90"> days
+<button class="go">Generate</button></form></div>
+<table><tr><th>Code</th><th>Status</th><th>Created</th><th>Expires</th><th>Link</th><th></th></tr>
+{% for r in rows %}<tr>
+<td><code>{{ r.code }}</code></td>
+<td class="{{ 'used' if r.used else 'unused' }}">{{ 'used' if r.used else 'open' }}</td>
+<td>{{ r.created }}</td><td>{{ r.expires }}</td>
+<td><a href="{{ r.link }}">{{ r.link }}</a></td>
+<td>{% if r.used %}<form class="inline" method="post" action="/admin/revoke/{{ r.code }}"><button class="rev">revoke</button></form>{% endif %}</td>
+</tr>{% endfor %}</table>
+<p><a href="/app">→ Open the app</a> · <a href="/logout">logout</a></p>
+</body></html>

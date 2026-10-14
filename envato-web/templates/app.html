@@ -1,0 +1,77 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Envato Elements</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f7f7f7;color:#333}
+/* Top nav like elements.envato.com */
+.nav{background:#fff;border-bottom:1px solid #e5e5e5;padding:0 24px;height:64px;display:flex;align-items:center;gap:24px;position:sticky;top:0;z-index:100}
+.logo{font-size:22px;font-weight:800;color:#333;text-decoration:none;white-space:nowrap}
+.logo span{color:#82b440}
+.searchbar{flex:1;max-width:640px;display:flex}
+.searchbar input{flex:1;padding:11px 16px;border:2px solid #e5e5e5;border-right:0;border-radius:8px 0 0 8px;font-size:15px;outline:none}
+.searchbar input:focus{border-color:#82b440}
+.searchbar button{padding:11px 24px;background:#82b440;color:#fff;border:0;border-radius:0 8px 8px 0;font-size:15px;font-weight:600;cursor:pointer}
+.searchbar button:hover{background:#6fa033}
+.status{padding:10px 24px;font-size:13px;color:#888;background:#fff;border-bottom:1px solid #eee}
+/* Card grid like Elements */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;padding:24px;max-width:1400px;margin:0 auto}
+.card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:box-shadow .2s}
+.card:hover{box-shadow:0 4px 16px rgba(0,0,0,.12)}
+.thumb{position:relative;aspect-ratio:16/10;background:#eee;overflow:hidden}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;text-transform:capitalize}
+.info{padding:12px 14px}
+.title{font-size:14px;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+.author{font-size:12px;color:#888;margin-bottom:10px}
+.actions{display:flex;gap:8px}
+.btn{flex:1;text-align:center;padding:9px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;border:0}
+.btn-dl{background:#82b440;color:#fff}
+.btn-dl:hover{background:#6fa033}
+.btn-lic{background:#f0f0f0;color:#555}
+.btn-lic:hover{background:#e4e4e4}
+.empty{text-align:center;color:#aaa;padding:80px 20px;font-size:15px}
+.loading{text-align:center;padding:40px;color:#888}
+</style></head>
+<body>
+<div class="nav">
+  <a class="logo" href="/app">envato<span>elements</span></a>
+  <div class="searchbar">
+    <input id="q" placeholder="Search 28 million+ creative assets…" autofocus>
+    <button onclick="go()">Search</button>
+  </div>
+</div>
+<div class="status" id="status"></div>
+<div class="grid" id="grid"></div>
+<div class="empty" id="empty">Search for stock photos, videos, templates, music and more.</div>
+<script>
+let KEY="";
+document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter")go()});
+async function go(){
+  const q=document.getElementById("q").value.trim();
+  if(!q)return;
+  const st=document.getElementById("status"),grid=document.getElementById("grid");
+  document.getElementById("empty").style.display="none";
+  st.textContent="Searching…";grid.innerHTML='<div class="loading">Loading results…</div>';
+  const r=await fetch("/api/search?q="+encodeURIComponent(q));
+  const d=await r.json();
+  if(d.error){st.textContent="⚠️ "+d.error;grid.innerHTML="";return;}
+  KEY=d.key;st.textContent=d.items.length+" results for “"+q+"”";
+  grid.innerHTML=d.items.map(it=>`
+    <div class="card">
+      <div class="thumb">
+        ${it.thumb?`<img src="${it.thumb}" loading="lazy" alt="">`:""}
+        <span class="badge">${esc(it.type.replace(/-/g," "))}</span>
+      </div>
+      <div class="info">
+        <div class="title">${esc(it.title)}</div>
+        <div class="author">by ${esc(it.author)}</div>
+        <div class="actions">
+          <a class="btn btn-dl" href="/dl/${KEY}/${it.uuid}">Download</a>
+          <a class="btn btn-lic" href="/license/${KEY}/${it.uuid}">License</a>
+        </div>
+      </div>
+    </div>`).join("");
+}
+function esc(s){return (s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+</script></body></html>
