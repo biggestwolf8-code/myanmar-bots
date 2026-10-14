@@ -25,7 +25,7 @@ import json
 import os
 
 import requests
-from flask import Flask, request
+from flask import Flask, request, send_file
 
 import brains
 
@@ -342,6 +342,13 @@ def incoming(bot):
 @app.get("/")
 def index():
     return "Messenger bots running. Webhooks at /webhook/english and /webhook/subscription.", 200
+
+
+@app.get("/privacy")
+def privacy():
+    return send_file(
+        os.path.join(BASE_DIR, "privacy-policy.html"), mimetype="text/html"
+    )
 
 
 if __name__ == "__main__":
