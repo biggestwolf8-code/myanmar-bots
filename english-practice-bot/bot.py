@@ -23,6 +23,7 @@ Deploy as a Railway worker. Env vars:
 
 Admin commands (only ADMIN_CHAT_ID):
   /newcodes 20 [class]       generate single-use invite links, optionally tagged to a class
+  /trialcodes [n] [days]     generate single-use TRIAL links (default 40, 7 days each)
   /users                     list activated students (with class)
   /revoke CODE               deactivate an invite code / student
   /setclass CLASS CODE...    tag students to a class: grammar | level1 | level2
@@ -68,6 +69,43 @@ BOT_USERNAME = os.environ.get("BOT_USERNAME", "MasterclassPractice_Bot")
 DATA_DIR = os.environ.get("DATA_DIR", ".")
 CODES_FILE = os.path.join(DATA_DIR, "codes.json")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
+TRIAL_DAILY_LIMIT = int(os.environ.get("TRIAL_DAILY_LIMIT", "30"))
+
+TRIAL_END_MSG = (
+    "🆓 Your free trial has ended — hope you enjoyed the practice!\n\n"
+    "To keep chatting unlimited, message Sayar Arkar to subscribe. 💪"
+)
+
+
+def trial_active(user_id):
+    """None = not a trial user; True/False = trial active/expired."""
+    codes = load_codes()
+    for e in codes.values():
+        if e.get("used_by") == user_id and e.get("trial"):
+            until = e.get("trial_until")
+            if not until:
+                return True
+            try:
+                return datetime.datetime.now() < datetime.datetime.fromisoformat(until)
+            except ValueError:
+                return True
+    return None
+
+
+def trial_days_left(user_id):
+    codes = load_codes()
+    for e in codes.values():
+        if e.get("used_by") == user_id and e.get("trial") and e.get("trial_until"):
+            try:
+                delta = datetime.datetime.fromisoformat(e["trial_until"]) - datetime.datetime.now()
+                return max(0, delta.days)
+            except ValueError:
+                return None
+    return None
+
+
+def daily_limit_for(user_id):
+    return TRIAL_DAILY_LIMIT if trial_active(user_id) else DAILY_LIMIT
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 FILE_API = f"https://api.telegram.org/file/bot{BOT_TOKEN}"
 
@@ -166,8 +204,12 @@ def redeem_code(code, user_id, label=""):
     entry["used_by"] = user_id
     entry["label"] = label
     entry["used_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+    if entry.get("trial"):
+        days = entry.get("trial_days", 7)
+        entry["trial_until"] = (datetime.datetime.now()
+                                + datetime.timedelta(days=days)).isoformat(timespec="seconds")
     save_codes(codes)
-    return "ok"
+    return "ok_trial" if entry.get("trial") else "ok"
 
 
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no confusing chars
@@ -190,6 +232,12 @@ GATE_MSG = (
 def gate_check(chat_id, user_id):
     """True if the user may use the bot. Sends a (rate-limited) notice otherwise."""
     if is_activated(user_id):
+        if trial_active(user_id) is False:
+            now = time.time()
+            if now - gate_notices.get(user_id, 0) > 3600:
+                send_text(chat_id, TRIAL_END_MSG)
+                gate_notices[user_id] = now
+            return False
         return True
     now = time.time()
     if now - gate_notices.get(user_id, 0) > 3600:
@@ -538,6 +586,19 @@ def send_with_keyboard(chat_id, text, keyboard_json, reply_to=None):
         return None
 
 
+def send_chunked(chat_id, lines, limit=4000):
+    """Send lines split into Telegram-sized messages."""
+    chunk, out = [], []
+    for line in lines:
+        if sum(len(x) + 1 for x in chunk) + len(line) > limit:
+            out.append("\n".join(chunk))
+            chunk = []
+        chunk.append(line)
+    out.append("\n".join(chunk))
+    for m in out:
+        send_text(chat_id, m)
+
+
 def ask_all_untagged():
     """Ask every activated-but-untagged student to tap their class.
     Returns (asked, failed_names)."""
@@ -586,7 +647,7 @@ def over_daily_limit(user_id):
     if day != today:
         daily_counts[user_id] = (today, 0)
         return False
-    return count >= DAILY_LIMIT
+    return count >= daily_limit_for(user_id)
 
 
 def bump_daily(user_id):
@@ -1087,16 +1148,29 @@ def handle_admin_command(chat_id, user_id, text):
                  ""]
         lines += [invite_link(c) for c in fresh]
         lines += ["", "Send one link per student, privately — not in a group!"]
-        # Telegram messages cap at 4096 chars; split if needed.
-        chunk, out = [], []
-        for line in lines:
-            if sum(len(x) + 1 for x in chunk) + len(line) > 4000:
-                out.append("\n".join(chunk))
-                chunk = []
-            chunk.append(line)
-        out.append("\n".join(chunk))
-        for m in out:
-            send_text(chat_id, m)
+        send_chunked(chat_id, lines)
+        return True
+
+    if cmd == "/trialcodes":
+        nums = [int(p) for p in parts[1:] if p.isdigit()]
+        n = max(1, min(nums[0], 50)) if len(nums) > 0 else 40
+        days = max(1, min(nums[1], 30)) if len(nums) > 1 else 7
+        codes = load_codes()
+        fresh = []
+        while len(fresh) < n:
+            c = make_code()
+            if c not in codes:
+                codes[c] = {"used_by": None, "label": "", "class": None,
+                            "trial": True, "trial_days": days,
+                            "created": datetime.datetime.now().isoformat(timespec="seconds")}
+                fresh.append(c)
+        save_codes(codes)
+        lines = [f"🆓 {n} single-use TRIAL links — {days} days of access each, "
+                 f"counted from first use (then the bot asks them to subscribe):",
+                 ""]
+        lines += [invite_link(c) for c in fresh]
+        lines += ["", f"Trial users get {TRIAL_DAILY_LIMIT} messages/day. Post them in the group!"]
+        send_chunked(chat_id, lines)
         return True
 
     if cmd == "/users":
@@ -1110,7 +1184,11 @@ def handle_admin_command(chat_id, user_id, text):
         for c, e in sorted(used, key=lambda x: x[1].get("used_at", "")):
             label = f" ({e['label']})" if e.get("label") else ""
             cls = f" [{e['class']}]" if e.get("class") else " [no class]"
-            lines.append(f"• {c} → {e['used_by']}{label}{cls}")
+            trial = ""
+            if e.get("trial"):
+                left = trial_days_left(e["used_by"])
+                trial = " 🆓 trial" + (f" ({left}d left)" if left else " (expired)")
+            lines.append(f"• {c} → {e['used_by']}{label}{cls}{trial}")
         send_text(chat_id, "\n".join(lines)[:4000])
         return True
 
@@ -1423,9 +1501,14 @@ def handle_update(u):
         parts = text.split()
         if len(parts) > 1:
             result = redeem_code(parts[1], user_id, name)
-            if result == "ok":
+            if result in ("ok", "ok_trial"):
+                trial_note = ""
+                if result == "ok_trial":
+                    days = load_codes().get(parts[1].strip().upper(), {}).get("trial_days", 7)
+                    trial_note = f"🆓 You're on a free {days}-day trial — enjoy!\n\n"
                 send_text(chat_id,
-                          f"🎉 Welcome, {html.escape(name)}! Your invite is activated.\n\n" + START_MSG,
+                          f"🎉 Welcome, {html.escape(name)}! Your invite is activated.\n\n"
+                          + trial_note + START_MSG,
                           thread)
                 hw_now = active_hw_for_user(user_id)
                 if hw_now:
