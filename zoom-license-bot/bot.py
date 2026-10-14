@@ -407,6 +407,8 @@ def handle_message(msg):
              "/expiring — licenses expiring within 2 days\n"
              "/backdate YYYY-MM-DD — fallback: set license start date for\n"
              "  currently-Licensed accounts lacking a real expiration date\n"
+             "/renewed [YYYY-MM-DD] id1 id2 ... — stamp the accounts YOU\n"
+             "  just renewed with a fresh 14-day clock (only those)\n"
              "/reauth <email> — authorize link (for OAuth mode)\n"
              "/alerts on|off — change alerts on/off")
     elif cmd == "/check":
@@ -511,6 +513,57 @@ def handle_message(msg):
         save_store(store)
         send(chat_id, f"\u2705 14-day clock set to {arg} for {n} Licensed account(s). "
                       f"Expiry warnings will fire 1 day before day 14.")
+    elif cmd == "/renewed":
+        # /renewed [YYYY-MM-DD] id1 id2 ... — stamp a fresh 14-day clock for
+        # ONLY the named accounts (the ones you just renewed manually).
+        # This is the safe alternative to /backdate, which resets the clock
+        # for every Licensed account at once.
+        tokens = [t for t in parts[1:]]
+        renewal_date = None
+        if tokens and re.match(r"^(\d{4})-(\d{2})-(\d{2})$", tokens[0]):
+            m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", tokens[0])
+            try:
+                renewal_date = datetime.date(int(m.group(1)), int(m.group(2)),
+                                            int(m.group(3)))
+                tokens = tokens[1:]
+            except ValueError:
+                send(chat_id, "Invalid date. Usage: /renewed [YYYY-MM-DD] id1 id2 ...")
+                return
+        if renewal_date is None:
+            renewal_date = datetime.datetime.now(datetime.timezone.utc).date()
+        if renewal_date > datetime.datetime.now(datetime.timezone.utc).date():
+            send(chat_id, "Date can't be in the future.")
+            return
+        if not tokens:
+            send(chat_id, "Usage: /renewed [YYYY-MM-DD] id1 id2 ...\n"
+                          "Example: /renewed c35 c37 c38")
+            return
+        store = load_store()
+        by_id = {}
+        for email in store["accounts"]:
+            by_id.setdefault(short_email(email).lower(), email)
+        new_exp = (renewal_date + datetime.timedelta(days=LICENSE_CYCLE_DAYS)).isoformat()
+        stamped, flipped, unknown = [], [], []
+        for tid in tokens:
+            email = by_id.get(tid.lower())
+            if not email:
+                unknown.append(tid)
+                continue
+            acc = store["accounts"][email]
+            was = acc.get("last_type")
+            acc["license_expires_at"] = new_exp
+            acc["last_type"] = "Licensed"
+            acc["last_check"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            (flipped if was != "Licensed" else stamped).append(short_email(email))
+        save_store(store)
+        lines = [f"\u2705 Renewal recorded ({renewal_date.isoformat()} \u2192 expires {new_exp}):"]
+        if stamped:
+            lines.append("Stamped: " + ", ".join(sorted(stamped)))
+        if flipped:
+            lines.append("Basic \u2192 Licensed: " + ", ".join(sorted(flipped)))
+        if unknown:
+            lines.append("\u2753 Unknown IDs (not stamped): " + ", ".join(unknown))
+        send(chat_id, "\n".join(lines))
     elif cmd == "/accounts":
         store = load_store()
         emails = sorted(set(SEED_EMAILS) | set(store["accounts"].keys()))
@@ -655,6 +708,23 @@ app = Flask(__name__)
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+@app.get("/diag")
+def diag():
+    """Safe diagnostic: verifies Telegram token without exposing it."""
+    result = {"token_valid": False, "bot_username": None, "admin_set": bool(ADMIN_CHAT_ID)}
+    try:
+        r = requests.post(f"{TG_API}/getMe", timeout=15)
+        data = r.json()
+        if data.get("ok"):
+            result["token_valid"] = True
+            result["bot_username"] = data["result"].get("username")
+        else:
+            result["tg_error"] = data.get("description", "unknown")
+    except Exception as e:
+        result["tg_error"] = str(e)[:100]
+    return result
 
 
 @app.post("/ingest")
