@@ -724,6 +724,13 @@ def diag():
             result["tg_error"] = data.get("description", "unknown")
     except Exception as e:
         result["tg_error"] = str(e)[:100]
+    try:
+        w = requests.post(f"{TG_API}/getWebhookInfo", timeout=15).json()
+        if w.get("ok"):
+            result["webhook_url"] = w["result"].get("url") or None
+            result["pending_updates"] = w["result"].get("pending_update_count")
+    except Exception:
+        pass
     return result
 
 
