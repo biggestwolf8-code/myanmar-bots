@@ -271,6 +271,7 @@ def api_search():
         "title": r["title"],
         "author": r.get("author", ""),
         "thumb": r.get("thumb", ""),
+        "video": r.get("videoUrl", ""),
     } for r in results]
     return jsonify({"key": key, "items": items})
 

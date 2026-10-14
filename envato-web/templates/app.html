@@ -4,7 +4,6 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f7f7f7;color:#333}
-/* Top nav like elements.envato.com */
 .nav{background:#fff;border-bottom:1px solid #e5e5e5;padding:0 24px;height:64px;display:flex;align-items:center;gap:24px;position:sticky;top:0;z-index:100}
 .logo{font-size:22px;font-weight:800;color:#333;text-decoration:none;white-space:nowrap}
 .logo span{color:#82b440}
@@ -13,14 +12,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 .searchbar input:focus{border-color:#82b440}
 .searchbar button{padding:11px 24px;background:#82b440;color:#fff;border:0;border-radius:0 8px 8px 0;font-size:15px;font-weight:600;cursor:pointer}
 .searchbar button:hover{background:#6fa033}
-.status{padding:10px 24px;font-size:13px;color:#888;background:#fff;border-bottom:1px solid #eee}
-/* Card grid like Elements */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;padding:24px;max-width:1400px;margin:0 auto}
+/* Hero with running video */
+.hero{position:relative;height:380px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center}
+.hero video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:.7}
+.hero .overlay{position:relative;z-index:2;text-align:center;color:#fff;padding:20px}
+.hero h1{font-size:36px;font-weight:800;margin-bottom:12px;text-shadow:0 2px 8px rgba(0,0,0,.5)}
+.hero p{font-size:17px;opacity:.9;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+.hero-search{margin-top:20px;display:flex;max-width:560px;margin-left:auto;margin-right:auto}
+.hero-search input{flex:1;padding:14px 18px;border:0;border-radius:8px 0 0 8px;font-size:16px;outline:none}
+.hero-search button{padding:14px 28px;background:#82b440;color:#fff;border:0;border-radius:0 8px 8px 0;font-size:16px;font-weight:700;cursor:pointer}
+.section-title{padding:24px 24px 0;max-width:1400px;margin:0 auto;font-size:20px;font-weight:700}
+.status{padding:8px 24px;font-size:13px;color:#888;max-width:1400px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;padding:16px 24px 24px;max-width:1400px;margin:0 auto}
 .card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:box-shadow .2s}
 .card:hover{box-shadow:0 4px 16px rgba(0,0,0,.12)}
 .thumb{position:relative;aspect-ratio:16/10;background:#eee;overflow:hidden}
-.thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;text-transform:capitalize}
+.thumb img,.thumb video{width:100%;height:100%;object-fit:cover;display:block}
+.thumb video{display:none}
+.card:hover .thumb video.has-vid{display:block}
+.card:hover .thumb img.has-vid{display:none}
+.badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;text-transform:capitalize;z-index:2}
 .info{padding:12px 14px}
 .title{font-size:14px;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
 .author{font-size:12px;color:#888;margin-bottom:10px}
@@ -30,48 +41,77 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 .btn-dl:hover{background:#6fa033}
 .btn-lic{background:#f0f0f0;color:#555}
 .btn-lic:hover{background:#e4e4e4}
-.empty{text-align:center;color:#aaa;padding:80px 20px;font-size:15px}
-.loading{text-align:center;padding:40px;color:#888}
+.loading{text-align:center;padding:40px;color:#888;grid-column:1/-1}
 </style></head>
 <body>
 <div class="nav">
   <a class="logo" href="/app">Envato <span>Elements Unlimited</span></a>
   <div class="searchbar">
-    <input id="q" placeholder="Search 28 million+ creative assets…" autofocus>
+    <input id="q" placeholder="Search 28 million+ creative assets…">
     <button onclick="go()">Search</button>
   </div>
 </div>
+<div class="hero" id="hero">
+  <video id="hero-vid" autoplay muted loop playsinline></video>
+  <div class="overlay">
+    <h1>Unlimited creative assets</h1>
+    <p>Stock videos, photos, templates, music & more — download anything.</p>
+    <div class="hero-search">
+      <input id="hq" placeholder="Try “business presentation”…">
+      <button onclick="heroGo()">Search</button>
+    </div>
+  </div>
+</div>
+<div class="section-title" id="sec-title">🔥 Trending now</div>
 <div class="status" id="status"></div>
 <div class="grid" id="grid"></div>
-<div class="empty" id="empty">Search for stock photos, videos, templates, music and more.</div>
 <script>
 let KEY="";
-document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter")go()});
-async function go(){
-  const q=document.getElementById("q").value.trim();
-  if(!q)return;
-  const st=document.getElementById("status"),grid=document.getElementById("grid");
-  document.getElementById("empty").style.display="none";
-  st.textContent="Searching…";grid.innerHTML='<div class="loading">Loading results…</div>';
-  const r=await fetch("/api/search?q="+encodeURIComponent(q));
-  const d=await r.json();
-  if(d.error){st.textContent="⚠️ "+d.error;grid.innerHTML="";return;}
-  KEY=d.key;st.textContent=d.items.length+" results for “"+q+"”";
-  grid.innerHTML=d.items.map(it=>`
-    <div class="card">
-      <div class="thumb">
-        ${it.thumb?`<img src="${it.thumb}" loading="lazy" alt="">`:""}
-        <span class="badge">${esc(it.type.replace(/-/g," "))}</span>
-      </div>
-      <div class="info">
-        <div class="title">${esc(it.title)}</div>
-        <div class="author">by ${esc(it.author)}</div>
-        <div class="actions">
-          <a class="btn btn-dl" href="/dl/${KEY}/${it.uuid}">Download</a>
-          <a class="btn btn-lic" href="/license/${KEY}/${it.uuid}">License</a>
-        </div>
-      </div>
-    </div>`).join("");
-}
+const q=document.getElementById("q"),hq=document.getElementById("hq");
+q.addEventListener("keydown",e=>{if(e.key==="Enter")go()});
+hq.addEventListener("keydown",e=>{if(e.key==="Enter")heroGo()});
+function heroGo(){q.value=hq.value;go();}
 function esc(s){return (s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function card(it){
+  const hv=it.video?`has-vid`:"";
+  return `<div class="card">
+    <div class="thumb">
+      ${it.thumb?`<img class="${hv}" src="${it.thumb}" loading="lazy" alt="">`:""}
+      ${it.video?`<video class="has-vid" src="${it.video}" muted loop playsinline onmouseenter="this.play()" onmouseleave="this.pause()"></video>`:""}
+      <span class="badge">${esc(it.type.replace(/-/g," "))}</span>
+    </div>
+    <div class="info">
+      <div class="title">${esc(it.title)}</div>
+      <div class="author">by ${esc(it.author)}</div>
+      <div class="actions">
+        <a class="btn btn-dl" href="/dl/${KEY}/${it.uuid}">Download</a>
+        <a class="btn btn-lic" href="/license/${KEY}/${it.uuid}">License</a>
+      </div>
+    </div>
+  </div>`;
+}
+async function search(qry,label){
+  const st=document.getElementById("status"),grid=document.getElementById("grid");
+  document.getElementById("sec-title").textContent=label;
+  st.textContent="Loading…";grid.innerHTML='<div class="loading">Loading…</div>';
+  const r=await fetch("/api/search?q="+encodeURIComponent(qry));
+  const d=await r.json();
+  if(d.error){st.textContent="⚠️ "+d.error;grid.innerHTML="";return [];}
+  KEY=d.key;st.textContent=d.items.length+" results";
+  grid.innerHTML=d.items.map(card).join("");
+  return d.items;
+}
+async function go(){
+  const qry=q.value.trim();if(!qry)return;
+  document.getElementById("hero").style.display="none";
+  await search(qry,"Results for “"+qry+"”");
+  window.scrollTo({top:0,behavior:"smooth"});
+  document.getElementById("hero").style.display="flex";
+}
+// On load: trending content + hero video
+(async()=>{
+  const items=await search("trending","🔥 Trending now");
+  const vid=items.find(i=>i.video);
+  if(vid){document.getElementById("hero-vid").src=vid.video;}
+})();
 </script></body></html>
