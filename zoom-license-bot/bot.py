@@ -940,9 +940,40 @@ def oauth_callback():
             f"{done} account(s) connected so far."), 200
 
 
+def sweep_job():
+    """Every 6 hours, run a targeted sweep of at-risk accounts.
+
+    Only checks accounts that need it (expiring soon, marked Basic, or
+    unknown) to avoid triggering Zoom's rate limits. Requires ZOOM_CREDS
+    env var with account passwords.
+    """
+    import time as _time
+    # Wait for bot to fully start
+    _time.sleep(60)
+    while True:
+        try:
+            from sweeper import run_targeted_sweep
+            store = load_store()
+            checked, changes = run_targeted_sweep(
+                store, save_store, fleet_emails, short_email)
+            if checked:
+                log.info(f"Targeted sweep: checked {checked}, {len(changes)} changes")
+                # Alert on changes
+                if changes and store.get("alerts_on", True):
+                    lines = ["🔄 Auto-sweep found changes:"]
+                    for email, prev, new in changes:
+                        lines.append(f"{short_email(email)}: {prev} → {new}")
+                    send(ADMIN_CHAT_ID, "\n".join(lines))
+        except Exception:
+            log.exception("sweep job error")
+        # Every 6 hours
+        _time.sleep(6 * 3600)
+
+
 def main():
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=daily_check_job, daemon=True).start()
+    threading.Thread(target=sweep_job, daemon=True).start()
     port = int(os.environ.get("PORT", "5000"))
     log.info("starting Flask on port %s", port)
     app.run(host="0.0.0.0", port=port)
