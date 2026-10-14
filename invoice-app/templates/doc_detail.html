@@ -63,7 +63,6 @@
     <a class="btn ghost" href="/docs/{{ doc.id }}/pdf">Download PDF</a>
     {% if doc.type == "invoice" %}
       {% if status != "paid" %}<form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="paid"><button class="btn ghost" type="submit">Mark paid</button></form>{% endif %}
-      {% if status == "draft" %}<form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="sent"><button class="btn ghost" type="submit">Mark sent</button></form>{% endif %}
       {% if status not in ("paid", "cancelled") %}<form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="cancelled"><button class="btn danger" type="submit" onclick="return confirm('Cancel this invoice?')">Cancel</button></form>{% endif %}
     {% elif doc.type == "estimate" %}
       {% if status == "draft" %}<form class="inline" method="post" action="/docs/{{ doc.id }}/mark"><input type="hidden" name="action" value="sent"><button class="btn ghost" type="submit">Mark sent</button></form>{% endif %}

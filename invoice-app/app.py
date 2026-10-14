@@ -377,8 +377,8 @@ def eff_status(doc):
     return st
 
 
-STATUS_LABELS = {"draft": "Draft", "sent": "Sent", "paid": "Paid",
-                 "overdue": "Overdue", "cancelled": "Cancelled",
+STATUS_LABELS = {"draft": "Unpaid", "sent": "Unpaid", "paid": "Paid",
+                 "overdue": "Unpaid", "cancelled": "Cancelled",
                  "accepted": "Accepted", "declined": "Declined",
                  "expired": "Expired"}
 
@@ -902,6 +902,11 @@ def render_doc_pdf(d, doc):
                          if x)
     if biz_line:
         pdf.cell(150, 5, biz_line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    biz_addr = (biz.get("address") or "").strip()
+    if biz_addr:
+        pdf.set_x(12)
+        pdf.multi_cell(150, 5, biz_addr, new_x=XPos.LMARGIN,
+                       new_y=YPos.NEXT)
     pdf.set_text_color(0, 0, 0)
 
     y = 38

@@ -208,8 +208,7 @@ body {
 }
 .st-paid, .st-accepted { background: var(--ok-soft); color: var(--ok); }
 .st-overdue, .st-declined { background: var(--danger-soft); color: var(--danger); }
-.st-sent { background: var(--info-soft); color: var(--info); }
-.st-draft { background: #f1f5f9; color: #475569; }
+.st-sent, .st-draft { background: var(--warn-soft); color: var(--warn); }
 .st-cancelled, .st-expired { background: #f1f5f9; color: var(--faint); }
 
 /* empty states */
