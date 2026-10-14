@@ -36,8 +36,8 @@ Admin commands (only ADMIN_CHAT_ID):
   /report [CLASS]            homework completion report (also auto-sent on each finish)
   /listen on|off             forward students' homework voice messages to you
                              (audio + transcript); default ON
-  /group on|off              let the bot reply in group chats; default OFF
-                             (toggle from your private chat with the bot)
+  /group on|off              per-group: send it inside a group to let the bot
+                             reply there (admin only); /groups lists groups
   /student <name|CODE|id>    per-student homework card: class, current homework,
                              progress, voice count, tutor notes, last done
   Tap /exchange_<id> in any done/homework message to read that student's
@@ -872,14 +872,63 @@ def set_listen(on):
     save_hw(data)
 
 
-def group_enabled():
-    return load_hw().get("group_enabled", False)
+def group_chat_enabled(chat_id):
+    return load_hw().get("groups_on", {}).get(str(chat_id), False)
 
 
-def set_group_enabled(on):
+def set_group_chat(chat_id, on):
     data = load_hw()
-    data["group_enabled"] = bool(on)
+    g = data.setdefault("groups_on", {})
+    if on:
+        g[str(chat_id)] = True
+    else:
+        g.pop(str(chat_id), None)
     save_hw(data)
+
+
+def note_group(chat):
+    """Remember a group's id + title so /groups can list it."""
+    cid = str(chat.get("id"))
+    title = chat.get("title") or "Group"
+    data = load_hw()
+    kg = data.setdefault("known_groups", {})
+    cur = kg.get(cid)
+    if cur and cur.get("title") == title:
+        return
+    kg[cid] = {"title": title, "type": chat.get("type")}
+    save_hw(data)
+
+
+def group_title(chat_id):
+    return load_hw().get("known_groups", {}).get(str(chat_id), {}).get("title", "Group")
+
+
+def groups_status_text():
+    data = load_hw()
+    kg = data.get("known_groups", {})
+    on = data.get("groups_on", {})
+    if not kg:
+        return "👥 No groups seen yet — add me to a group and send any message there."
+    lines = ["👥 Groups:"]
+    for cid, g in kg.items():
+        lines.append(f"• {g.get('title')} ({cid}): {'ON' if on.get(cid) else 'OFF'}")
+    lines += ["", "Toggle: /group on|off <id> — or just send /group on|off inside the group."]
+    return "\n".join(lines)
+
+
+def handle_group_toggle(chat_id, text):
+    """Admin toggles bot replies from inside a group."""
+    parts = text.split()
+    arg = parts[1].lower() if len(parts) > 1 else ""
+    if arg in ("on", "off"):
+        set_group_chat(chat_id, arg == "on")
+        send_text(chat_id, f"👥 Bot replies in this group are now {arg.upper()}.")
+    elif arg in ("", "status"):
+        send_text(chat_id,
+                  f"👥 Bot replies in this group are currently "
+                  f"{'ON' if group_chat_enabled(chat_id) else 'OFF'}.")
+    else:
+        send_text(chat_id, "Usage: /group on|off")
 
 
 def handle_voice(chat_id, user_id, voice, thread, msg_id):
@@ -1124,16 +1173,25 @@ def handle_admin_command(chat_id, user_id, text):
         return True
 
     if cmd == "/group":
-        arg = parts[1].lower() if len(parts) > 1 else ""
-        if arg in ("on", "off"):
-            set_group_enabled(arg == "on")
-            send_text(chat_id, f"👥 Group chat mode is now {arg.upper()}.")
-        elif arg in ("", "status"):
+        # Private chat: toggle a specific group by id, or show the list.
+        if len(parts) >= 3 and parts[1].lower() in ("on", "off"):
+            gid = parts[2]
+            if gid.lstrip("-").isdigit() and gid in load_hw().get("known_groups", {}):
+                set_group_chat(gid, parts[1].lower() == "on")
+                send_text(chat_id,
+                          f"👥 {group_title(gid)} is now {parts[1].upper()}.")
+            else:
+                send_text(chat_id, "Unknown group id. See /groups for the list.")
+        elif len(parts) == 2 and parts[1].lower() in ("on", "off"):
             send_text(chat_id,
-                      f"👥 Group chat mode is currently "
-                      f"{'ON' if group_enabled() else 'OFF'}.")
+                      "Which group? See /groups for ids — or just send "
+                      f"/group {parts[1].lower()} inside that group.")
         else:
-            send_text(chat_id, "Usage: /group on|off")
+            send_text(chat_id, groups_status_text())
+        return True
+
+    if cmd == "/groups":
+        send_text(chat_id, groups_status_text())
         return True
 
     if cmd == "/student":
@@ -1247,8 +1305,6 @@ def handle_update(u):
     chat_id = chat.get("id")
     if not chat_id:
         return
-    if chat.get("type") in ("group", "supergroup", "channel") and not group_enabled():
-        return  # group mode is off — the bot stays silent in groups
     user = msg.get("from", {})
     user_id = user.get("id")
     if not user_id:
@@ -1256,6 +1312,15 @@ def handle_update(u):
     name = user.get("first_name", "there")
     thread = msg.get("message_id") if chat.get("type") in ("group", "supergroup") else None
     text = (msg.get("text") or "").strip()
+    ctype = chat.get("type")
+    if ctype in ("group", "supergroup", "channel"):
+        note_group(chat)
+        # The admin can always toggle from inside the group, even when it's off.
+        if is_admin(user_id) and (text == "/group" or text.startswith("/group ")):
+            handle_group_toggle(chat_id, text)
+            return
+        if not group_chat_enabled(chat_id):
+            return  # this group is off — stay silent
 
     # Admin commands work without an invite.
     if is_admin(user_id) and text.startswith("/"):
