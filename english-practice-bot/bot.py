@@ -36,6 +36,8 @@ Admin commands (only ADMIN_CHAT_ID):
   /report [CLASS]            homework completion report (also auto-sent on each finish)
   /listen on|off             forward students' homework voice messages to you
                              (audio + transcript); default ON
+  /student <name|CODE|id>    per-student homework card: class, current homework,
+                             progress, voice count, tutor notes, last done
 
 Student commands:
   /homework    show my current homework and progress
@@ -234,7 +236,7 @@ def save_hw(data):
 
 
 def new_progress():
-    return {"status": "assigned", "exchanges": 0, "reminded": False,
+    return {"status": "assigned", "exchanges": 0, "voice_msgs": 0, "reminded": False,
             "completed_at": None, "assessment": ""}
 
 
@@ -703,6 +705,74 @@ def maybe_forward_homework_voice(user_id, msg_id, transcript):
         return False
 
 
+def bump_homework_voice_count(user_id):
+    """Count voice messages sent while the student has an active, unfinished homework."""
+    hw = active_hw_for_user(user_id)
+    if not hw:
+        return
+    data = load_hw()
+    prog = data["progress"].setdefault(hw["id"], {}).setdefault(str(user_id), new_progress())
+    if prog.get("status") == "done":
+        return
+    prog["voice_msgs"] = prog.get("voice_msgs", 0) + 1
+    save_hw(data)
+
+
+def find_students(query):
+    """Match activated students by name (substring), invite code, or telegram user id."""
+    codes = load_codes()
+    q = (query or "").strip().lower()
+    out = []
+    for code, e in codes.items():
+        if not e.get("used_by"):
+            continue
+        label = (e.get("label") or "").lower()
+        if q and (q == code.lower() or q == str(e["used_by"]) or q in label):
+            out.append((code, e))
+    return out
+
+
+def student_homework_card(user_id, entry):
+    """Per-student homework dossier for the teacher."""
+    label = entry.get("label") or str(user_id)
+    ck = entry.get("class")
+    lines = [f"👤 {label}" + (f" · {class_name(ck)}" if ck else " · no class")]
+    data = load_hw()
+    hw = active_hw_for_class(ck) if ck else None
+    if not hw:
+        lines.append("📚 No active homework for their class right now.")
+    else:
+        prog = data["progress"].get(hw["id"], {}).get(str(user_id)) or new_progress()
+        lines.append(f"📚 Homework: \"{hw['text']}\"")
+        st = prog.get("status", "assigned")
+        if st == "done":
+            when = (prog.get("completed_at") or "")[:16].replace("T", " ")
+            lines.append(f"✅ Done" + (f" on {when}" if when else ""))
+            if prog.get("assessment"):
+                lines.append(f"📝 Tutor note: {prog['assessment']}")
+        elif st == "in_progress":
+            lines.append(f"🔄 In progress — {prog.get('exchanges', 0)} exchanges, "
+                         f"{prog.get('voice_msgs', 0)} voice notes")
+        else:
+            lines.append("⏳ Not started yet")
+    last = None
+    for hid, pmap in data["progress"].items():
+        p = pmap.get(str(user_id))
+        if not p or p.get("status") != "done":
+            continue
+        h = data["homeworks"].get(hid)
+        if not h or (hw and hid == hw["id"]):
+            continue
+        if not last or (p.get("completed_at") or "") > (last[1].get("completed_at") or ""):
+            last = (h, p)
+    if last:
+        h, p = last
+        lines.append(f"🏁 Last done: \"{h['text']}\" ({class_name(h['class'])})")
+        if p.get("assessment"):
+            lines.append(f"📝 {p['assessment']}")
+    return "\n".join(lines)
+
+
 def listen_enabled():
     return load_hw().get("listen", True)
 
@@ -750,6 +820,7 @@ def handle_voice(chat_id, user_id, voice, thread, msg_id):
         return
     # Forward homework voice to the teacher (audio + transcript) before replying.
     maybe_forward_homework_voice(user_id, msg_id, transcript)
+    bump_homework_voice_count(user_id)
     # Admin sees the raw transcript — makes it easy to check what was heard.
     if is_admin(user_id):
         send_text(chat_id, f"👂 Heard: {transcript}", thread)
@@ -950,6 +1021,24 @@ def handle_admin_command(chat_id, user_id, text):
                       f"{'ON' if listen_enabled() else 'OFF'}.")
         else:
             send_text(chat_id, "Usage: /listen on|off")
+        return True
+
+    if cmd == "/student":
+        if len(parts) < 2:
+            send_text(chat_id, "Usage: /student <name | CODE | user id>")
+            return True
+        query = " ".join(parts[1:])
+        matches = find_students(query)
+        if not matches:
+            send_text(chat_id, f"No student found for \"{query}\".")
+        elif len(matches) > 1:
+            lines = [f"Found {len(matches)} students — be more specific:", ""]
+            for code, e in matches[:10]:
+                lines.append(f"• {code} → {e.get('label')} [{e.get('class') or 'no class'}]")
+            send_text(chat_id, "\n".join(lines))
+        else:
+            code, e = matches[0]
+            send_text(chat_id, student_homework_card(int(e["used_by"]), e))
         return True
 
     if cmd == "/unhomework":
