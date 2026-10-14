@@ -283,7 +283,12 @@ def send(chat_id, text, parse_mode=None, silent=False):
 
 
 def is_admin(msg):
-    return str(msg.get("from", {}).get("id", "")) == str(ADMIN_CHAT_ID)
+    uid = str(msg.get("from", {}).get("id", ""))
+    # Support comma-separated ADMIN_CHAT_IDS for multiple accounts
+    ids = [x.strip() for x in os.environ.get("ADMIN_CHAT_IDS", "").split(",") if x.strip()]
+    if not ids:
+        ids = [str(ADMIN_CHAT_ID)]
+    return uid in ids
 
 
 def short_email(email):
