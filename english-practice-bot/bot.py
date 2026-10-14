@@ -30,6 +30,9 @@ Admin commands (only ADMIN_CHAT_ID):
   /homework CLASS task...    assign homework to a class (broadcasts to its students); alias /hw
   /homework                  list active homeworks
   /homework clear CLASS      remove a class's active homework
+  /unhomework CLASS          recall homework: deactivates it AND deletes the
+                             assignment messages from students' chats
+                             (Telegram allows deletion within 48 hours)
   /report [CLASS]            homework completion report (also auto-sent on each finish)
 
 Student commands:
@@ -295,13 +298,19 @@ def assign_homework(class_key, text):
     }
     data["homeworks"][hw["id"]] = hw
     data["progress"].setdefault(hw["id"], {})
+    hw.setdefault("sent_msgs", {})  # uid -> [message ids of homework-related bot messages]
     save_hw(data)
     sent, failed = 0, []
     for uid, label in students_in_class(class_key):
-        if send_text(uid, homework_student_msg(hw)) is None:
+        res = send_text(uid, homework_student_msg(hw))
+        if res is None:
             failed.append(label or str(uid))
         else:
             sent += 1
+            mid = (res.get("result") or {}).get("message_id")
+            if mid:
+                hw["sent_msgs"].setdefault(str(uid), []).append(mid)
+    save_hw(data)
     return hw, sent, failed
 
 
@@ -440,11 +449,15 @@ def maybe_send_reminders():
             prog = pmap.setdefault(str(uid), new_progress())
             if prog.get("status") == "done" or prog.get("reminded"):
                 continue
-            if send_text(uid,
-                         f"⏰ Friendly reminder — your {class_name(hw['class'])} homework "
-                         f"is still waiting:\n\n{hw['text']}\n\nCome practice with me! 🎤") is None:
+            res = send_text(uid,
+                            f"⏰ Friendly reminder — your {class_name(hw['class'])} homework "
+                            f"is still waiting:\n\n{hw['text']}\n\nCome practice with me! 🎤")
+            if res is None:
                 continue
             prog["reminded"] = True
+            mid = (res.get("result") or {}).get("message_id")
+            if mid:
+                hw.setdefault("sent_msgs", {}).setdefault(str(uid), []).append(mid)
             changed = True
     if changed:
         save_hw(data)
@@ -882,6 +895,40 @@ def handle_admin_command(chat_id, user_id, text):
             msg += f"\n⚠️ Couldn't reach: {', '.join(failed)}"
         if asked == 0 and not failed:
             msg = "Everyone is already tagged to a class. ✅"
+        send_text(chat_id, msg)
+        return True
+
+    if cmd == "/unhomework":
+        class_key = valid_class(parts[1]) if len(parts) > 1 else None
+        if not class_key:
+            send_text(chat_id, "Usage: /unhomework <grammar|level1|level2>")
+            return True
+        data = load_hw()
+        hw = active_hw_for_class(class_key)
+        if not hw:
+            send_text(chat_id, f"No active homework for {class_name(class_key)}.")
+            return True
+        target = data["homeworks"].get(hw["id"])
+        target["active"] = False
+        save_hw(data)
+        ok_chats, bad_chats = 0, 0
+        for uid_str, mids in (target.get("sent_msgs") or {}).items():
+            chat_ok = True
+            for mid in mids:
+                try:
+                    tg("deleteMessage", {"chat_id": int(uid_str), "message_id": mid}, timeout=15)
+                except Exception:
+                    chat_ok = False
+            if chat_ok:
+                ok_chats += 1
+            else:
+                bad_chats += 1
+        msg = (f"🗑️ Homework recalled from {class_name(class_key)}:\n"
+               f"\"{target['text']}\"\n"
+               f"Deleted from {ok_chats} chat(s).")
+        if bad_chats:
+            msg += (f"\n⚠️ Couldn't delete from {bad_chats} chat(s) — Telegram only lets "
+                    "bots delete messages sent within the last 48 hours.")
         send_text(chat_id, msg)
         return True
 
