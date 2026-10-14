@@ -942,27 +942,57 @@ def oauth_callback():
 
 
 def sweep_job():
-    """Every 6 hours, re-check accounts marked Basic (they may have been
-    renewed). Expiring Licensed accounts are not re-checked — their expiry
-    dates are already known from the last sweep.
+    """Every 6 hours:
+    1. Detect Licensed accounts whose expiry date has passed -> mark Basic,
+       alert immediately (no login needed, date is known).
+    2. Re-check accounts marked Basic via Playwright (they may have been
+       renewed) -> alert on Basic->Licensed flips.
     """
     import time as _time
+    import datetime as _dt
     # Wait for bot to fully start
     _time.sleep(60)
     while True:
         try:
             from sweeper import run_targeted_sweep
             store = load_store()
+            today = _dt.datetime.now(_dt.timezone.utc).date()
+
+            # Step 1: expiry dates that have passed -> Basic
+            expired = []
+            for email in fleet_emails(store):
+                acc = store["accounts"].get(email, {})
+                if acc.get("last_type") != "Licensed":
+                    continue
+                exp = acc.get("license_expires_at")
+                if not exp:
+                    continue
+                try:
+                    exp_date = _dt.date.fromisoformat(exp[:10])
+                except Exception:
+                    continue
+                if exp_date < today:
+                    acc["last_type"] = "Basic"
+                    acc["expired_on"] = exp
+                    expired.append(email)
+            if expired:
+                save_store(store)
+                log.info(f"Marked {len(expired)} expired accounts as Basic")
+                if store.get("alerts_on", True):
+                    lines = ["⚠️ License expired — now Basic:"]
+                    for email in sorted(expired):
+                        lines.append(short_email(email))
+                    send(ADMIN_CHAT_ID, "\n".join(lines))
+
+            # Step 2: re-check Basic accounts (catches renewals)
             checked, changes = run_targeted_sweep(
                 store, save_store, fleet_emails, short_email)
             if checked:
                 log.info(f"Targeted sweep: checked {checked}, {len(changes)} changes")
-                # Alert on changes — these are Basic→Licensed renewals
                 if changes and store.get("alerts_on", True):
                     lines = ["✅ License renewed — back to Licensed:"]
                     for email, prev, new in changes:
                         lines.append(f"{short_email(email)}: {prev} → {new}")
-                    # disable_notification=False ensures it buzzes the phone
                     send(ADMIN_CHAT_ID, "\n".join(lines))
         except Exception:
             log.exception("sweep job error")
