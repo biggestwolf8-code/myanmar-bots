@@ -149,6 +149,13 @@ def redeem_code(code, user_id):
     entry = codes.get(code)
     if not entry or code.startswith("__"):
         return "invalid"
+    exp = entry.get("expires_at")
+    if exp and not entry.get("used_by"):
+        try:
+            if datetime.datetime.fromisoformat(exp) < datetime.datetime.now():
+                return "expired"
+        except ValueError:
+            pass
     if str(entry.get("used_by")) == str(user_id):
         return "already_yours"
     if entry.get("used_by"):
@@ -241,6 +248,10 @@ def handle_start(chat_id, user_id, args):
         if res == "already_yours":
             send_text(chat_id, "This invite link is already tied to this account. ✅")
             return
+        if res == "expired":
+            send_text(chat_id, "😕 That invite link expired (90-day validity). "
+                               "Ask the owner for a fresh one.")
+            return
         send_text(chat_id, "😕 That invite link is invalid or already used.")
         return
     # Plain /start: first user claims ownership when none exists yet.
@@ -272,16 +283,26 @@ def handle_newcodes(chat_id, user_id, args):
         n = max(1, min(50, int(args[0]) if args else 5))
     except ValueError:
         n = 5
+    try:
+        days = int(args[1]) if len(args) > 1 else 90
+        days = max(1, min(365, days))
+    except ValueError:
+        days = 90
     codes = load_codes()
     fresh = []
+    expires_at = (datetime.datetime.now() +
+                  datetime.timedelta(days=days)).isoformat(timespec="seconds")
     for _ in range(n):
         c = make_code()
-        codes[c] = {"used_by": None, "created_at": _now_iso()}
+        codes[c] = {"used_by": None, "created_at": _now_iso(),
+                    "expires_at": expires_at}
         fresh.append(c)
     save_codes(codes)
-    lines = [f"🎟️ {n} single-use invite link(s) — open one on each of your "
-             "Telegram accounts (no limit on how many):", ""]
+    lines = [f"🎟️ {n} single-use invite link(s) — valid {days} days, open one "
+             f"on each of your Telegram accounts (no limit on how many):", ""]
     lines += [invite_link(c) for c in fresh]
+    lines += ["", f"Usage: <code>/newcodes 5 30</code> for 30-day codes, "
+                  f"<code>/newcodes 5 60</code> for 60-day."]
     send_text(chat_id, "\n".join(lines))
 
 
