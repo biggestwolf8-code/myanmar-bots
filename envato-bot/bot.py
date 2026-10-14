@@ -353,7 +353,7 @@ def handle_search(chat_id, user_id, args):
         return
     wait = send_text(chat_id, f"🔍 Searching Elements for “{html.escape(query)}”…")
     try:
-        results = envato_client.search(query, limit=8)
+        results = envato_client.search(query, limit=20)
     except envato_client.SessionExpired:
         send_text(chat_id, "⚠️ Envato session expired. Refresh it with "
                            "<code>/setcookie</code> (I'll walk you through it).")
@@ -369,23 +369,21 @@ def handle_search(chat_id, user_id, args):
             key = secrets.token_urlsafe(8)
             item_cache[key] = item
             item["_key"] = key
-    lines = [f"🔍 Top results for “{html.escape(query)}” — tap ⬇️ to download:", ""]
+    # Visual cards like the website: thumbnail + caption + download button.
+    api("deleteMessage", {"chat_id": chat_id,
+                          "message_id": wait.get("result", {}).get("message_id", 0)})
+    send_text(chat_id, f"🔍 Top results for “{html.escape(query)}” — tap ⬇️ to download:")
     for i, item in enumerate(results, 1):
-        lines.append(f"{i}. <b>{html.escape(item['title'])}</b>\n"
-                     f"   {html.escape(item.get('category', ''))}")
-    kb = inline_kb([
-        [{"text": f"⬇️ {i}. {item['title'][:32]}",
-          "callback_data": f"dl:{item['_key']}"}]
-        for i, item in enumerate(results, 1)
-    ])
-    # Edit the "searching…" message into the result list.
-    api("editMessageText", {
-        "chat_id": chat_id,
-        "message_id": wait.get("result", {}).get("message_id", 0),
-        "text": "\n".join(lines), "parse_mode": "HTML",
-        "reply_markup": json.dumps(kb),
-        "disable_web_page_preview": True,
-    })
+        kb = inline_kb([[{"text": "⬇️ Download",
+                          "callback_data": f"dl:{item['_key']}"}]])
+        caption = (f"<b>{html.escape(item['title'])}</b>\n"
+                   f"👤 {html.escape(item.get('author', ''))} · "
+                   f"🏷️ {html.escape(item.get('category', ''))}")
+        thumb = item.get("thumb")
+        if thumb:
+            send_photo(chat_id, thumb, caption, reply_markup=kb)
+        else:
+            send_text(chat_id, caption, reply_markup=kb)
 
 
 def do_download(chat_id, user_id, key):
