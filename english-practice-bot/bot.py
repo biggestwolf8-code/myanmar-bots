@@ -190,9 +190,9 @@ def gate_check(chat_id, user_id):
 # ---------- classes & homework ----------
 
 CLASSES = {
-    "grammar": "Intermediate Golden Grammar",
-    "level1": "Level 1 Native Ways of Speaking",
-    "level2": "Level 2 Native Ways of Speaking",
+    "grammar": "Grammar Inter",
+    "level1": "Level 1 Speaking",
+    "level2": "Level 2 Speaking",
 }
 HW_FILE = os.path.join(DATA_DIR, "homework.json")
 REMINDER_AFTER_HOURS = 20  # one nudge ~20h after assignment, if not done
@@ -489,8 +489,8 @@ def student_homework_status(user_id):
     return f"📚 Your homework ({class_name(hw['class'])}):\n\n{hw['text']}\n\n{extra}"
 
 
-CLASS_BUTTONS = ["Grammar", "Level 1", "Level 2"]
-BUTTON_TO_KEY = {"grammar": "grammar", "level 1": "level1", "level 2": "level2"}
+CLASS_BUTTONS = ["Grammar Inter", "Level 1 Speaking", "Level 2 Speaking"]
+BUTTON_TO_KEY = {"grammar inter": "grammar", "level 1 speaking": "level1", "level 2 speaking": "level2"}
 
 
 def class_keyboard():
