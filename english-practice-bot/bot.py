@@ -36,6 +36,8 @@ Admin commands (only ADMIN_CHAT_ID):
   /report [CLASS]            homework completion report (also auto-sent on each finish)
   /listen on|off             forward students' homework voice messages to you
                              (audio + transcript); default ON
+  /group on|off              let the bot reply in group chats; default OFF
+                             (toggle from your private chat with the bot)
   /student <name|CODE|id>    per-student homework card: class, current homework,
                              progress, voice count, tutor notes, last done
   Tap /exchange_<id> in any done/homework message to read that student's
@@ -870,6 +872,16 @@ def set_listen(on):
     save_hw(data)
 
 
+def group_enabled():
+    return load_hw().get("group_enabled", False)
+
+
+def set_group_enabled(on):
+    data = load_hw()
+    data["group_enabled"] = bool(on)
+    save_hw(data)
+
+
 def handle_voice(chat_id, user_id, voice, thread, msg_id):
     duration = voice.get("duration", 0)
     if duration > 120:
@@ -1111,6 +1123,19 @@ def handle_admin_command(chat_id, user_id, text):
             send_text(chat_id, "Usage: /listen on|off")
         return True
 
+    if cmd == "/group":
+        arg = parts[1].lower() if len(parts) > 1 else ""
+        if arg in ("on", "off"):
+            set_group_enabled(arg == "on")
+            send_text(chat_id, f"👥 Group chat mode is now {arg.upper()}.")
+        elif arg in ("", "status"):
+            send_text(chat_id,
+                      f"👥 Group chat mode is currently "
+                      f"{'ON' if group_enabled() else 'OFF'}.")
+        else:
+            send_text(chat_id, "Usage: /group on|off")
+        return True
+
     if cmd == "/student":
         if len(parts) < 2:
             send_text(chat_id, "Usage: /student <name | CODE | user id>")
@@ -1222,8 +1247,8 @@ def handle_update(u):
     chat_id = chat.get("id")
     if not chat_id:
         return
-    if chat.get("type") in ("group", "supergroup", "channel"):
-        return  # private chats only — the bot stays completely silent in groups
+    if chat.get("type") in ("group", "supergroup", "channel") and not group_enabled():
+        return  # group mode is off — the bot stays silent in groups
     user = msg.get("from", {})
     user_id = user.get("id")
     if not user_id:
