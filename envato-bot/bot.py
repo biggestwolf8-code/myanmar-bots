@@ -133,7 +133,7 @@ def is_activated(user_id):
     if is_owner(user_id):
         return True
     codes = load_codes()
-    return any(c.get("used_by") == str(user_id) for c in codes.values()
+    return any(e.get("used_by") == str(user_id) for k, e in codes.items()
                if not k.startswith("__"))
 
 
@@ -243,6 +243,16 @@ def handle_start(chat_id, user_id, args):
             return
         send_text(chat_id, "😕 That invite link is invalid or already used.")
         return
+    # Plain /start: first user claims ownership when none exists yet.
+    if not ADMIN_CHAT_ID and not load_codes().get("__owner__", {}).get("used_by"):
+        res = redeem_code("", user_id)
+        if res == "owner":
+            send_text(chat_id,
+                      "👑 You're the owner now. This bot is private to you.\n\n"
+                      "Mint invite links for your other Telegram accounts:\n"
+                      "<code>/newcodes 5</code>\n\n"
+                      "Then <b>/search</b> to find Envato Elements assets.")
+            return
     if is_activated(user_id):
         send_text(chat_id,
                   "👋 Envato Elements download bot.\n\n"
@@ -275,7 +285,7 @@ def handle_newcodes(chat_id, user_id, args):
     send_text(chat_id, "\n".join(lines))
 
 
-def handle_users(chat_id, user_id):
+def handle_users(chat_id, user_id, args):
     if not is_activated(user_id):
         send_text(chat_id, GATE_MSG)
         return
@@ -366,7 +376,7 @@ def do_download(chat_id, user_id, key):
     title = item["title"]
     send_text(chat_id, f"⬇️ Downloading <b>{html.escape(title)}</b>…")
     try:
-        path, fname, license_text = envato_client.download_item(item)
+        path, fname, lic_pdf = envato_client.download_item(item)
     except envato_client.SessionExpired:
         send_text(chat_id, "⚠️ Envato session expired. Refresh it with "
                            "<code>/setcookie</code>.")
@@ -376,18 +386,12 @@ def do_download(chat_id, user_id, key):
         send_text(chat_id, f"😕 Download failed: {html.escape(str(e)[:200])}")
         return
     size = os.path.getsize(path)
-    # License file next to the download.
-    lic_path = None
-    if license_text:
-        lic_path = path + ".LICENSE.txt"
-        with open(lic_path, "w", encoding="utf-8") as f:
-            f.write(license_text)
     caption = (f"📦 <b>{html.escape(fname)}</b>\n"
                f"📄 License: {html.escape(title)}")
     if size <= TG_FILE_LIMIT:
         send_document(chat_id, path, caption)
-        if lic_path:
-            send_document(chat_id, lic_path, "📜 License certificate")
+        if lic_pdf and os.path.isfile(lic_pdf):
+            send_document(chat_id, lic_pdf, "📜 License certificate")
     else:
         token = mint_dl_token(path, fname)
         link = file_link(token)
@@ -400,11 +404,12 @@ def do_download(chat_id, user_id, key):
             send_text(chat_id,
                       f"{caption}\n\n⚠️ File is {size/1024/1024:.0f} MB and "
                       f"no public URL is configured — set PUBLIC_URL.")
-        if lic_path and os.path.getsize(lic_path) <= TG_FILE_LIMIT:
-            send_document(chat_id, lic_path, "📜 License certificate")
+        if lic_pdf and os.path.isfile(lic_pdf) and \
+                os.path.getsize(lic_pdf) <= TG_FILE_LIMIT:
+            send_document(chat_id, lic_pdf, "📜 License certificate")
 
 
-def handle_status(chat_id, user_id):
+def handle_status(chat_id, user_id, args):
     if not is_activated(user_id):
         send_text(chat_id, GATE_MSG)
         return
@@ -441,7 +446,7 @@ def handle_setcookie(chat_id, user_id, args):
               f"{'✅ active' if ok else '❌ not working'}\n{html.escape(detail)}")
 
 
-def handle_recent(chat_id, user_id):
+def handle_recent(chat_id, user_id, args):
     if not is_activated(user_id):
         send_text(chat_id, GATE_MSG)
         return
