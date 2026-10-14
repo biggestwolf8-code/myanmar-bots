@@ -272,10 +272,11 @@ def tg(method, **params):
         return {"ok": False}
 
 
-def send(chat_id, text, parse_mode=None):
+def send(chat_id, text, parse_mode=None, silent=False):
     # split long messages
     for i in range(0, len(text), 3900):
-        kw = {"chat_id": chat_id, "text": text[i:i + 3900]}
+        kw = {"chat_id": chat_id, "text": text[i:i + 3900],
+              "disable_notification": silent}
         if parse_mode:
             kw["parse_mode"] = parse_mode
         tg("sendMessage", **kw)
@@ -956,11 +957,12 @@ def sweep_job():
                 store, save_store, fleet_emails, short_email)
             if checked:
                 log.info(f"Targeted sweep: checked {checked}, {len(changes)} changes")
-                # Alert on changes
+                # Alert on changes — these are Basic→Licensed renewals
                 if changes and store.get("alerts_on", True):
-                    lines = ["🔄 Auto-sweep found changes:"]
+                    lines = ["✅ License renewed — back to Licensed:"]
                     for email, prev, new in changes:
                         lines.append(f"{short_email(email)}: {prev} → {new}")
+                    # disable_notification=False ensures it buzzes the phone
                     send(ADMIN_CHAT_ID, "\n".join(lines))
         except Exception:
             log.exception("sweep job error")
