@@ -174,34 +174,42 @@ def search(query, limit=8):
     payload = decode_turbostream(r.json())
     data = _route_data(payload, "routes/search.all/route")
     sar = data.get("searchAllResults", {})
-    results = []
+    # Collect items per type, then interleave so videos aren't starved by photos.
+    by_type = []
     for _type_key, type_data in sar.items():
         if not isinstance(type_data, dict):
             continue
+        type_items = []
         for entry in type_data.get("items", []) or []:
             item = (entry or {}).get("item") or {}
             uuid = item.get("itemUuid")
             if not uuid:
                 continue
             image = item.get("image") or {}
-            # Video preview URL (field name varies by item type).
             video_url = (item.get("videoUrl") or item.get("previewUrl")
                          or item.get("videoPreviewUrl")
                          or (item.get("video") or {}).get("previewUrl", "")
                          or "")
-            results.append({
+            type_items.append({
                 "itemUuid": uuid,
                 "itemType": item.get("itemType", ""),
                 "title": item.get("title", "Untitled"),
                 "author": item.get("authorUsername", ""),
                 "thumb": image.get("fallbackSrc", ""),
                 "videoUrl": video_url,
-                # legacy keys used by bot.py display
                 "id": uuid,
                 "category": item.get("itemType", ""),
             })
-            if len(results) >= limit:
-                return results
+        if type_items:
+            by_type.append(type_items)
+    # Round-robin interleave across types.
+    results = []
+    idx = 0
+    while len(results) < limit and any(len(t) > idx for t in by_type):
+        for t in by_type:
+            if idx < len(t) and len(results) < limit:
+                results.append(t[idx])
+        idx += 1
     return results
 
 
