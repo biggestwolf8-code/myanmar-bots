@@ -385,10 +385,13 @@ def fmt_warnings(warns):
 
 def handle_message(msg):
     chat_id = msg["chat"]["id"]
-    if not is_admin(msg):
-        return
     text = (msg.get("text") or "").strip()
     if not text.startswith("/"):
+        return
+    if not is_admin(msg):
+        # Reply (not silent) so a wrong ADMIN_CHAT_ID is diagnosable.
+        if text.split()[0].split("@")[0].lower() == "/start":
+            send(chat_id, "This bot is private.")
         return
     parts = text.split()
     cmd = parts[0].split("@")[0].lower()
