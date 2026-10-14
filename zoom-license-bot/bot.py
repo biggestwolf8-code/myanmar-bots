@@ -70,6 +70,15 @@ except Exception as e:
 os.makedirs(DATA_DIR, exist_ok=True)
 STORE_PATH = os.path.join(DATA_DIR, "tokens.json")
 
+# Diagnostic / non-fleet records to always ignore
+# (probe@test.com was inserted by a live diagnostic 2026-10-13)
+EXCLUDED_EMAILS = {"probe@test.com"}
+
+
+def fleet_emails(store):
+    return sorted((set(SEED_EMAILS) | set(store["accounts"].keys())) - EXCLUDED_EMAILS)
+
+
 # Seed list for the first batch of accounts. The bot is not limited to these:
 # ANY account that authorizes the Zoom app is added to the registry dynamically
 # (the OAuth callback stores by the email Zoom reports) and included in checks.
@@ -235,7 +244,7 @@ def check_all():
     Runs with a small thread pool so 100s of accounts finish in ~1-2 min."""
     from concurrent.futures import ThreadPoolExecutor
     store = load_store()
-    emails = sorted(set(SEED_EMAILS) | set(store["accounts"].keys()))
+    emails = fleet_emails(store)
 
     def _one(email):
         acc = store["accounts"].get(email)
@@ -436,7 +445,7 @@ def handle_message(msg):
         else:
             # Sweep mode: report last known results from credential sweeps.
             results = {}
-            for email in sorted(set(SEED_EMAILS) | set(store["accounts"].keys())):
+            for email in fleet_emails(store):
                 a = store["accounts"].get(email, {})
                 st = a.get("last_type")
                 if st in ("Licensed", "Basic"):
@@ -450,7 +459,7 @@ def handle_message(msg):
             send(chat_id, out)
     elif cmd == "/status":
         store = load_store()
-        emails = sorted(set(SEED_EMAILS) | set(store["accounts"].keys()))
+        emails = fleet_emails(store)
         counts = {}
         for e in emails:
             st = store["accounts"].get(e, {}).get("last_type", "unknown")
@@ -466,24 +475,34 @@ def handle_message(msg):
         send(chat_id, "\n".join(lines))
     elif cmd == "/list":
         store = load_store()
-        f = arg.lower()
-        emails = sorted(set(SEED_EMAILS) | set(store["accounts"].keys()))
+        parts_l = arg.lower().split()
+        f = parts_l[0] if parts_l else ""
+        full = "full" in parts_l
+        def _fmt(emails, limit=200):
+            if full:
+                lst = sorted(emails)
+            else:
+                lst = [short_email(e) for e in sorted(emails)]
+            if len(lst) > limit:
+                return ", ".join(lst[:limit]) + f" …(+{len(lst) - limit} more)"
+            return ", ".join(lst) or "—"
+        emails = fleet_emails(store)
         if f == "licensed":
             ids = [e for e in emails if store["accounts"].get(e, {}).get("last_type") == "Licensed"]
-            send(chat_id, f"\u2705 Licensed ({len(ids)}):\n" + _id_list(ids, limit=200))
+            send(chat_id, f"\u2705 Licensed ({len(ids)}):\n" + _fmt(ids))
         elif f == "basic":
             ids = [e for e in emails if store["accounts"].get(e, {}).get("last_type") == "Basic"]
-            send(chat_id, f"\u26aa Basic ({len(ids)}):\n" + _id_list(ids, limit=200))
+            send(chat_id, f"\u26aa Basic ({len(ids)}):\n" + _fmt(ids))
         elif f in ("problems", "problem"):
             lines = ["\u2753 Needs attention:"]
             for e in emails:
                 a = store["accounts"].get(e, {})
                 st = a.get("last_type", "unknown")
                 if st not in ("Licensed", "Basic"):
-                    lines.append(f"{short_email(e)}: {st}")
+                    lines.append(f"{e if full else short_email(e)}: {st}")
             send(chat_id, "\n".join(lines) if len(lines) > 1 else "\u2705 No problem accounts.")
         else:
-            send(chat_id, "Usage: /list licensed|basic|problems")
+            send(chat_id, "Usage: /list licensed|basic|problems [full]")
     elif cmd == "/expiring":
         store = load_store()
         warns = expiry_warnings(store)
@@ -570,7 +589,7 @@ def handle_message(msg):
         send(chat_id, "\n".join(lines))
     elif cmd == "/accounts":
         store = load_store()
-        emails = sorted(set(SEED_EMAILS) | set(store["accounts"].keys()))
+        emails = fleet_emails(store)
         ok = sum(1 for e in emails if store["accounts"].get(e, {}).get("refresh_token"))
         send(chat_id,
              f"Authorized: {ok}/{len(emails)} accounts.\n"
