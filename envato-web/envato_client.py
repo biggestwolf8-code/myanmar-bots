@@ -184,12 +184,18 @@ def search(query, limit=8):
             if not uuid:
                 continue
             image = item.get("image") or {}
+            # Video preview URL (field name varies by item type).
+            video_url = (item.get("videoUrl") or item.get("previewUrl")
+                         or item.get("videoPreviewUrl")
+                         or (item.get("video") or {}).get("previewUrl", "")
+                         or "")
             results.append({
                 "itemUuid": uuid,
                 "itemType": item.get("itemType", ""),
                 "title": item.get("title", "Untitled"),
                 "author": item.get("authorUsername", ""),
                 "thumb": image.get("fallbackSrc", ""),
+                "videoUrl": video_url,
                 # legacy keys used by bot.py display
                 "id": uuid,
                 "category": item.get("itemType", ""),

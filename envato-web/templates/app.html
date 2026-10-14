@@ -111,7 +111,13 @@ async function go(){
 // On load: trending content + hero video
 (async()=>{
   const items=await search("trending","🔥 Trending now");
-  const vid=items.find(i=>i.video);
+  // Find a video for the hero — search specifically for videos if none found.
+  let vid=items.find(i=>i.video);
+  if(!vid){
+    const r=await fetch("/api/search?q="+encodeURIComponent("stock video"));
+    const d=await r.json();
+    if(d.items){vid=d.items.find(i=>i.video);}
+  }
   if(vid){document.getElementById("hero-vid").src=vid.video;}
 })();
 </script></body></html>
