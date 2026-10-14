@@ -158,6 +158,8 @@ def robots():
 @app.after_request
 def add_robots_header(resp):
     resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    # Privacy: no referrer leakage, no tracking.
+    resp.headers["Referrer-Policy"] = "no-referrer"
     return resp
 
 
