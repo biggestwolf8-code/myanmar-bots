@@ -34,6 +34,8 @@ Admin commands (only ADMIN_CHAT_ID):
                              assignment messages from students' chats
                              (Telegram allows deletion within 48 hours)
   /report [CLASS]            homework completion report (also auto-sent on each finish)
+  /listen on|off             forward students' homework voice messages to you
+                             (audio + transcript); default ON
 
 Student commands:
   /homework    show my current homework and progress
@@ -674,7 +676,44 @@ LIMIT_MSG = (
 )
 
 
-def handle_voice(chat_id, user_id, voice, thread):
+def maybe_forward_homework_voice(user_id, msg_id, transcript):
+    """Copy a student's homework voice message to the admin with the transcript.
+    Only for voice sent while they have an active, unfinished homework.
+    Returns True if forwarded."""
+    if is_admin(user_id) or not ADMIN_CHAT_ID or not listen_enabled():
+        return False
+    hw = active_hw_for_user(user_id)
+    if not hw or not msg_id:
+        return False
+    prog = get_progress(hw["id"], user_id)
+    if prog and prog.get("status") == "done":
+        return False
+    label = student_label(user_id)
+    try:
+        tg("copyMessage", {
+            "chat_id": ADMIN_CHAT_ID,
+            "from_chat_id": user_id,
+            "message_id": msg_id,
+            "caption": (f"🎤 {label} · {class_name(hw['class'])}\n"
+                        f"📝 Heard: {transcript[:800]}"),
+        }, timeout=30)
+        return True
+    except Exception as e:
+        print("forward homework voice failed:", e)
+        return False
+
+
+def listen_enabled():
+    return load_hw().get("listen", True)
+
+
+def set_listen(on):
+    data = load_hw()
+    data["listen"] = bool(on)
+    save_hw(data)
+
+
+def handle_voice(chat_id, user_id, voice, thread, msg_id):
     duration = voice.get("duration", 0)
     if duration > 120:
         send_text(chat_id,
@@ -709,6 +748,8 @@ def handle_voice(chat_id, user_id, voice, thread):
         else:
             send_text(chat_id, "I didn't catch any words there — say it once more? 🎤", thread)
         return
+    # Forward homework voice to the teacher (audio + transcript) before replying.
+    maybe_forward_homework_voice(user_id, msg_id, transcript)
     # Admin sees the raw transcript — makes it easy to check what was heard.
     if is_admin(user_id):
         send_text(chat_id, f"👂 Heard: {transcript}", thread)
@@ -898,6 +939,19 @@ def handle_admin_command(chat_id, user_id, text):
         send_text(chat_id, msg)
         return True
 
+    if cmd == "/listen":
+        arg = parts[1].lower() if len(parts) > 1 else ""
+        if arg in ("on", "off"):
+            set_listen(arg == "on")
+            send_text(chat_id, f"🎧 Homework audio forwarding is now {arg.upper()}.")
+        elif arg in ("", "status"):
+            send_text(chat_id,
+                      f"🎧 Homework audio forwarding is currently "
+                      f"{'ON' if listen_enabled() else 'OFF'}.")
+        else:
+            send_text(chat_id, "Usage: /listen on|off")
+        return True
+
     if cmd == "/unhomework":
         class_key = valid_class(parts[1]) if len(parts) > 1 else None
         if not class_key:
@@ -988,7 +1042,7 @@ def handle_update(u):
         return
 
     if msg.get("voice"):
-        handle_voice(chat_id, user_id, msg["voice"], thread)
+        handle_voice(chat_id, user_id, msg["voice"], thread, msg.get("message_id"))
         return
 
     if not text:
