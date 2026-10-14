@@ -40,6 +40,7 @@ Admin commands (only ADMIN_CHAT_ID):
                              progress, voice count, tutor notes, last done
   Tap /exchange_<id> in any done/homework message to read that student's
   full exchange with the tutor. /exchange <name> works too, anytime.
+  Tap /audio_<n> links in done reports to replay a specific voice message.
 
 Student commands:
   /homework    show my current homework and progress
@@ -388,6 +389,7 @@ def complete_homework(user_id, hw, assessment, exchanges):
                   f"Task: {hw['text']}\n"
                   f"Exchanges: {exchanges}"
                   + (f"\nTutor note: {assessment}" if assessment else "")
+                  + audio_tap_line(hw["id"], user_id)
                   + f"\n\n💬 See the exchange: /exchange_{user_id}")
 
 
@@ -723,6 +725,39 @@ def bump_homework_voice_count(user_id):
     save_hw(data)
 
 
+def record_homework_audio(user_id, file_id):
+    """Log a homework voice message's file_id so the teacher can replay it via tap link.
+    Returns the 1-based audio id, or None if not recorded."""
+    if is_admin(user_id) or not file_id:
+        return None
+    hw = active_hw_for_user(user_id)
+    if not hw:
+        return None
+    data = load_hw()
+    prog = data["progress"].setdefault(hw["id"], {}).setdefault(str(user_id), new_progress())
+    if prog.get("status") == "done":
+        return None
+    log = data.setdefault("audio_log", [])
+    log.append({"uid": user_id, "hid": hw["id"], "fid": file_id,
+                "ts": datetime.datetime.now().isoformat(timespec="seconds")})
+    save_hw(data)
+    return len(log)
+
+
+def audio_links_for(hw_id, user_id):
+    """1-based audio ids for one student's voice messages in one homework."""
+    data = load_hw()
+    return [i + 1 for i, a in enumerate(data.get("audio_log", []))
+            if a.get("uid") == user_id and a.get("hid") == hw_id]
+
+
+def audio_tap_line(hw_id, user_id):
+    aids = audio_links_for(hw_id, user_id)
+    if not aids:
+        return ""
+    return f"\n🎧 Audio ({len(aids)}): " + " ".join(f"/audio_{i}" for i in aids)
+
+
 def find_students(query):
     """Match activated students by name (substring), invite code, or telegram user id."""
     codes = load_codes()
@@ -762,6 +797,9 @@ def student_homework_card(user_id, entry):
                          f"{prog.get('voice_msgs', 0)} voice notes")
         else:
             lines.append("⏳ Not started yet")
+        tap_aids = audio_links_for(hw["id"], user_id)
+        if tap_aids:
+            lines.append(f"🎧 Audio ({len(tap_aids)}): " + " ".join(f"/audio_{i}" for i in tap_aids))
     last = None
     for hid, pmap in data["progress"].items():
         p = pmap.get(str(user_id))
@@ -870,6 +908,7 @@ def handle_voice(chat_id, user_id, voice, thread, msg_id):
     # Forward homework voice to the teacher (audio + transcript) before replying.
     maybe_forward_homework_voice(user_id, msg_id, transcript)
     bump_homework_voice_count(user_id)
+    record_homework_audio(user_id, voice.get("file_id"))
     # Admin sees the raw transcript — makes it easy to check what was heard.
     if is_admin(user_id):
         send_text(chat_id, f"👂 Heard: {transcript}", thread)
@@ -1122,6 +1161,28 @@ def handle_admin_command(chat_id, user_id, text):
             msg += (f"\n⚠️ Couldn't delete from {bad_chats} chat(s) — Telegram only lets "
                     "bots delete messages sent within the last 48 hours.")
         send_text(chat_id, msg)
+        return True
+
+    if cmd.startswith("/audio_"):
+        try:
+            aid = int(cmd.split("/audio_", 1)[1])
+        except (ValueError, IndexError):
+            aid = 0
+        if not aid:
+            send_text(chat_id, "Tap an audio link from a homework report, e.g. /audio_12")
+            return True
+        data = load_hw()
+        log = data.get("audio_log", [])
+        entry = log[aid - 1] if 0 < aid <= len(log) else None
+        if not entry:
+            send_text(chat_id, "That audio isn't available.")
+            return True
+        try:
+            tg("sendVoice", {"chat_id": chat_id, "voice": entry["fid"],
+                             "caption": f"🎧 {student_label(entry['uid'])}"}, timeout=60)
+        except Exception as e:
+            print("audio replay failed:", e)
+            send_text(chat_id, "Couldn't fetch that audio — it may have expired.")
         return True
 
     if cmd.startswith("/exchange_"):
