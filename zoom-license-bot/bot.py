@@ -118,16 +118,32 @@ store_lock = threading.Lock()
 def load_store():
     with store_lock:
         if not os.path.exists(STORE_PATH):
-            return {"accounts": {}, "alerts_on": True}
+            return {"accounts": {}, "alerts_on": True, "alert_chats": []}
         try:
             with open(STORE_PATH, encoding="utf-8") as f:
                 data = json.load(f)
             data.setdefault("accounts", {})
             data.setdefault("alerts_on", True)
+            data.setdefault("alert_chats", [])
             return data
         except Exception as e:
             log.warning("Could not read store: %s", e)
-            return {"accounts": {}, "alerts_on": True}
+            return {"accounts": {}, "alerts_on": True, "alert_chats": []}
+
+
+def send_alerts(text, parse_mode=None):
+    """Send an alert to the admin DM plus any registered group chats."""
+    store = load_store()
+    targets = [str(ADMIN_CHAT_ID)]
+    for cid in store.get("alert_chats", []):
+        if str(cid) not in targets:
+            targets.append(str(cid))
+    for cid in targets:
+        try:
+            send(int(cid) if cid.lstrip("-").isdigit() else cid, text,
+                 parse_mode=parse_mode)
+        except Exception:
+            log.exception(f"alert send failed to {cid}")
 
 
 def save_store(data):
@@ -432,7 +448,9 @@ def handle_message(msg):
              "/renewed [YYYY-MM-DD] id1 id2 ... — stamp the accounts YOU\n"
              "  just renewed with a fresh 14-day clock (only those)\n"
              "/reauth <email> — authorize link (for OAuth mode)\n"
-             "/alerts on|off — change alerts on/off")
+             "/alerts on|off — change alerts on/off\n"
+             "/alertshere — send license alerts to this chat too\n"
+             "/alertstop — stop alerts in this chat")
     elif cmd == "/check":
         store = load_store()
         oauth_accounts = [e for e, a in store["accounts"].items() if a.get("refresh_token")]
@@ -632,6 +650,22 @@ def handle_message(msg):
             store["alerts_on"] = True
             save_store(store)
             send(chat_id, "\U0001f514 Daily auto-check alerts ON.")
+    elif cmd == "/alertshere":
+        # Register this chat (group or DM) to receive license alerts
+        store = load_store()
+        chats = store.setdefault("alert_chats", [])
+        if chat_id not in chats and str(chat_id) not in [str(c) for c in chats]:
+            chats.append(chat_id)
+            save_store(store)
+        send(chat_id, "✅ This chat will now receive license alerts "
+                      "(expiries, renewals, lapses).")
+    elif cmd == "/alertstop":
+        store = load_store()
+        chats = store.get("alert_chats", [])
+        chats = [c for c in chats if str(c) != str(chat_id)]
+        store["alert_chats"] = chats
+        save_store(store)
+        send(chat_id, "🔕 Alerts disabled for this chat.")
     else:
         send(chat_id, "Unknown command. Try /check, /status, /accounts, /reauth, /alerts.")
 
@@ -698,7 +732,7 @@ def daily_check_job():
                                 datetime.timezone.utc).isoformat()
                     save_store(store)
                     if changes:
-                        send(ADMIN_CHAT_ID, fmt_changes(changes))
+                        send_alerts( fmt_changes(changes))
                         continue
                 # Sweep-mode summary (also sent when live check found no changes)
                 counts = {}
@@ -708,13 +742,13 @@ def daily_check_job():
                 ls = store.get("last_sweep_at", "")
                 total = sum(counts.values())
                 if total == 0:
-                    send(ADMIN_CHAT_ID,
+                    send_alerts(
                          "\u2705 Daily Zoom summary: no accounts tracked yet. "
                          "Run a sweep to populate license statuses.")
                 else:
                     summary = ", ".join(f"{k} ({v})" for k, v in sorted(counts.items()))
                     when = f"swept {ls[:16].replace('T', ' ')} UTC" if ls else "no sweep yet"
-                    send(ADMIN_CHAT_ID,
+                    send_alerts(
                          f"\u2705 Daily Zoom summary ({total} accounts, {when}): {summary}.")
                 # 1-day advance expiry warnings (14-day license cycle).
                 # Each expiry warns once (ingest-time urgent alerts and the
@@ -732,7 +766,7 @@ def daily_check_job():
                 if fresh:
                     save_store(store)
                     if store.get("alerts_on", True):
-                        send(ADMIN_CHAT_ID, fmt_warnings(fresh))
+                        send_alerts( fmt_warnings(fresh))
         except Exception:
             log.exception("daily check error")
         time.sleep(60)
@@ -835,7 +869,7 @@ def ingest():
 
     if changes and store.get("alerts_on", True):
         try:
-            send(ADMIN_CHAT_ID, fmt_changes(changes))
+            send_alerts( fmt_changes(changes))
         except Exception:
             log.exception("alert send failed")
 
@@ -864,7 +898,7 @@ def ingest():
                 when = "TOMORROW" if dl == 1 else ("TODAY" if dl == 0 else f"{-dl}d OVERDUE")
                 lines.append(f"{short_email(email)}: expires {when}")
             try:
-                send(ADMIN_CHAT_ID, "\n".join(lines))
+                send_alerts( "\n".join(lines))
             except Exception:
                 log.exception("urgent expiry alert failed")
 
@@ -936,7 +970,7 @@ def oauth_callback():
     save_store(store)
     log.info("captured OAuth token for %s (state=%s)", email, state)
     try:
-        send(ADMIN_CHAT_ID,
+        send_alerts(
              f"\u2705 Zoom account authorized: {email} "
              f"({TYPE_NAMES.get(me.get('type'), me.get('type'))})")
     except Exception:
@@ -987,7 +1021,7 @@ def sweep_job():
                     lines = ["⚠️ License expired — now Basic:"]
                     for email in sorted(expired):
                         lines.append(short_email(email))
-                    send(ADMIN_CHAT_ID, "\n".join(lines))
+                    send_alerts( "\n".join(lines))
 
             # Step 2: re-check Basic accounts (catches renewals)
             checked, changes = run_targeted_sweep(
@@ -998,7 +1032,7 @@ def sweep_job():
                     lines = ["✅ License renewed — back to Licensed:"]
                     for email, prev, new in changes:
                         lines.append(f"{short_email(email)}: {prev} → {new}")
-                    send(ADMIN_CHAT_ID, "\n".join(lines))
+                    send_alerts( "\n".join(lines))
         except Exception:
             log.exception("sweep job error")
         # Every 6 hours
