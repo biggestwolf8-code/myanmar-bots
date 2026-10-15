@@ -7,7 +7,9 @@ cd /etc/wireguard
 # Generate new client keypair
 CLIENT_PRIV=$(wg genkey)
 CLIENT_PUB=$(echo "$CLIENT_PRIV" | wg pubkey)
-SERVER_PUB=$(cat server_public.key)
+# Get server public key from its private key in wg0.conf
+SERVER_PRIV=$(grep -A5 '\[Interface\]' /etc/wireguard/wg0.conf | grep PrivateKey | awk '{print $3}')
+SERVER_PUB=$(echo "$SERVER_PRIV" | wg pubkey)
 
 echo "New client public key: $CLIENT_PUB"
 
