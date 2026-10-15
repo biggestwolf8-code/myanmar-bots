@@ -84,11 +84,11 @@ def get_at_risk_accounts(store, fleet_emails_fn, short_email_fn):
 
 def run_targeted_sweep(store, save_store_fn, fleet_emails_fn, short_email_fn,
                        max_accounts=15):
-    """Run a targeted sweep of at-risk accounts. Returns (checked, changes)."""
+    """Run a targeted sweep of at-risk accounts. Returns (checked, changes, errors)."""
     creds = load_credentials()
     if not creds:
         log.warning("No ZOOM_CREDS configured, skipping sweep")
-        return 0, []
+        return 0, [], ["No ZOOM_CREDS configured"]
 
     targets = get_at_risk_accounts(store, fleet_emails_fn, short_email_fn)
     # Filter to accounts we have credentials for, cap the count
@@ -96,10 +96,11 @@ def run_targeted_sweep(store, save_store_fn, fleet_emails_fn, short_email_fn,
 
     if not targets:
         log.info("No at-risk accounts to sweep")
-        return 0, []
+        return 0, [], []
 
     log.info(f"Targeted sweep: checking {len(targets)} accounts")
     changes = []
+    errors = []
     checked = 0
 
     for email in targets:
@@ -112,6 +113,7 @@ def run_targeted_sweep(store, save_store_fn, fleet_emails_fn, short_email_fn,
         except Exception as e:
             log.exception(f"Sweep failed for {email}")
             status, detail = "ERROR", str(e)[:200]
+            errors.append(f"{email}: {str(e)[:200]}")
 
         acc = store["accounts"].setdefault(email, {})
         prev = acc.get("last_type")
@@ -130,4 +132,4 @@ def run_targeted_sweep(store, save_store_fn, fleet_emails_fn, short_email_fn,
 
     if checked:
         save_store_fn(store)
-    return checked, changes
+    return checked, changes, errors

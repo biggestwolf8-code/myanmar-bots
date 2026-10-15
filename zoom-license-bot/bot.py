@@ -794,12 +794,12 @@ def sweepnow():
         creds = load_credentials()
         matched = [e for e in at_risk if e.lower() in creds]
         _sweep_status["last_run"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
-        checked, changes = run_targeted_sweep(store, save_store, fleet_emails, short_email)
+        checked, changes, _errs = run_targeted_sweep(store, save_store, fleet_emails, short_email)
         _sweep_status["last_result"] = f"checked={checked} changes={len(changes)}"
-        _sweep_status["last_error"] = None
+        _sweep_status["last_error"] = _errs[0] if _errs else None
         return {"ok": True, "checked": checked, "changes": len(changes),
                 "at_risk": at_risk, "matched_creds": len(matched),
-                "total_creds": len(creds)}
+                "total_creds": len(creds), "errors": _errs[:3]}
     except Exception as e:
         _sweep_status["last_error"] = str(e)[:500]
         return {"ok": False, "error": str(e)[:500]}
@@ -1062,7 +1062,7 @@ def sweep_job():
                     send_alerts( "\n".join(lines))
 
             # Step 2: re-check Basic accounts (catches renewals)
-            checked, changes = run_targeted_sweep(
+            checked, changes, _errs = run_targeted_sweep(
                 store, save_store, fleet_emails, short_email)
             _sweep_status["last_result"] = f"checked={checked} changes={len(changes)}"
             _sweep_status["last_error"] = None
