@@ -787,13 +787,19 @@ def sweepnow():
     import datetime as _dt
     global _sweep_status
     try:
-        from sweeper import run_targeted_sweep
+        from sweeper import run_targeted_sweep, get_at_risk_accounts, load_credentials
         store = load_store()
+        # Debug: show at-risk accounts
+        at_risk = get_at_risk_accounts(store, fleet_emails, short_email)
+        creds = load_credentials()
+        matched = [e for e in at_risk if e.lower() in creds]
         _sweep_status["last_run"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
         checked, changes = run_targeted_sweep(store, save_store, fleet_emails, short_email)
         _sweep_status["last_result"] = f"checked={checked} changes={len(changes)}"
         _sweep_status["last_error"] = None
-        return {"ok": True, "checked": checked, "changes": len(changes)}
+        return {"ok": True, "checked": checked, "changes": len(changes),
+                "at_risk": at_risk, "matched_creds": len(matched),
+                "total_creds": len(creds)}
     except Exception as e:
         _sweep_status["last_error"] = str(e)[:500]
         return {"ok": False, "error": str(e)[:500]}
