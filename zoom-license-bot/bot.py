@@ -534,10 +534,6 @@ def handle_message(msg):
         f = parts_l[0] if parts_l else ""
         full = "full" in parts_l
         creds = "creds" in parts_l
-        # Passwords are admin-only, even in groups
-        if creds and not admin:
-            send(chat_id, "🔒 Credential view is admin-only.")
-            return
         def _fmt(emails, limit=200):
             if creds:
                 # email | password, one per line in a code block — tap to copy
