@@ -36,7 +36,12 @@ def check_account_playwright(email, password):
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browser_path
 
     def _launch(p):
-        return p.chromium.launch(headless=True)
+        return p.chromium.launch(headless=True, args=[
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+        ])
 
     with sync_playwright() as p:
         try:
