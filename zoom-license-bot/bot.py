@@ -422,15 +422,23 @@ def handle_message(msg):
     text = (msg.get("text") or "").strip()
     if not text.startswith("/"):
         return
-    if not is_admin(msg):
-        # Reply (not silent) so a wrong ADMIN_CHAT_ID is diagnosable.
-        if text.split()[0].split("@")[0].lower() == "/start":
-            uid = msg.get("from", {}).get("id", "?")
-            send(chat_id, f"This bot is private. (your id: {uid})")
-        return
     parts = text.split()
     cmd = parts[0].split("@")[0].lower()
     arg = parts[1] if len(parts) > 1 else ""
+    admin = is_admin(msg)
+    # In groups, any member may use read-only commands; admin-only commands
+    # (renewed, backdate, alerts, reauth) stay restricted to the owner.
+    # In DMs, everything stays admin-only.
+    is_group = isinstance(chat_id, int) and chat_id < 0
+    READONLY = {"/start", "/check", "/status", "/list", "/expiring", "/accounts"}
+    if not admin:
+        if is_group and cmd in READONLY:
+            pass  # allow read-only in groups
+        else:
+            if cmd == "/start":
+                uid = msg.get("from", {}).get("id", "?")
+                send(chat_id, f"This bot is private. (your id: {uid})")
+            return
 
     if cmd == "/start":
         send(chat_id,
