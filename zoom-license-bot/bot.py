@@ -528,7 +528,9 @@ def handle_message(msg):
         send(chat_id, "\n".join(lines))
     elif cmd == "/list":
         store = load_store()
-        parts_l = arg.lower().split()
+        # Use all args after /list (not just the first) for flags like "full", "creds"
+        parts_l = text.split()[1:]
+        parts_l = [p.lower() for p in parts_l]
         f = parts_l[0] if parts_l else ""
         full = "full" in parts_l
         creds = "creds" in parts_l
