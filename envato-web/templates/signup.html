@@ -16,13 +16,14 @@ button:hover{background:#6fa033}
 </style></head>
 <body><div class="card">
 <div class="logo">Envato <span>Elements Unlimited</span></div>
-<div class="sub">Create your account</div>
+<div class="sub">Create your account — invite code required</div>
 <div class="err">{{ err }}</div>
 <form method="post">
-  <input name="email" type="email" placeholder="Email address" autocomplete="email" autofocus>
+  <input name="code" type="text" placeholder="Invite code" autocomplete="off" autofocus style="text-transform:uppercase">
+  <input name="email" type="email" placeholder="Email address" autocomplete="email">
   <input name="password" type="password" placeholder="Password (min 6 chars)" autocomplete="new-password">
   <input name="password2" type="password" placeholder="Confirm password" autocomplete="new-password">
   <button type="submit">Sign up</button>
 </form>
-<div class="foot">Have an account? <a href="/login">Log in</a></div>
+<div class="foot">Invite codes are created by the app owner in the admin panel.<br>Have an account? <a href="/login">Log in</a></div>
 </div></body></html>

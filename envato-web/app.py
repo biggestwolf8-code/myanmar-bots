@@ -8,6 +8,9 @@ preview thumbnails, download files + license certificates.
 Env vars:
     DATA_DIR       - persistent dir (Railway volume at /data)
     ADMIN_PASSWORD - for /admin
+    FLASK_SECRET   - signing secret (optional; generated + persisted to the
+                     volume on first boot when unset so sessions survive
+                     restarts)
     PORT           - web port (Railway sets this)
 """
 
@@ -28,11 +31,47 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(BASE_DIR, "data"))
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "").strip()
 PORT = int(os.environ.get("PORT", "8080"))
-SECRET = os.environ.get("FLASK_SECRET", secrets.token_hex(16))
 
 CODES_FILE = os.path.join(DATA_DIR, "web_codes.json")
 USERS_FILE = os.path.join(DATA_DIR, "web_users.json")
+SECRET_FILE = os.path.join(DATA_DIR, "flask_secret.key")
 os.makedirs(DATA_DIR, exist_ok=True)
+
+
+def _load_secret():
+    """Persistent Flask signing secret.
+
+    Env var FLASK_SECRET wins when set. Otherwise reuse a secret stored on
+    the Railway volume so user sessions survive restarts; generate one on
+    first boot (600 perms).
+    """
+    env_secret = os.environ.get("FLASK_SECRET")
+    if env_secret:
+        return env_secret
+    try:
+        with open(SECRET_FILE, "r", encoding="utf-8") as f:
+            s = f.read().strip()
+            if s:
+                return s
+    except (FileNotFoundError, OSError):
+        pass
+    s = secrets.token_hex(32)
+    try:
+        fd = os.open(SECRET_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(s)
+    except FileExistsError:
+        try:
+            with open(SECRET_FILE, "r", encoding="utf-8") as f:
+                return f.read().strip() or s
+        except (FileNotFoundError, OSError):
+            return s
+    except OSError:
+        pass
+    return s
+
+
+SECRET = _load_secret()
 
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
@@ -201,25 +240,37 @@ def login():
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
+    # Registration is owner-only: a fresh, unused invite code (minted in
+    # /admin) is required. The code is consumed so it cannot be reused to
+    # create more accounts. Existing accounts are unaffected.
     err = ""
     if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
-        pw = request.form.get("password") or ""
-        pw2 = request.form.get("password2") or ""
-        users = load_users()
-        if not email or "@" not in email:
-            err = "Enter a valid email."
-        elif len(pw) < 6:
-            err = "Password must be at least 6 characters."
-        elif pw != pw2:
-            err = "Passwords don't match."
-        elif email in users:
-            err = "That email is already registered — just log in."
+        code = (request.form.get("code") or "").strip().upper()
+        codes = load_codes()
+        entry = codes.get(code)
+        if not entry or entry.get("used_by") or not code_valid(entry):
+            err = "A valid invite code is required to create an account."
         else:
-            users[email] = {"pw": hash_pw(pw), "created_at": _now_iso()}
-            save_users(users)
-            session["email"] = email
-            return redirect("/app")
+            email = (request.form.get("email") or "").strip().lower()
+            pw = request.form.get("password") or ""
+            pw2 = request.form.get("password2") or ""
+            users = load_users()
+            if not email or "@" not in email:
+                err = "Enter a valid email."
+            elif len(pw) < 6:
+                err = "Password must be at least 6 characters."
+            elif pw != pw2:
+                err = "Passwords don't match."
+            elif email in users:
+                err = "That email is already registered — just log in."
+            else:
+                users[email] = {"pw": hash_pw(pw), "created_at": _now_iso()}
+                save_users(users)
+                entry["used_by"] = email
+                entry["used_at"] = _now_iso()
+                save_codes(codes)
+                session["email"] = email
+                return redirect("/app")
     return render_template("signup.html", err=err)
 
 
