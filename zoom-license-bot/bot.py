@@ -450,6 +450,7 @@ def handle_message(msg):
              "/status — status counts summary\n"
              "/accounts — authorization coverage\n"
              "/list licensed|basic|problems — list accounts by status\n"
+             "  full=emails, creds=email+password (admin)\n"
              "/expiring — licenses expiring within 2 days\n"
              "/backdate YYYY-MM-DD — fallback: set license start date for\n"
              "  currently-Licensed accounts lacking a real expiration date\n"
@@ -513,7 +514,28 @@ def handle_message(msg):
         parts_l = arg.lower().split()
         f = parts_l[0] if parts_l else ""
         full = "full" in parts_l
+        creds = "creds" in parts_l
+        # Passwords are admin-only, even in groups
+        if creds and not admin:
+            send(chat_id, "🔒 Credential view is admin-only.")
+            return
         def _fmt(emails, limit=200):
+            if creds:
+                # email | password, one per line in a code block — tap to copy
+                try:
+                    from sweeper import load_credentials
+                    pw = load_credentials()
+                except Exception:
+                    pw = {}
+                lst = sorted(emails)
+                lines = []
+                for e in lst[:limit]:
+                    p = pw.get(e.lower(), "—")
+                    lines.append(f"{e} | {p}")
+                body = "\n".join(lines)
+                if len(lst) > limit:
+                    body += f"\n…(+{len(lst) - limit} more)"
+                return "```\n" + body + "\n```" if body else "—"
             if full:
                 # one per line in a code block — tap to copy in Telegram
                 lst = sorted(emails)
@@ -526,7 +548,7 @@ def handle_message(msg):
                 return ", ".join(lst[:limit]) + f" …(+{len(lst) - limit} more)"
             return ", ".join(lst) or "—"
         emails = fleet_emails(store)
-        pm = "Markdown" if full else None
+        pm = "Markdown" if (full or creds) else None
         if f == "licensed":
             ids = [e for e in emails if store["accounts"].get(e, {}).get("last_type") == "Licensed"]
             send(chat_id, f"\u2705 Licensed ({len(ids)}):\n" + _fmt(ids), parse_mode=pm)
