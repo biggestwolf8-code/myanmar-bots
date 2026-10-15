@@ -830,30 +830,6 @@ def healthz():
     return {"ok": True}
 
 
-@app.get("/sweepnow")
-def sweepnow():
-    """Manually trigger a targeted sweep (for debugging). No auth — remove in prod."""
-    import datetime as _dt
-    global _sweep_status
-    try:
-        from sweeper import run_targeted_sweep, get_at_risk_accounts, load_credentials
-        store = load_store()
-        # Debug: show at-risk accounts
-        at_risk = get_at_risk_accounts(store, fleet_emails, short_email)
-        creds = load_credentials()
-        matched = [e for e in at_risk if e.lower() in creds]
-        _sweep_status["last_run"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
-        checked, changes, _errs = run_targeted_sweep(store, save_store, fleet_emails, short_email)
-        _sweep_status["last_result"] = f"checked={checked} changes={len(changes)}"
-        _sweep_status["last_error"] = _errs[0] if _errs else None
-        return {"ok": True, "checked": checked, "changes": len(changes),
-                "at_risk": at_risk, "matched_creds": len(matched),
-                "total_creds": len(creds), "errors": _errs[:3]}
-    except Exception as e:
-        _sweep_status["last_error"] = str(e)[:500]
-        return {"ok": False, "error": str(e)[:500]}
-
-
 @app.get("/diag")
 def diag():
     """Safe diagnostic: verifies Telegram token without exposing it."""
@@ -882,12 +858,10 @@ def diag():
         result["zoom_creds_count"] = len(load_credentials())
     except Exception:
         result["zoom_creds_count"] = -1
-    result["sweep_status"] = _sweep_status
     return result
 
 
 # Sweep status tracker (updated by sweep_job)
-_sweep_status = {"last_run": None, "last_result": None, "last_error": None}
 
 
 @app.post("/ingest")
@@ -1074,7 +1048,6 @@ def sweep_job():
     """
     import time as _time
     import datetime as _dt
-    global _sweep_status
     # Wait for bot to fully start
     _time.sleep(60)
     while True:
@@ -1082,7 +1055,6 @@ def sweep_job():
             from sweeper import run_targeted_sweep
             store = load_store()
             today = _dt.datetime.now(_dt.timezone.utc).date()
-            _sweep_status["last_run"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
 
             # Step 1: expiry dates that have passed -> Basic
             expired = []
@@ -1110,21 +1082,11 @@ def sweep_job():
                         lines.append(short_email(email))
                     send_alerts( "\n".join(lines))
 
-            # Step 2: re-check Basic accounts (catches renewals)
-            checked, changes, _errs = run_targeted_sweep(
-                store, save_store, fleet_emails, short_email)
-            _sweep_status["last_result"] = f"checked={checked} changes={len(changes)}"
-            _sweep_status["last_error"] = None
-            if checked:
-                log.info(f"Targeted sweep: checked {checked}, {len(changes)} changes")
-                if changes and store.get("alerts_on", True):
-                    lines = ["✅ License renewed — back to Licensed:"]
-                    for email, prev, new in changes:
-                        lines.append(f"{short_email(email)}: {prev} → {new}")
-                    send_alerts( "\n".join(lines))
+            # Step 2: re-check Basic accounts via Playwright — DISABLED
+            # (Chromium cannot run on Railway; use /renewed or manual checks)
+            log.info("Skipping Playwright re-check (disabled on Railway)")
         except Exception as e:
             log.exception("sweep job error")
-            _sweep_status["last_error"] = str(e)[:200]
         # Every 6 hours
         _time.sleep(6 * 3600)
 
