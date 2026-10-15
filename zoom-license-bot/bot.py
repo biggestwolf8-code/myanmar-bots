@@ -781,6 +781,24 @@ def healthz():
     return {"ok": True}
 
 
+@app.get("/sweepnow")
+def sweepnow():
+    """Manually trigger a targeted sweep (for debugging). No auth — remove in prod."""
+    import datetime as _dt
+    global _sweep_status
+    try:
+        from sweeper import run_targeted_sweep
+        store = load_store()
+        _sweep_status["last_run"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        checked, changes = run_targeted_sweep(store, save_store, fleet_emails, short_email)
+        _sweep_status["last_result"] = f"checked={checked} changes={len(changes)}"
+        _sweep_status["last_error"] = None
+        return {"ok": True, "checked": checked, "changes": len(changes)}
+    except Exception as e:
+        _sweep_status["last_error"] = str(e)[:500]
+        return {"ok": False, "error": str(e)[:500]}
+
+
 @app.get("/diag")
 def diag():
     """Safe diagnostic: verifies Telegram token without exposing it."""
