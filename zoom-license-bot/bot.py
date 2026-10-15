@@ -43,6 +43,23 @@ import requests
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Flask, request
 
+# ---------------------------------------------------------------- helpers
+
+BKK = datetime.timezone(datetime.timedelta(hours=7))  # Asia/Bangkok
+
+def fmt_thai_time(iso_str):
+    """Convert ISO UTC timestamp to Thailand time for display."""
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        bkk = dt.astimezone(BKK)
+        return bkk.strftime("%Y-%m-%d %H:%M") + " TH"
+    except Exception:
+        return iso_str[:16].replace("T", " ")
+
 # ---------------------------------------------------------------- config
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
@@ -491,7 +508,7 @@ def handle_message(msg):
                                       a.get("sweep_detail") or "no sweep data yet")
             out = fmt_table(results)
             ls = store.get("last_sweep_at", "")
-            out += f"\n\nLast sweep: {ls[:16].replace('T', ' ')} UTC" if ls else "\n\nNo sweep yet."
+            out += f"\n\nLast sweep: {fmt_thai_time(ls)}" if ls else "\n\nNo sweep yet."
             send(chat_id, out)
     elif cmd == "/status":
         store = load_store()
@@ -777,7 +794,7 @@ def daily_check_job():
                          "Run a sweep to populate license statuses.")
                 else:
                     summary = ", ".join(f"{k} ({v})" for k, v in sorted(counts.items()))
-                    when = f"swept {ls[:16].replace('T', ' ')} UTC" if ls else "no sweep yet"
+                    when = f"swept {fmt_thai_time(ls)}" if ls else "no sweep yet"
                     send_alerts(
                          f"\u2705 Daily Zoom summary ({total} accounts, {when}): {summary}.")
                 # 1-day advance expiry warnings (14-day license cycle).
