@@ -28,9 +28,28 @@ def load_credentials():
 def check_account_playwright(email, password):
     """Returns (status, detail). Status: Licensed|Basic|ERROR|BLOCKED."""
     from playwright.sync_api import sync_playwright
+    import subprocess
+
+    # Use persistent volume for browsers so they survive restarts
+    data_dir = os.environ.get("DATA_DIR", "./data")
+    browser_path = os.path.join(data_dir, "ms-playwright")
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browser_path
+
+    def _launch(p):
+        return p.chromium.launch(headless=True)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        try:
+            browser = _launch(p)
+        except Exception as e:
+            if "Executable doesn't exist" in str(e):
+                log.info("Installing Playwright Chromium...")
+                subprocess.run(
+                    ["python", "-m", "playwright", "install", "chromium"],
+                    timeout=300, check=False)
+                browser = _launch(p)  # retry after install
+            else:
+                raise
         ctx = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
