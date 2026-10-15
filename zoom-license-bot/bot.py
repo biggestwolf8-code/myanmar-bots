@@ -802,7 +802,19 @@ def diag():
             result["pending_updates"] = w["result"].get("pending_update_count")
     except Exception:
         pass
+    # Sweep diagnostics (no secrets exposed)
+    result["zoom_creds_set"] = bool(os.environ.get("ZOOM_CREDS", "").strip())
+    try:
+        from sweeper import load_credentials
+        result["zoom_creds_count"] = len(load_credentials())
+    except Exception:
+        result["zoom_creds_count"] = -1
+    result["sweep_status"] = _sweep_status
     return result
+
+
+# Sweep status tracker (updated by sweep_job)
+_sweep_status = {"last_run": None, "last_result": None, "last_error": None}
 
 
 @app.post("/ingest")
@@ -989,6 +1001,7 @@ def sweep_job():
     """
     import time as _time
     import datetime as _dt
+    global _sweep_status
     # Wait for bot to fully start
     _time.sleep(60)
     while True:
@@ -996,6 +1009,7 @@ def sweep_job():
             from sweeper import run_targeted_sweep
             store = load_store()
             today = _dt.datetime.now(_dt.timezone.utc).date()
+            _sweep_status["last_run"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
 
             # Step 1: expiry dates that have passed -> Basic
             expired = []
@@ -1026,6 +1040,8 @@ def sweep_job():
             # Step 2: re-check Basic accounts (catches renewals)
             checked, changes = run_targeted_sweep(
                 store, save_store, fleet_emails, short_email)
+            _sweep_status["last_result"] = f"checked={checked} changes={len(changes)}"
+            _sweep_status["last_error"] = None
             if checked:
                 log.info(f"Targeted sweep: checked {checked}, {len(changes)} changes")
                 if changes and store.get("alerts_on", True):
@@ -1033,8 +1049,9 @@ def sweep_job():
                     for email, prev, new in changes:
                         lines.append(f"{short_email(email)}: {prev} → {new}")
                     send_alerts( "\n".join(lines))
-        except Exception:
+        except Exception as e:
             log.exception("sweep job error")
+            _sweep_status["last_error"] = str(e)[:200]
         # Every 6 hours
         _time.sleep(6 * 3600)
 
