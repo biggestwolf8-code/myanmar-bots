@@ -36,6 +36,14 @@ def check_account_playwright(email, password):
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browser_path
 
     def _launch(p):
+        # Try system chromium first (from nixpacks), fall back to playwright's
+        import shutil
+        sys_chrome = shutil.which("chromium") or shutil.which("chromium-browser") \
+            or shutil.which("google-chrome")
+        if sys_chrome:
+            return p.chromium.launch(headless=True, executable_path=sys_chrome,
+                                     args=["--no-sandbox", "--disable-dev-shm-usage",
+                                           "--disable-gpu"])
         return p.chromium.launch(headless=True, args=[
             "--no-sandbox",
             "--disable-dev-shm-usage",
@@ -50,8 +58,8 @@ def check_account_playwright(email, password):
             if "Executable doesn't exist" in str(e):
                 log.info("Installing Playwright Chromium...")
                 subprocess.run(
-                    ["python", "-m", "playwright", "install", "chromium"],
-                    timeout=300, check=False)
+                    ["python", "-m", "playwright", "install", "--with-deps", "chromium"],
+                    timeout=600, check=False)
                 browser = _launch(p)  # retry after install
             else:
                 raise
