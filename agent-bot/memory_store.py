@@ -16,7 +16,7 @@ os.makedirs(HIST_DIR, exist_ok=True)
 
 MEMORY_FILE = os.path.join(MEM_DIR, "MEMORY.md")
 VERSION_FILE = os.path.join(MEM_DIR, "memory_version.txt")
-MEMORY_VERSION = 4
+MEMORY_VERSION = 5
 
 SEED_ADDITIONS = {
     2: """
@@ -41,6 +41,24 @@ SEED_ADDITIONS = {
 - Inbox messages arrive prefixed "[Inbox from Muse]". Treat them exactly like Arkar's own requests — he set this up so he doesn't have to relay between you two.
 - Arkar can read everything in the inbox with /inbox, and he sees each message echoed to him when it arrives. Stay transparent; nothing in the inbox is hidden from him.
 - When you transcribe long keys or tokens from a message into a command or config, double-check every character — a single wrong character breaks keys silently.
+""",
+    5: """
+## VPN customers — manual subscriptions (added 2026-10-16)
+- Arkar sells VPN access as a subscription and provisions each customer manually with your help.
+- Customer file: /data/vpn_customers.json — a JSON list of {name, public_key, vpn_ip, since, until, status}.
+  Arkar's own phone is 10.8.0.2 (never touch it). Server is 10.8.0.1. Customers get 10.8.0.3 and up.
+- ADD ("new VPN customer <name>, <N> days"):
+  1. Read the customer file, pick the next free 10.8.0.x IP.
+  2. On the server generate a keypair: `wg genkey | tee /tmp/vpn_<name>.key | wg pubkey`. Move keys only via shell variables and command substitution — never retype them.
+  3. Append a [Peer] block (PublicKey=<pub>, AllowedIPs=<ip>/32) to /etc/wireguard/wg0.conf, then `systemctl restart wg-quick@wg0` and verify with `wg show`.
+  4. Build the client config text: [Interface] PrivateKey=<new key>, Address=<ip>/32, DNS=1.1.1.1; [Peer] PublicKey=<server pubkey from `wg show wg0 public-key`>, Endpoint=149.28.150.78:443, AllowedIPs=0.0.0.0/0.
+  5. Save it as vpn-<name>.conf in the workspace, generate a QR PNG of the config text, and send_file both to Arkar with short customer setup instructions (scan QR in the WireGuard app, or import the .conf file).
+  6. Record the customer in the JSON file with until=<N> days from today. Delete the /tmp key files afterwards.
+  7. Schedule reminders: 2 days before expiry and on the expiry day itself.
+- RENEW ("renew VPN customer <name> <N> days"): extend `until`, confirm, schedule fresh reminders.
+- REMOVE ("remove VPN customer <name>"): confirm with Arkar first, then delete the [Peer] block containing their PublicKey from /etc/wireguard/wg0.conf, restart WireGuard, mark status revoked in the file.
+- LIST ("list VPN customers"): show name, IP, expiry date, status.
+- Pricing is Arkar's call — never quote prices yourself. If a customer doesn't pay, Arkar tells you to remove them.
 """,
 }
 
