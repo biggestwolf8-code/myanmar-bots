@@ -16,6 +16,25 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CUSTOMERS_FILE = os.path.join(BASE_DIR, "vpn_customers.json")
 SSH_KEY = os.path.join(BASE_DIR, "vpn_ssh_key")
 
+
+def _ensure_ssh_key():
+    """Write the SSH private key from the VPN_SSH_KEY env var if not on disk.
+    Railway doesn't get the key from git (it's gitignored), so it must be
+    set as an env var on the service."""
+    if os.path.exists(SSH_KEY):
+        return True
+    key_data = os.environ.get("VPN_SSH_KEY", "").strip()
+    if not key_data:
+        return False
+    # env var may have literal \n if pasted awkwardly
+    key_data = key_data.replace("\\n", "\n")
+    if not key_data.endswith("\n"):
+        key_data += "\n"
+    with open(SSH_KEY, "w", encoding="utf-8") as fh:
+        fh.write(key_data)
+    os.chmod(SSH_KEY, 0o600)
+    return True
+
 SERVERS = {
     "singapore": {"host": "149.28.150.78", "country": "Singapore",
                   "subnet": "10.8.0", "server_ip": "10.8.0.1"},
@@ -57,8 +76,8 @@ def _save(data):
 
 def _ssh(host, command, timeout=30):
     import paramiko
-    if not os.path.exists(SSH_KEY):
-        return False, "VPN SSH key not installed."
+    if not _ensure_ssh_key():
+        return False, "VPN SSH key not installed (set VPN_SSH_KEY env var)."
     c = paramiko.SSHClient()
     c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
