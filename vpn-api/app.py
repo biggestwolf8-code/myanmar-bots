@@ -1,0 +1,252 @@
+"""Biggest Seller VPN - backend API for the Android app and Telegram bot.
+
+Endpoints:
+  POST /api/login            {code} -> customer configs + expiry (used by the app)
+  POST /api/admin/create     {admin_secret, name, telegram_id, days} -> {code, configs}
+  POST /api/admin/renew      {admin_secret, code, days} -> {expires_at}
+  POST /api/admin/revoke     {admin_secret, code} -> removes WireGuard peers
+  GET  /api/admin/list       ?admin_secret=... -> customer list
+  GET  /health               -> ok
+
+WireGuard provisioning: SSH to each of the 4 VPN servers, add the client's
+public key as a peer with the next free IP in that server's subnet.
+"""
+import json
+import os
+import secrets
+import time
+from datetime import datetime, timedelta, timezone
+
+from flask import Flask, jsonify, request
+
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
+CUSTOMERS_FILE = os.path.join(DATA_DIR, "vpn_customers.json")
+SSH_KEY = os.path.join(DATA_DIR, "ssh", "id_ed25519")
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+
+# VPN fleet (mirrors agent-bot config)
+SERVERS = {
+    "singapore": {"host": "149.28.150.78", "country": "Singapore", "subnet": "10.8.0", "server_ip": "10.8.0.1"},
+    "japan":     {"host": "45.32.62.209",  "country": "Japan",     "subnet": "10.9.0", "server_ip": "10.9.0.1"},
+    "uk":        {"host": "136.244.65.38", "country": "UK",        "subnet": "10.10.0", "server_ip": "10.10.0.1"},
+    "usa":       {"host": "149.248.11.196", "country": "USA",       "subnet": "10.11.0", "server_ip": "10.11.0.1"},
+}
+WG_PORT = 443
+# .1 = server, .2 = Arkar's phone (Singapore only); customers start at .3
+RESERVED_IPS = {"singapore": {"10.8.0.1", "10.8.0.2"}}
+
+app = Flask(__name__)
+
+
+def _load_customers():
+    try:
+        with open(CUSTOMERS_FILE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_customers(data):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = CUSTOMERS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+    os.replace(tmp, CUSTOMERS_FILE)
+
+
+def _ssh_exec(host, command, timeout=30):
+    """Run a command on a VPN server via SSH key. Returns (ok, output)."""
+    import paramiko
+    if not os.path.exists(SSH_KEY):
+        return False, "SSH key not installed for vpn-api service."
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        pkey = paramiko.Ed25519Key.from_private_key_file(SSH_KEY)
+        client.connect(host, username="root", pkey=pkey, timeout=15,
+                       banner_timeout=15, auth_timeout=15)
+        _, stdout, stderr = client.exec_command(command, timeout=timeout)
+        code = stdout.channel.recv_exit_status()
+        out = stdout.read().decode("utf-8", "replace").strip()
+        err = stderr.read().decode("utf-8", "replace").strip()
+        if code != 0:
+            return False, f"exit {code}: {err or out}"
+        return True, out
+    except Exception as e:
+        return False, f"SSH failed: {e}"
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+def _next_ip(server):
+    """Next free client IP in the server's subnet."""
+    customers = _load_customers()
+    used = set(RESERVED_IPS.get(server, set()))
+    for c in customers.values():
+        ip = (c.get("ips") or {}).get(server)
+        if ip:
+            used.add(ip)
+    base = SERVERS[server]["subnet"]
+    for i in range(3, 255):
+        cand = f"{base}.{i}"
+        if cand not in used:
+            return cand
+    return None
+
+
+def _provision_customer(name, telegram_id, days):
+    """Create WireGuard peers on all 4 servers. Returns (code, customer_dict)."""
+    import paramiko  # noqa - ensures installed
+    customers = _load_customers()
+    code = secrets.token_urlsafe(9)  # ~12 char access code
+    # One client keypair reused across all 4 servers (simpler for the app)
+    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+    from cryptography.hazmat.primitives import serialization
+    priv = X25519PrivateKey.generate()
+    priv_b64 = serialization.Encoding.Raw
+    import base64
+    priv_raw = priv.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
+    pub_raw = priv.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    client_priv = base64.b64encode(priv_raw).decode()
+    client_pub = base64.b64encode(pub_raw).decode()
+
+    ips, server_pubs, configs = {}, {}, {}
+    for srv, info in SERVERS.items():
+        ip = _next_ip(srv)
+        if not ip:
+            raise RuntimeError(f"No free IPs on {srv}")
+        # get server public key
+        ok, out = _ssh_exec(info["host"], "cat /etc/wireguard/server.pub")
+        if not ok:
+            raise RuntimeError(f"{srv}: cannot read server key: {out}")
+        server_pub = out.strip()
+        # add peer (persistent)
+        cmd = (f"wg set wg0 peer {client_pub} allowed-ips {ip}/32 && "
+               f"wg-quick save wg0 && echo OK")
+        ok, out = _ssh_exec(info["host"], cmd)
+        if not ok:
+            raise RuntimeError(f"{srv}: failed to add peer: {out}")
+        ips[srv] = ip
+        server_pubs[srv] = server_pub
+        configs[srv] = (
+            f"[Interface]\nPrivateKey = {client_priv}\nAddress = {ip}/32\n"
+            f"DNS = 1.1.1.1\n\n[Peer]\nPublicKey = {server_pub}\n"
+            f"Endpoint = {info['host']}:{WG_PORT}\nAllowedIPs = 0.0.0.0/0\n"
+            f"PersistentKeepalive = 25\n"
+        )
+
+    now = datetime.now(timezone.utc)
+    customer = {
+        "name": name,
+        "telegram_id": telegram_id,
+        "code": code,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=days)).isoformat(),
+        "days": days,
+        "ips": ips,
+        "client_pub": client_pub,
+        "configs": configs,
+        "active": True,
+    }
+    customers[code] = customer
+    _save_customers(customers)
+    return code, customer, configs
+
+
+def _require_admin(data):
+    return bool(ADMIN_SECRET) and data.get("admin_secret") == ADMIN_SECRET
+
+
+@app.get("/health")
+def health():
+    return jsonify(ok=True, service="vpn-api")
+
+
+@app.post("/api/login")
+def login():
+    """App login: {code} -> configs + subscription status."""
+    data = request.get_json(force=True, silent=True) or {}
+    code = (data.get("code") or "").strip()
+    customers = _load_customers()
+    c = customers.get(code)
+    if not c or not c.get("active"):
+        return jsonify(ok=False, error="Invalid code."), 401
+    exp = datetime.fromisoformat(c["expires_at"])
+    now = datetime.now(timezone.utc)
+    if now > exp:
+        return jsonify(ok=False, error="Subscription expired."), 403
+    days_left = (exp - now).days
+    return jsonify(ok=True, name=c.get("name"), expires_at=c["expires_at"],
+                   days_left=days_left, configs=c.get("configs", {}),
+                   servers={k: v["country"] for k, v in SERVERS.items()})
+
+
+@app.post("/api/admin/create")
+def admin_create():
+    data = request.get_json(force=True, silent=True) or {}
+    if not _require_admin(data):
+        return jsonify(ok=False, error="Unauthorized."), 403
+    name = (data.get("name") or "customer").strip()
+    telegram_id = data.get("telegram_id")
+    days = int(data.get("days", 30))
+    try:
+        code, customer, configs = _provision_customer(name, telegram_id, days)
+    except RuntimeError as e:
+        return jsonify(ok=False, error=str(e)), 500
+    return jsonify(ok=True, code=code, expires_at=customer["expires_at"],
+                   configs=configs)
+
+
+@app.post("/api/admin/renew")
+def admin_renew():
+    data = request.get_json(force=True, silent=True) or {}
+    if not _require_admin(data):
+        return jsonify(ok=False, error="Unauthorized."), 403
+    customers = _load_customers()
+    c = customers.get(data.get("code", ""))
+    if not c:
+        return jsonify(ok=False, error="Unknown code."), 404
+    days = int(data.get("days", 30))
+    exp = max(datetime.now(timezone.utc),
+              datetime.fromisoformat(c["expires_at"]))
+    c["expires_at"] = (exp + timedelta(days=days)).isoformat()
+    c["active"] = True
+    _save_customers(customers)
+    return jsonify(ok=True, expires_at=c["expires_at"])
+
+
+@app.post("/api/admin/revoke")
+def admin_revoke():
+    data = request.get_json(force=True, silent=True) or {}
+    if not _require_admin(data):
+        return jsonify(ok=False, error="Unauthorized."), 403
+    customers = _load_customers()
+    c = customers.pop(data.get("code", ""), None)
+    if not c:
+        return jsonify(ok=False, error="Unknown code."), 404
+    # remove peers from all servers
+    errors = []
+    for srv, info in SERVERS.items():
+        ok, out = _ssh_exec(info["host"],
+                            f"wg set wg0 peer {c['client_pub']} remove && wg-quick save wg0 && echo OK")
+        if not ok:
+            errors.append(f"{srv}: {out}")
+    _save_customers(customers)
+    return jsonify(ok=True, errors=errors)
+
+
+@app.get("/api/admin/list")
+def admin_list():
+    if request.args.get("admin_secret") != ADMIN_SECRET or not ADMIN_SECRET:
+        return jsonify(ok=False, error="Unauthorized."), 403
+    customers = _load_customers()
+    out = [{"code": k, "name": v.get("name"), "expires_at": v.get("expires_at"),
+            "active": v.get("active")} for k, v in customers.items()]
+    return jsonify(ok=True, customers=out)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
