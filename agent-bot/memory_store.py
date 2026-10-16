@@ -16,7 +16,7 @@ os.makedirs(HIST_DIR, exist_ok=True)
 
 MEMORY_FILE = os.path.join(MEM_DIR, "MEMORY.md")
 VERSION_FILE = os.path.join(MEM_DIR, "memory_version.txt")
-MEMORY_VERSION = 2
+MEMORY_VERSION = 3
 
 SEED_ADDITIONS = {
     2: """
@@ -25,6 +25,15 @@ SEED_ADDITIONS = {
   RESURRECT.md there explains how to restore Muse in a new chat. The kit refreshes automatically.
 - If Arkar says he lost Muse / wants to resurrect it, point him to that repo and to RESURRECT.md.
 - You are his always-on fallback: you know the essentials and can keep working while he sets up a new Muse.
+""",
+    3: """
+## WireGuard VPN on Vultr — in progress (added 2026-10-16)
+- Goal: Arkar's own VPN on the Vultr VM (149.28.150.78, Ubuntu 22.04, Singapore) so his phone/laptop/tablet share a private Singapore IP. No third-party VPN subscription.
+- Current state: wg-quick@wg0 is ACTIVE on the server, IPv4 forwarding is 1, NAT rules present, WireGuard listening. A client/server key mismatch was found and fixed (fresh phone keypair, server peer key updated). Listen port moved from UDP 51820 to UDP 443; UFW allows 443/udp. Vultr shows NO cloud firewall attached.
+- Problem: the phone still cannot connect on Wi-Fi or mobile data. No successful handshake ever observed.
+- Setup script: setup-vm.sh in biggestwolf8-code/myanmar-bots (run in Vultr console via curl). Client config at /root/wg-client.conf on the server.
+- Next diagnostic step: packet capture on the server (tcpdump on UDP 443) to see whether the phone's packets even arrive.
+- When Arkar says "continue the vpn thing", use the vultr tool to diagnose and fix. Check: `wg show`, `systemctl status wg-quick@wg0`, `ss -ulpn | grep 443`, iptables NAT/forward rules, then tcpdump while he retries from the phone. Iterate until handshake succeeds.
 """,
 }
 
