@@ -410,6 +410,8 @@ def expiry_warnings(store, now=None):
     for email, acc in store["accounts"].items():
         if acc.get("last_type") != "Licensed":
             continue
+        if acc.get("billing") == "google_play":
+            continue  # auto-renewing Play subscription: no 14-day clock
         exp_date = account_expiry_date(acc)
         if not exp_date:
             continue
@@ -473,6 +475,9 @@ def handle_message(msg):
              "  currently-Licensed accounts lacking a real expiration date\n"
              "/renewed [YYYY-MM-DD] id1 id2 ... — stamp the accounts YOU\n"
              "  just renewed with a fresh 14-day clock (only those)\n"
+             "/billing gp|manual id1 id2 ... — mark accounts as Google Play\n"
+             "  auto-renew (no 14-day expiry warnings; lapse alerts stay on)\n"
+             "  or back to the manual 14-day renewal model\n"
              "/reauth <email> — authorize link (for OAuth mode)\n"
              "/alerts on|off — change alerts on/off\n"
              "/alertshere — send license alerts to this chat too\n"
@@ -663,6 +668,61 @@ def handle_message(msg):
             lines.append("Basic \u2192 Licensed: " + ", ".join(sorted(flipped)))
         if unknown:
             lines.append("\u2753 Unknown IDs (not stamped): " + ", ".join(unknown))
+        send(chat_id, "\n".join(lines))
+    elif cmd == "/billing":
+        # /billing gp c16 c17 ...     -> Google Play auto-renew: skip the
+        #   14-day expiry warnings, keep Licensed<->Basic flip alerts.
+        # /billing manual c16 c17 ... -> back to the 14-day renewal model.
+        tokens = [t for t in parts[1:]]
+        if not tokens or tokens[0].lower() not in ("gp", "google_play", "manual"):
+            send(chat_id, "Usage: /billing gp|manual id1 id2 ...\n"
+                          "Example: /billing gp c16 c17 c35")
+            return
+        to_gp = tokens[0].lower() in ("gp", "google_play")
+        ids = tokens[1:]
+        if not ids:
+            send(chat_id, "Usage: /billing gp|manual id1 id2 ...\n"
+                          "Example: /billing gp c16 c17 c35")
+            return
+        store = load_store()
+        by_id = {}
+        for email in store["accounts"]:
+            by_id.setdefault(short_email(email).lower(), email)
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        marked, flipped, unknown = [], [], []
+        for tid in ids:
+            email = by_id.get(tid.lower())
+            if not email:
+                unknown.append(tid)
+                continue
+            acc = store["accounts"][email]
+            if to_gp:
+                was = acc.get("last_type")
+                acc["billing"] = "google_play"
+                # Correct the stale 2026-10-15 lapse alerts: the live check
+                # verified these accounts Licensed, not Basic.
+                if was != "Licensed":
+                    acc["last_type"] = "Licensed"
+                    acc["last_check"] = now
+                    flipped.append(short_email(email))
+                else:
+                    marked.append(short_email(email))
+            else:
+                acc.pop("billing", None)
+                marked.append(short_email(email))
+        save_store(store)
+        if to_gp:
+            lines = ["\u2705 Marked as Google Play auto-renew (14-day expiry "
+                     "warnings OFF, lapse alerts still ON):"]
+        else:
+            lines = ["\u2705 Marked as manual 14-day renewal:"]
+        if marked:
+            lines.append("Kept Licensed: " + ", ".join(sorted(marked)))
+        if flipped:
+            lines.append("Stale Basic \u2192 Licensed (2026-10-16 live check): "
+                         + ", ".join(sorted(flipped)))
+        if unknown:
+            lines.append("\u2753 Unknown IDs: " + ", ".join(unknown))
         send(chat_id, "\n".join(lines))
     elif cmd == "/accounts":
         store = load_store()
@@ -937,6 +997,8 @@ def ingest():
         acc = store["accounts"].get(email)
         if not acc or acc.get("last_type") != "Licensed":
             continue
+        if acc.get("billing") == "google_play":
+            continue  # auto-renewing Play subscription: no 14-day clock
         exp_date = account_expiry_date(acc)
         if not exp_date:
             continue
@@ -1058,6 +1120,8 @@ def sweep_job():
                 acc = store["accounts"].get(email, {})
                 if acc.get("last_type") != "Licensed":
                     continue
+                if acc.get("billing") == "google_play":
+                    continue  # auto-renewing Play subscription: never auto-flip
                 exp = acc.get("license_expires_at")
                 if not exp:
                     continue
