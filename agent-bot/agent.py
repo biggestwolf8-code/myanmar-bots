@@ -211,8 +211,8 @@ def _tool_fetch_url(url):
         return f"Failed: {e}"
 
 
-def _tool_vultr(command):
-    ok, out = remote.vultr_exec(command)
+def _tool_vultr(command, server="singapore"):
+    ok, out = remote.vultr_exec(command, server=server)
     return _truncate(out if ok else f"Error: {out}")
 
 
@@ -253,8 +253,8 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "caption": {"type": "string"}}, "required": ["path"]}},
     {"name": "fetch_url", "description": "Fetch a web page and return its text content.",
      "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}},
-    {"name": "vultr", "description": "Run a shell command on Arkar's Vultr server (Ubuntu 22.04, Singapore) over SSH. 60s limit. Confirm before destructive actions.",
-     "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
+    {"name": "vultr", "description": "Run a shell command on one of Arkar's Vultr VPN servers over SSH (60s limit). server: singapore (default), japan, uk, or usa. Confirm before destructive actions.",
+     "input_schema": {"type": "object", "properties": {"command": {"type": "string"}, "server": {"type": "string"}}, "required": ["command"]}},
     {"name": "laptop", "description": "Work with Arkar's Windows laptop (only while his companion program is running). action: shell (run a cmd/PowerShell command), read (read a file), write (write a file), list (list a folder). For shell give command; for read/write/list give path; write also needs content.",
      "input_schema": {"type": "object", "properties": {"action": {"type": "string"}, "command": {"type": "string"}, "path": {"type": "string"}, "content": {"type": "string"}}, "required": ["action"]}},
     {"name": "remember", "description": "Save a durable fact to long-term memory (preferences, decisions, facts about Arkar's projects).",
@@ -283,7 +283,7 @@ def _execute_tool(name, inp):
         elif name == "fetch_url":
             result = _tool_fetch_url(inp.get("url", ""))
         elif name == "vultr":
-            result = _tool_vultr(inp.get("command", ""))
+            result = _tool_vultr(inp.get("command", ""), inp.get("server", "singapore"))
         elif name == "laptop":
             result = _tool_laptop(inp.get("action", ""), inp.get("command", ""),
                                   inp.get("path", ""), inp.get("content", ""))

@@ -22,10 +22,15 @@ def vultr_configured():
     return bool(config.VULTR_PASSWORD)
 
 
-def vultr_exec(command, timeout=60):
-    """Run a shell command on the Vultr VM over SSH. Returns (ok, output)."""
-    if not vultr_configured():
-        return False, "Vultr SSH is not configured (VULTR_PASSWORD missing)."
+def vultr_exec(command, server="singapore", timeout=60):
+    """Run a shell command on a Vultr VPN server over SSH. Returns (ok, output).
+
+    server: nickname from config.VPN_SERVERS (singapore/japan/uk/usa).
+    Auth: tries the agent's SSH key first, falls back to VULTR_PASSWORD
+    (which is the Singapore server's password).
+    """
+    srv = config.VPN_SERVERS.get(server, {})
+    host = srv.get("host") or config.VULTR_HOST
     try:
         import paramiko
     except ImportError:
@@ -33,12 +38,28 @@ def vultr_exec(command, timeout=60):
     command = command.strip()
     if not command:
         return False, "Empty command."
+    key_path = os.path.join(config.DATA_DIR, "ssh", "id_ed25519")
+    use_key = os.path.exists(key_path)
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        client.connect(config.VULTR_HOST, username=config.VULTR_USER,
-                       password=config.VULTR_PASSWORD, timeout=15,
-                       banner_timeout=15, auth_timeout=15)
+        connect_kw = dict(hostname=host, username=config.VULTR_USER,
+                          timeout=15, banner_timeout=15, auth_timeout=15)
+        if use_key:
+            try:
+                connect_kw["pkey"] = paramiko.Ed25519Key.from_private_key_file(key_path)
+                client.connect(**connect_kw)
+            except Exception:
+                # key didn't work for this host; fall back to password
+                client.close()
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                connect_kw.pop("pkey", None)
+                connect_kw["password"] = config.VULTR_PASSWORD
+                client.connect(**connect_kw)
+        else:
+            connect_kw["password"] = config.VULTR_PASSWORD
+            client.connect(**connect_kw)
         stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
         try:
             exit_code = stdout.channel.recv_exit_status()

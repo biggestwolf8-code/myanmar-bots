@@ -15,6 +15,15 @@ VULTR_HOST = os.environ.get("VULTR_HOST", "149.28.150.78")
 VULTR_USER = os.environ.get("VULTR_USER", "root")
 VULTR_PASSWORD = os.environ.get("VULTR_PASSWORD", "")
 
+# VPN fleet: nickname -> {host, country, wireguard subnet}. Singapore is the
+# original server; japan/uk/usa added 2026-10-17 for multi-country VPN sales.
+VPN_SERVERS = {
+    "singapore": {"host": "149.28.150.78", "country": "Singapore", "subnet": "10.8.0.0/24"},
+    "japan":     {"host": "45.32.62.209",  "country": "Japan",     "subnet": "10.9.0.0/24"},
+    "uk":        {"host": "136.244.65.38", "country": "UK",        "subnet": "10.10.0.0/24"},
+    "usa":       {"host": "149.248.11.196", "country": "USA",       "subnet": "10.11.0.0/24"},
+}
+
 # Secret shared with the laptop companion worker. Generated once and
 # persisted so it survives restarts; shown to the owner for worker setup.
 def _worker_secret():
