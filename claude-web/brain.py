@@ -94,25 +94,32 @@ def ask_claude(messages, max_tokens=None, attachments=None):
                              "content": blocks if has_media else text})
     else:
         api_messages.append({"role": last.get("role", "user"), "content": text})
-    body = json.dumps({
-        "model": MODEL,
-        "max_tokens": max_tokens or MAX_TOKENS,
-        "system": SYSTEM_PROMPT,
+    out = _api_call(MODEL, max_tokens or MAX_TOKENS, SYSTEM_PROMPT, api_messages)
+    text = "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
+    return text, out.get("usage", {})
+
+
+def _api_call(model, max_tokens, system, api_messages, tools=None):
+    """Raw Messages API call. Returns the parsed JSON response."""
+    body = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system,
         "messages": api_messages,
-    }).encode()
+    }
+    if tools:
+        body["tools"] = tools
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
-        data=body,
+        data=json.dumps(body).encode(),
         headers={
             "x-api-key": ANTHROPIC_API_KEY,
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         },
     )
-    with urllib.request.urlopen(req, timeout=90) as r:
-        out = json.load(r)
-    text = "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
-    return text, out.get("usage", {})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return json.load(r)
 
 
 def extract_doc_text(filename, data, max_chars=20000):
@@ -224,3 +231,234 @@ def build_files(blocks):
         except Exception as e:
             print(f"file build failed ({kind}):", e)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Agent mode: multi-step tool-using loop (Cowork-style)
+# ---------------------------------------------------------------------------
+
+AGENT_MAX_STEPS = 6
+PYTHON_TIMEOUT = 30
+
+AGENT_SYSTEM_ADDENDUM = (
+    "\n\nAGENT MODE: You have tools — run_python (execute Python code in the user's "
+    "private workspace folder), write_file, read_file, list_files. When the user gives "
+    "you a multi-step task: briefly state your plan (2-4 short steps), then USE THE "
+    "TOOLS to do the work — never just describe what you would do. Chain steps: list "
+    "or read files first, run code to process them, write the results as files. If a "
+    "step fails, try a different approach once before asking the user. When finished, "
+    "summarize what you did and name every file you created. Keep plans and summaries "
+    "tight — the work matters more than the narration."
+)
+
+TOOLS = [
+    {
+        "name": "run_python",
+        "description": (
+            "Run Python code in the user's private workspace folder and get the output. "
+            "Use for calculations, data analysis, processing workspace files, or generating "
+            "charts (save as PNG with matplotlib if available). 30 second timeout. "
+            "Standard library plus openpyxl, fpdf2, Pillow and pypdf are installed. "
+            "Print the results you want to see. Files you create land in the workspace."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Python code to execute"},
+            },
+            "required": ["code"],
+        },
+    },
+    {
+        "name": "write_file",
+        "description": (
+            "Write a text file into the user's workspace (creates or overwrites). "
+            "Use for reports, notes, CSVs, scripts, HTML pages, Markdown docs, etc."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string",
+                         "description": "File name, e.g. 'report.md' or 'data/summary.csv'"},
+                "content": {"type": "string", "description": "Full file content"},
+            },
+            "required": ["path", "content"],
+        },
+    },
+    {
+        "name": "read_file",
+        "description": "Read a text file from the user's workspace (first ~20000 characters).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File name in the workspace"},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "list_files",
+        "description": "List the files in the user's workspace.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+]
+
+
+def safe_ws_path(workspace_dir, path):
+    """Resolve a workspace-relative path, rejecting escapes. Raises ValueError."""
+    base = os.path.realpath(workspace_dir)
+    p = os.path.realpath(os.path.join(base, path or ""))
+    if p != base and not p.startswith(base + os.sep):
+        raise ValueError("path escapes workspace")
+    return p
+
+
+def run_python_sandbox(code, workspace_dir, timeout=PYTHON_TIMEOUT):
+    """Execute Python in a subprocess inside the workspace. Returns (ok, output).
+
+    Runs on the app server as the app user with a time limit — not a hardened
+    sandbox. The app is invite-only; treat it accordingly.
+    """
+    import subprocess
+    import sys
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=workspace_dir, capture_output=True, text=True, timeout=timeout,
+        )
+        out = (proc.stdout or "") + (proc.stderr or "")
+        if len(out) > 8000:
+            out = out[:8000] + "\n[...output truncated]"
+        out = out.strip() or f"(no output, exit code {proc.returncode})"
+        return proc.returncode == 0, out
+    except subprocess.TimeoutExpired:
+        return False, f"timed out after {timeout}s"
+    except Exception as e:
+        return False, f"execution failed: {e}"
+
+
+def execute_tool(name, tool_input, workspace_dir):
+    """Run one tool call. Returns (result_text_for_claude, short_step_summary)."""
+    tool_input = tool_input or {}
+    try:
+        if name == "run_python":
+            ok, out = run_python_sandbox(tool_input.get("code", ""), workspace_dir)
+            summary = "Ran Python code" + ("" if ok else " (error)")
+            return (("RESULT:\n" + out) if ok else ("ERROR:\n" + out)), summary
+        if name == "write_file":
+            p = safe_ws_path(workspace_dir, tool_input.get("path", ""))
+            parent = os.path.dirname(p)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            content = tool_input.get("content", "")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(content)
+            rel = os.path.relpath(p, workspace_dir)
+            return f"Wrote {rel} ({len(content)} chars).", f"Wrote {rel}"
+        if name == "read_file":
+            p = safe_ws_path(workspace_dir, tool_input.get("path", ""))
+            with open(p, encoding="utf-8", errors="replace") as f:
+                text = f.read(20000)
+            rel = os.path.relpath(p, workspace_dir)
+            return f"--- {rel} ---\n{text}", f"Read {rel}"
+        if name == "list_files":
+            items = sorted(os.listdir(workspace_dir))
+            return ("Workspace files:\n" + ("\n".join(items) if items else "(empty)"),
+                    "Listed workspace files")
+    except Exception as e:
+        return f"ERROR: {e}", f"{name} failed"
+    return f"ERROR: unknown tool {name}", "Unknown tool"
+
+
+def _is_tool_result_msg(m):
+    c = m.get("content")
+    return (m.get("role") == "user" and isinstance(c, list)
+            and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in c))
+
+
+def _has_tool_use(m):
+    c = m.get("content")
+    return (m.get("role") == "assistant" and isinstance(c, list)
+            and any(isinstance(b, dict) and b.get("type") == "tool_use" for b in c))
+
+
+def trim_history(history, limit=40):
+    """Trim oldest entries, never splitting a tool_use/tool_result pair."""
+    if len(history) > limit:
+        history[:] = history[-limit:]
+    while history and (_is_tool_result_msg(history[0]) or _has_tool_use(history[0])):
+        history.pop(0)
+
+
+def ask_claude_agent(history, workspace_dir, attachments=None,
+                     max_steps=AGENT_MAX_STEPS):
+    """Agentic tool-using loop.
+
+    history: list of {"role","content"} (content may be str or API block list).
+      The list is mutated in place: the last user message is replaced with its
+      block form when attachments are given, and each assistant/tool_result
+      turn is appended, so follow-ups keep full context.
+    attachments: same format as ask_claude (images only are used here).
+    Returns (final_text, total_usage_dict, steps_list, new_files_list).
+    Raises on API failure.
+    """
+    os.makedirs(workspace_dir, exist_ok=True)
+    if attachments:
+        last = history[-1]
+        text = last.get("content") or ""
+        blocks = [] if isinstance(text, list) else (
+            [{"type": "text", "text": text}] if text.strip() else [])
+        if isinstance(text, list):
+            blocks = text
+        for a in attachments:
+            if a.get("kind") == "image":
+                blocks.append({"type": "image", "source": {
+                    "type": "base64", "media_type": a["mime"], "data": a["b64"]}})
+        if not blocks:
+            blocks = [{"type": "text", "text": "Describe this image in detail."}]
+        history[-1] = {"role": "user", "content": blocks}
+    api_messages = [{"role": m["role"], "content": m.get("content", "")}
+                    for m in history]
+
+    def _push(role, content):
+        api_messages.append({"role": role, "content": content})
+        history.append({"role": role, "content": content})
+
+    total_in, total_out = 0, 0
+    steps = []
+    before = set(os.listdir(workspace_dir))
+    text = ""
+    for _ in range(max_steps):
+        out = _api_call(MODEL, MAX_TOKENS, SYSTEM_PROMPT + AGENT_SYSTEM_ADDENDUM,
+                        api_messages, tools=TOOLS)
+        u = out.get("usage", {})
+        total_in += u.get("input_tokens", 0)
+        total_out += u.get("output_tokens", 0)
+        content = out.get("content", [])
+        tool_uses = [b for b in content if b.get("type") == "tool_use"]
+        if not tool_uses or out.get("stop_reason") != "tool_use":
+            _push("assistant", content)
+            text = "".join(b.get("text", "") for b in content
+                            if b.get("type") == "text")
+            break
+        _push("assistant", content)
+        results = []
+        for tu in tool_uses:
+            res_text, summary = execute_tool(tu.get("name"), tu.get("input"),
+                                             workspace_dir)
+            steps.append(summary)
+            results.append({"type": "tool_result", "tool_use_id": tu["id"],
+                            "content": res_text})
+        _push("user", results)
+    else:
+        # out of steps: keep history valid by dropping any dangling tool_use
+        last_content = api_messages[-1]["content"]
+        clean_blocks = [b for b in last_content if b.get("type") != "tool_use"]
+        api_messages[-1]["content"] = clean_blocks
+        history[-1]["content"] = clean_blocks
+        text = ("I used all my steps — here's where I got to. "
+                "Ask me to continue if needed.")
+    trim_history(history)
+    after = set(os.listdir(workspace_dir))
+    new_files = sorted(after - before)
+    return text, {"input_tokens": total_in, "output_tokens": total_out}, steps, new_files

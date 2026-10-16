@@ -174,6 +174,31 @@ def cleanup_files():
         _save_json("webfiles.json", filemeta)
 
 
+def workspace_dir(sid):
+    """Private per-session file workspace (persists on the volume)."""
+    d = os.path.join(DATA_DIR, "workspaces", sid)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _finalize_reply(sid, code, reply_text):
+    """Build downloadable files from ```excel/```pdf blocks. Returns (clean, files)."""
+    clean, blocks = brain.extract_blocks(reply_text)
+    files = []
+    if blocks:
+        cleanup_files()
+        for kind, fname, fbytes, mime in brain.build_files(blocks):
+            fid = secrets.token_hex(8)
+            os.makedirs(os.path.join(DATA_DIR, "files"), exist_ok=True)
+            with open(os.path.join(DATA_DIR, "files", fid), "wb") as f:
+                f.write(fbytes)
+            filemeta[fid] = {"name": fname, "mime": mime, "sid": sid,
+                             "created": time.time()}
+            files.append({"id": fid, "name": fname, "mime": mime})
+        _save_json("webfiles.json", filemeta)
+    return clean, files
+
+
 # ---------- pages ----------
 
 @app.route("/")
@@ -290,6 +315,7 @@ def api_chat():
     code = code_for_sid(sid)
     data = request.get_json(force=True, silent=True) or {}
     text = (data.get("message") or "").strip()
+    agent_mode = bool(data.get("agent"))
     if not text:
         return jsonify({"ok": False, "error": "Empty message."}), 400
     if len(text) > 6000:
@@ -299,45 +325,44 @@ def api_chat():
                          "error": "You've reached today's message limit — come back tomorrow!"}), 429
 
     history = histories.setdefault(sid, [])
+    hist_len = len(history)
     history.append({"role": "user", "content": text})
-    history[:] = history[-20:]
-    # re-send images attached earlier this session so follow-ups can see them
-    attachments = [{"kind": "image", "mime": mime, "b64": b64}
-                   for mime, b64 in session_images.get(sid, [])]
+    brain.trim_history(history)
+    steps, wsfiles = [], []
     try:
-        reply, api_usage = brain.ask_claude(history, attachments=attachments or None)
-        reply = reply.strip()
+        if agent_mode:
+            wsdir = workspace_dir(sid)
+            reply, api_usage, steps, new_files = brain.ask_claude_agent(
+                history, wsdir)
+            reply = (reply or "").strip()
+            wsfiles = [{"name": n, "url": "/wsfile/" + n} for n in new_files
+                       if os.path.isfile(os.path.join(wsdir, n))]
+        else:
+            # re-send images attached earlier this session so follow-ups can see them
+            attachments = [{"kind": "image", "mime": mime, "b64": b64}
+                           for mime, b64 in session_images.get(sid, [])]
+            reply, api_usage = brain.ask_claude(history, attachments=attachments or None)
+            reply = reply.strip()
     except Exception as ex:
         print("Claude API failed:", ex)
-        history.pop()
+        del history[hist_len:]  # roll back user msg + any partial agent turns
         return jsonify({"ok": False,
                          "error": "The AI didn't respond — try again in a moment."}), 502
     if not reply:
-        history.pop()
+        del history[hist_len:]
         return jsonify({"ok": False, "error": "Empty reply — try again."}), 502
-    history.append({"role": "assistant", "content": reply})
-    history[:] = history[-20:]
+    if not agent_mode:
+        history.append({"role": "assistant", "content": reply})
+        brain.trim_history(history)
     bump_daily(code)
     record_usage(code, api_usage)
 
-    clean, blocks = brain.extract_blocks(reply)
-    files = []
-    if blocks:
-        cleanup_files()
-        for kind, fname, fbytes, mime in brain.build_files(blocks):
-            fid = secrets.token_hex(8)
-            os.makedirs(os.path.join(DATA_DIR, "files"), exist_ok=True)
-            with open(os.path.join(DATA_DIR, "files", fid), "wb") as f:
-                f.write(fbytes)
-            filemeta[fid] = {"name": fname, "mime": mime, "sid": sid,
-                             "created": time.time()}
-            files.append({"id": fid, "name": fname, "mime": mime})
-        _save_json("webfiles.json", filemeta)
+    clean, files = _finalize_reply(sid, code, reply)
     save_all()
-    if blocks and not files:
-        # nothing built — send the raw text so nothing is lost
+    if not clean and not files and not wsfiles:
         return jsonify({"ok": True, "reply": reply, "files": []})
-    return jsonify({"ok": True, "reply": clean or "Here you go! 📎", "files": files})
+    return jsonify({"ok": True, "reply": clean or "Here you go! 📎",
+                    "files": files, "steps": steps, "wsfiles": wsfiles})
 
 
 @app.route("/api/upload_chat", methods=["POST"])
@@ -459,6 +484,94 @@ def get_file(fid):
         return "Expired", 410
     return send_file(path, mimetype=m["mime"], as_attachment=True,
                      download_name=m["name"])
+
+
+# ---------- workspace (per-session file area for agent mode) ----------
+
+def _ws_size_display(n):
+    for unit in ("B", "KB", "MB"):
+        if n < 1024 or unit == "MB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+
+
+@app.route("/api/ws_files")
+def api_ws_files():
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False}), 401
+    wsdir = workspace_dir(sid)
+    items = []
+    for name in sorted(os.listdir(wsdir)):
+        p = os.path.join(wsdir, name)
+        if os.path.isfile(p):
+            st = os.stat(p)
+            items.append({
+                "name": name,
+                "size": _ws_size_display(st.st_size),
+                "mtime": datetime.datetime.fromtimestamp(st.st_mtime).strftime(
+                    "%Y-%m-%d %H:%M"),
+            })
+    return jsonify({"ok": True, "files": items})
+
+
+@app.route("/wsfile/<path:name>")
+def ws_file(name):
+    sid = current_sid()
+    if not sid:
+        return "Not found", 404
+    try:
+        p = brain.safe_ws_path(workspace_dir(sid), name)
+    except ValueError:
+        return "Not found", 404
+    if not os.path.isfile(p):
+        return "Not found", 404
+    return send_file(p, as_attachment=True,
+                     download_name=os.path.basename(p))
+
+
+@app.route("/api/ws_delete", methods=["POST"])
+def api_ws_delete():
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "No file named."}), 400
+    try:
+        p = brain.safe_ws_path(workspace_dir(sid), name)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid path."}), 400
+    if not os.path.isfile(p):
+        return jsonify({"ok": False, "error": "File not found."}), 404
+    os.remove(p)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/ws_upload", methods=["POST"])
+def api_ws_upload():
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False}), 401
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "No file attached."}), 400
+    data = f.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        return jsonify({"ok": False, "error": "File too big (10MB max)."}), 400
+    if not data:
+        return jsonify({"ok": False, "error": "Empty file."}), 400
+    fname = os.path.basename(f.filename or "upload")
+    if not fname:
+        return jsonify({"ok": False, "error": "Bad filename."}), 400
+    try:
+        p = brain.safe_ws_path(workspace_dir(sid), fname)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid filename."}), 400
+    with open(p, "wb") as fh:
+        fh.write(data)
+    return jsonify({"ok": True, "name": fname})
 
 
 # ---------- admin ----------
