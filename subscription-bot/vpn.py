@@ -193,6 +193,23 @@ def revoke(code):
     return True, errors
 
 
+def renew(code, days):
+    """Extend a subscription. The existing .conf files keep working —
+    only the expiry date changes. Returns (ok, new_expires_at_or_error)."""
+    customers = _load()
+    cust = customers.get(code)
+    if not cust:
+        return False, "Unknown code."
+    days = int(days)
+    exp = max(datetime.now(timezone.utc),
+              datetime.fromisoformat(cust["expires_at"]))
+    new_exp = exp + timedelta(days=days)
+    cust["expires_at"] = new_exp.isoformat()
+    cust["active"] = True
+    _save(customers)
+    return True, new_exp.isoformat()
+
+
 def get(code):
     return _load().get(code)
 

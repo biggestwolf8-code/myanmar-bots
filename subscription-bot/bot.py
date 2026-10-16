@@ -381,6 +381,63 @@ def handle_message(msg, fwd_map):
             api("sendMessage", chat_id=student_id, text=text)
             return
 
+    # ---- VPN admin commands ----
+    if is_admin and text.startswith("/vpnlist"):
+        custs = vpn_mod.list_active()
+        if not custs:
+            send_threaded(chat_id, "No active VPN customers.", msg)
+        else:
+            lines = ["🛡️ VPN customers:"]
+            for code, c in custs.items():
+                exp = c.get("expires_at", "?")[:10]
+                lines.append(f"• {code} — {c.get('name')} "
+                             f"({c.get('plan')}) — until {exp}")
+            send_threaded(chat_id, "\n".join(lines), msg)
+        return
+
+    if is_admin and text.startswith("/vpnrenew"):
+        parts = text.split()
+        if len(parts) != 3:
+            send_threaded(chat_id,
+                          "Usage: /vpnrenew CODE days  (e.g. /vpnrenew VPN-123456 30)",
+                          msg)
+            return
+        _, code, days = parts
+        try:
+            days = int(days)
+        except ValueError:
+            send_threaded(chat_id, "Days must be a number.", msg)
+            return
+        ok, res = vpn_mod.renew(code, days)
+        if not ok:
+            send_threaded(chat_id, f"❌ {res}", msg)
+            return
+        exp = res[:10]
+        send_threaded(chat_id,
+                      f"✅ {code} extended — now expires {exp}. "
+                      "Customer keeps using their existing configs.", msg)
+        # notify the customer
+        cust = vpn_mod.get(code)
+        if cust and cust.get("telegram_id"):
+            api("sendMessage", chat_id=cust["telegram_id"],
+                text=f"🎉 Your Biggest VPN has been extended until {exp}! "
+                     "No need to change anything — your existing setup keeps working. ✅")
+        return
+
+    if is_admin and text.startswith("/vpnrevoke"):
+        parts = text.split()
+        if len(parts) != 2:
+            send_threaded(chat_id, "Usage: /vpnrevoke CODE", msg)
+            return
+        ok, res = vpn_mod.revoke(parts[1])
+        if not ok:
+            send_threaded(chat_id, f"❌ {res}", msg)
+        else:
+            send_threaded(chat_id,
+                          f"✅ {parts[1]} revoked and removed from all servers."
+                          + (f" (notes: {res})" if res else ""), msg)
+        return
+
     if text.startswith("/start"):
         send_threaded(chat_id, WELCOME, msg, reply_markup=kb_cats())
         return
