@@ -19,6 +19,8 @@ import unicodedata
 
 import requests
 
+import vpn as vpn_mod
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "").strip()
@@ -63,6 +65,110 @@ RECEIPT_MSG = (
     "📸 Receipt received! The admin will check it and confirm here soon. 🙏\n"
     "📸 ပြေစာရရှိပါပြီ! Admin စစ်ဆေးပြီး ဒီမှာပဲ အတည်ပြုပေးပါမယ်။ 🙏"
 )
+
+# ---------- VPN purchase flow ----------
+# Pending VPN orders: customer chat_id -> plan label. Set when they tap Buy,
+# cleared when the receipt arrives (forwarded to admin for approval).
+VPN_ORDERS_FILE = os.path.join(BASE_DIR, "vpn_pending.json")
+
+VPN_PAYMENT_MSG = (
+    "💳 To order Biggest VPN ({plan} — {price:,} Ks):\n\n"
+    "1️⃣ Pay to any of these:\n"
+    "• KBZPay: 09403720481 (Arkar Myo Win)\n"
+    "• WavePay: 09780695959 (Arkar Myo Win)\n"
+    "• AYAPay: 09754926216 (Arkar Myowin)\n\n"
+    "2️⃣ Send your payment receipt screenshot HERE.\n\n"
+    "⚡ Your VPN configs (4 countries) arrive right after admin confirms. 🙏\n\n"
+    "💳 Biggest VPN ({plan} — {price:,} ကျပ်) မှာယူရန်:\n\n"
+    "1️⃣ ငွေလွှဲရန်:\n"
+    "• KBZPay: 09403720481 (Arkar Myo Win)\n"
+    "• WavePay: 09780695959 (Arkar Myo Win)\n"
+    "• AYAPay: 09754926216 (Arkar Myowin)\n\n"
+    "2️⃣ ပြေစာ screenshot ကို ဒီမှာပို့ပေးပါ။\n\n"
+    "⚡ Admin အတည်ပြုပြီးတာနဲ့ VPN config (၄ နိုင်ငံ) ချက်ချင်းရပါမယ်။ 🙏"
+)
+
+# NOTE: Burmese wording below is a DRAFT — owner must verify before final.
+VPN_WELCOME_MSG = (
+    "🎉 Your Biggest VPN is ready! ({plan})\n"
+    "Code: {code}\n"
+    "Expires: {expires}\n\n"
+    "📲 SETUP — do this once (takes 2 minutes):\n\n"
+    "1️⃣ Install the free \"WireGuard\" app from Play Store (Android) "
+    "or App Store (iPhone).\n\n"
+    "2️⃣ You'll see 4 files above — one per country "
+    "(Singapore, Japan, UK, USA). Save all 4 to your phone.\n\n"
+    "3️⃣ Open the WireGuard app → tap the + button → "
+    "\"Import from file\" → choose the first .conf file. "
+    "Repeat for the other 3. You'll now see 4 tunnels listed.\n\n"
+    "4️⃣ To connect: tap the toggle switch next to the country you want. "
+    "That's it — you're on VPN! ✅\n\n"
+    "🔄 TO SWITCH COUNTRIES: turn OFF the current tunnel first, "
+    "then turn ON the one you want. (Only one can be active at a time.)\n\n"
+    "💡 TIP: start with Singapore — it's closest and usually fastest.\n\n"
+    "❓ Problems? Message @biggestseller1.\n"
+    "━━━━━━━━━━━━━━━\n"
+    "🎉 Biggest VPN ရပါပြီ! ({plan})\n"
+    "ကုဒ်: {code}\n"
+    "သက်တမ်း: {expires} ထိ\n\n"
+    "📲 တပ်ဆင်နည်း — တစ်ခါပဲလုပ်ရန် (၂ မိနစ်ခန့်):\n\n"
+    "1️⃣ \"WireGuard\" app အခမဲ့ကို Play Store (Android) သို့မဟုတ် "
+    "App Store (iPhone) မှ install လုပ်ပါ။\n\n"
+    "2️⃣ အပေါ်မှာ file ၄ ခု တွေ့ပါမယ် — တစ်နိုင်ငံတစ်ခု "
+    "(Singapore, Japan, UK, USA)။ ၄ ခုလုံး ဖုန်းထဲသိမ်းပါ။\n\n"
+    "3️⃣ WireGuard app ဖွင့် → + ခလုတ်နှိပ် → \"Import from file\" → "
+    "ပထမ .conf file ရွေး။ ကျန် ၃ ခုလည်း ဒီလိုပဲလုပ်။ "
+    "Tunnel ၄ ခု စာရင်းပေါ်လာပါမယ်။\n\n"
+    "4️⃣ ချိတ်ဆက်ရန်: လိုချင်တဲ့နိုင်ငံ ဘေးက ခလုတ်ကိုနှိပ်။ "
+    "ရပါပြီ! ✅\n\n"
+    "🔄 နိုင်ငံပြောင်းရန်: လက်ရှိဟာကို အရင် ပိတ် (OFF), "
+    "ပြီးမှ နောက်တစ်ခုကို ဖွင့် (ON)။ "
+    "(တစ်ချိန်မှာ တစ်ခုပဲသုံးလို့ရပါတယ်။)\n\n"
+    "💡 အကြံ: Singapore က အနီးဆုံးမို့ အမြန်ဆုံးဖြစ်တတ်ပါတယ်။\n\n"
+    "❓ အခက်အခဲရှိရင် @biggestseller1 ကို ဆက်သွယ်ပါ။"
+)
+
+
+def load_vpn_orders():
+    try:
+        with open(VPN_ORDERS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_vpn_orders(d):
+    tmp = VPN_ORDERS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f)
+    os.replace(tmp, VPN_ORDERS_FILE)
+
+
+def kb_vpn_buy(product):
+    """Buy buttons for each VPN plan."""
+    items = [it for it in CATALOG if it["product"] == product]
+    rows = [[{"text": f"🛒 Buy {it['plan']} — {it['price_ks']:,} Ks",
+              "callback_data": f"vpnbuy:{it['plan']}"}] for it in items]
+    rows.append([{"text": "⬅️ Back", "callback_data": prod_callback(product)}])
+    return {"inline_keyboard": rows}
+
+
+def send_vpn_configs(chat_id, result):
+    """Deliver the 4 .conf files + setup instructions to the customer."""
+    for srv in ("singapore", "japan", "uk", "usa"):
+        country = vpn_mod.SERVERS[srv]["country"]
+        filename = f"BiggestVPN-{country}.conf"
+        content = result["configs"][srv]
+        r = requests.post(
+            f"{API}/sendDocument", data={"chat_id": chat_id,
+                                         "caption": f"🌍 {country}"},
+            files={"document": (filename, content.encode())}, timeout=60)
+        if not r.json().get("ok"):
+            print("Failed to send conf:", r.text)
+    exp = result["expires_at"][:10]
+    api("sendMessage", chat_id=chat_id,
+        text=VPN_WELCOME_MSG.format(plan=result.get("plan", ""),
+                                   code=result["code"], expires=exp))
 
 # Fixed answers, checked before product search. [PAYMENT] is a placeholder
 # until the owner provides the real payment methods.
@@ -245,6 +351,23 @@ def handle_message(msg, fwd_map):
         if not is_admin:
             forward_to_admin(chat_id, msg["message_id"], fwd_map)
             send_threaded(chat_id, RECEIPT_MSG, msg)
+            # If this customer tapped a VPN Buy button, give admin one-tap approve.
+            orders = load_vpn_orders()
+            order = orders.get(chat_id)
+            if order and ADMIN_CHAT_ID:
+                plan = order["plan"]
+                price = next((it["price_ks"] for it in CATALOG
+                              if it["product"] == "Biggest VPN"
+                              and it["plan"] == plan), 0)
+                api("sendMessage", chat_id=ADMIN_CHAT_ID,
+                    text=(f"🛡️ VPN order: {plan} — {price:,} Ks\n"
+                          f"Customer: {chat_id}\n"
+                          "Tap to approve & auto-deliver configs, or decline."),
+                    reply_markup={"inline_keyboard": [[
+                        {"text": "✅ Approve & Deliver",
+                         "callback_data": f"vpnok:{chat_id}:{plan}"},
+                        {"text": "❌ Decline",
+                         "callback_data": f"vpnno:{chat_id}"}]]})
         return
 
     if "text" not in msg:
@@ -310,9 +433,59 @@ def handle_callback(cb):
         try:
             _, ci, j = data.split(":")
             product = PRODUCTS[CATS[int(ci)]][int(j)]
-            edit(product_text(product), kb_back(int(ci)))
+            if product == "Biggest VPN":
+                edit(f"🛡️ {product} — choose a plan:\n"
+                     "4 countries included: Singapore, Japan, UK, USA.",
+                     kb_vpn_buy(product))
+            else:
+                edit(product_text(product), kb_back(int(ci)))
         except (ValueError, IndexError, KeyError):
             pass
+    elif data.startswith("vpnbuy:"):
+        plan = data[len("vpnbuy:"):]
+        price = next((it["price_ks"] for it in CATALOG
+                      if it["product"] == "Biggest VPN"
+                      and it["plan"] == plan), 0)
+        orders = load_vpn_orders()
+        orders[chat_id] = {"plan": plan, "at": time.time()}
+        save_vpn_orders(orders)
+        edit(VPN_PAYMENT_MSG.format(plan=plan, price=price),
+             {"inline_keyboard": [[{"text": "⬅️ Plans",
+                                    "callback_data": prod_callback("Biggest VPN")}]]})
+    elif data.startswith("vpnok:"):
+        # Admin approved a VPN order: vpnok:<customer_chat_id>:<plan>
+        try:
+            _, cust_id, plan = data.split(":", 2)
+        except ValueError:
+            return
+        if chat_id != ADMIN_CHAT_ID:
+            return
+        api("sendMessage", chat_id=cust_id,
+            text="✅ Payment confirmed! Setting up your VPN… ⚡")
+        ok, result = vpn_mod.provision(cust_id, cust_id, plan)
+        if ok:
+            result["plan"] = plan
+            send_vpn_configs(cust_id, result)
+            api("sendMessage", chat_id=chat_id,
+                text=f"✅ VPN delivered to {cust_id} ({plan}, code {result['code']}).")
+            orders = load_vpn_orders()
+            orders.pop(cust_id, None)
+            save_vpn_orders(orders)
+        else:
+            api("sendMessage", chat_id=chat_id,
+                text=f"❌ VPN provisioning failed for {cust_id}: {result}")
+    elif data.startswith("vpnno:"):
+        try:
+            _, cust_id = data.split(":", 1)
+        except ValueError:
+            return
+        if chat_id != ADMIN_CHAT_ID:
+            return
+        api("sendMessage", chat_id=cust_id,
+            text="❌ We couldn't confirm your payment. Please contact @biggestseller1.")
+        orders = load_vpn_orders()
+        orders.pop(cust_id, None)
+        save_vpn_orders(orders)
 
 
 def main():
