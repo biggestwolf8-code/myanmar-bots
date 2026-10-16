@@ -1,4 +1,4 @@
-"""Claude Coworker web app.
+"""Claude AI Pro web app.
 
 Private 1-on-1 Claude chat in the browser. Invite-code access (like the
 Telegram bot), per-code daily caps, Excel/PDF file downloads, usage tracking,
@@ -227,8 +227,8 @@ def redeem_link(code):
 @app.route("/manifest.json")
 def manifest():
     return jsonify({
-        "name": "Claude Coworker",
-        "short_name": "Claude",
+        "name": "Claude AI Pro",
+        "short_name": "AI Pro",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#ffffff",
