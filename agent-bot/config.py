@@ -29,6 +29,11 @@ def _worker_secret():
 
 WORKER_SECRET = os.environ.get("WORKER_SECRET", "") or _worker_secret()
 
+# Secret for the private inbox that Muse (the main assistant) uses to send
+# tasks to this agent. Set via env var; the endpoint stays disabled if empty.
+# Arkar can read everything sent here with the /inbox command.
+INBOX_SECRET = os.environ.get("INBOX_SECRET", "")
+
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "500"))
 MAX_AGENT_STEPS = int(os.environ.get("MAX_AGENT_STEPS", "12"))
 HTTP_PORT = int(os.environ.get("PORT", "8080"))

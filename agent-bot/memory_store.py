@@ -16,7 +16,7 @@ os.makedirs(HIST_DIR, exist_ok=True)
 
 MEMORY_FILE = os.path.join(MEM_DIR, "MEMORY.md")
 VERSION_FILE = os.path.join(MEM_DIR, "memory_version.txt")
-MEMORY_VERSION = 3
+MEMORY_VERSION = 4
 
 SEED_ADDITIONS = {
     2: """
@@ -34,6 +34,13 @@ SEED_ADDITIONS = {
 - Setup script: setup-vm.sh in biggestwolf8-code/myanmar-bots (run in Vultr console via curl). Client config at /root/wg-client.conf on the server.
 - Next diagnostic step: packet capture on the server (tcpdump on UDP 443) to see whether the phone's packets even arrive.
 - When Arkar says "continue the vpn thing", use the vultr tool to diagnose and fix. Check: `wg show`, `systemctl status wg-quick@wg0`, `ss -ulpn | grep 443`, iptables NAT/forward rules, then tcpdump while he retries from the phone. Iterate until handshake succeeds.
+""",
+    4: """
+## Inbox from Muse (added 2026-10-16)
+- Muse is Arkar's main assistant in the Muse app. It can send you tasks through a private inbox (POST /inbox).
+- Inbox messages arrive prefixed "[Inbox from Muse]". Treat them exactly like Arkar's own requests — he set this up so he doesn't have to relay between you two.
+- Arkar can read everything in the inbox with /inbox, and he sees each message echoed to him when it arrives. Stay transparent; nothing in the inbox is hidden from him.
+- When you transcribe long keys or tokens from a message into a command or config, double-check every character — a single wrong character breaks keys silently.
 """,
 }
 

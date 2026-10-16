@@ -89,7 +89,7 @@ def handle_command(chat_id, text):
              "(while the companion program is running there).\n\n"
              "I remember things across conversations. "
              "Ask me to remind you of things — e.g. <i>remind me in 30 minutes to call the supplier</i>.\n\n"
-             "Commands: /usage /tasks /cancel <id> /memory /forget")
+             "Commands: /usage /tasks /cancel <id> /memory /forget /inbox")
     elif cmd == "/usage":
         send(chat_id, "📊 " + usage_text())
     elif cmd == "/tasks":
@@ -107,6 +107,16 @@ def handle_command(chat_id, text):
             send(chat_id, "⏰ " + esc(scheduler.add_task(parts[0], parts[1])))
         else:
             send(chat_id, "Use: /remind <when> to <what> — e.g. /remind in 30 minutes to check the oven")
+    elif cmd == "/inbox":
+        items = server.read_inbox()
+        if not items:
+            send(chat_id, "📥 Inbox is empty — nothing from Muse yet.")
+        else:
+            lines = []
+            for it in items:
+                ts = it.get("ts", "")[:16].replace("T", " ")
+                lines.append(f"• <i>{esc(ts)}</i>\n{esc(it.get('text', '')[:300])}")
+            send(chat_id, "📥 <b>Recent inbox messages from Muse:</b>\n\n" + "\n\n".join(lines))
     else:
         send(chat_id, "Unknown command. Try /start.")
     return True
@@ -139,12 +149,24 @@ def handle_message(chat_id, text):
     send(chat_id, esc(reply))
 
 
+def process_inbox(text):
+    """Handle a message arriving via the private Muse inbox endpoint.
+
+    The raw text is shown to the owner first (transparency), then processed
+    through the normal agent loop as one of Muse's requests.
+    """
+    chat_id = str(config.ADMIN_CHAT_ID)
+    send(chat_id, "📥 <b>Inbox from Muse:</b>\n" + esc(text))
+    handle_message(chat_id, "[Inbox from Muse] " + text)
+
+
 def main():
     if not config.BOT_TOKEN or not config.ANTHROPIC_API_KEY:
         raise SystemExit("Set BOT_TOKEN and ANTHROPIC_API_KEY env vars.")
     memory_store.ensure_seed()
     scheduler.set_notify(lambda cid, msg: send(cid, esc(msg)))
     scheduler.start()
+    server.inbox_handler = process_inbox
     threading.Thread(target=server.run, daemon=True).start()
     print("agent bot starting...", flush=True)
     offset = 0
