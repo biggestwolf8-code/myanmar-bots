@@ -955,7 +955,9 @@ def send_long(chat_id, text, limit=4000):
 
 
 def listen_enabled():
-    return load_hw().get("listen", True)
+    # Default OFF: the teacher gets one consolidated completion report with
+    # all audio tap-links, not a forward per voice message as students send them.
+    return load_hw().get("listen", False)
 
 
 def set_listen(on):
