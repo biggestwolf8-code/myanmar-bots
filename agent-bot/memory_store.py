@@ -15,6 +15,42 @@ os.makedirs(MEM_DIR, exist_ok=True)
 os.makedirs(HIST_DIR, exist_ok=True)
 
 MEMORY_FILE = os.path.join(MEM_DIR, "MEMORY.md")
+VERSION_FILE = os.path.join(MEM_DIR, "memory_version.txt")
+MEMORY_VERSION = 2
+
+SEED_ADDITIONS = {
+    2: """
+## Resurrection kit (added 2026-10-16)
+- Arkar's full context backup lives in the private GitHub repo biggestwolf8-code/arkar-context.
+  RESURRECT.md there explains how to restore Muse in a new chat. The kit refreshes automatically.
+- If Arkar says he lost Muse / wants to resurrect it, point him to that repo and to RESURRECT.md.
+- You are his always-on fallback: you know the essentials and can keep working while he sets up a new Muse.
+""",
+}
+
+
+def ensure_seed():
+    if not os.path.exists(MEMORY_FILE):
+        with open(MEMORY_FILE, "w", encoding="utf-8") as fh:
+            fh.write(SEED_MEMORY)
+            for v in range(1, MEMORY_VERSION + 1):
+                if v in SEED_ADDITIONS:
+                    fh.write(SEED_ADDITIONS[v])
+        with open(VERSION_FILE, "w") as fh:
+            fh.write(str(MEMORY_VERSION))
+        return
+    try:
+        with open(VERSION_FILE) as fh:
+            ver = int(fh.read().strip())
+    except (OSError, ValueError):
+        ver = 1
+    if ver < MEMORY_VERSION:
+        with open(MEMORY_FILE, "a", encoding="utf-8") as fh:
+            for v in range(ver + 1, MEMORY_VERSION + 1):
+                if v in SEED_ADDITIONS:
+                    fh.write(SEED_ADDITIONS[v])
+        with open(VERSION_FILE, "w") as fh:
+            fh.write(str(MEMORY_VERSION))
 
 SEED_MEMORY = """# Agent memory — Arkar Myowin
 
@@ -32,12 +68,6 @@ SEED_MEMORY = """# Agent memory — Arkar Myowin
   (laptop tool, only while his companion program is running). Confirm before destructive
   actions (deleting data, changing system config, rebooting).
 """
-
-
-def ensure_seed():
-    if not os.path.exists(MEMORY_FILE):
-        with open(MEMORY_FILE, "w", encoding="utf-8") as fh:
-            fh.write(SEED_MEMORY)
 
 
 def read_memory():
