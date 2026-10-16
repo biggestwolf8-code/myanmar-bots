@@ -5,7 +5,9 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
+import urllib.error
 import urllib.request
 
 import config
@@ -62,8 +64,21 @@ def _api_call(messages, tools=None):
         headers={"x-api-key": config.ANTHROPIC_API_KEY,
                  "anthropic-version": "2023-06-01",
                  "content-type": "application/json"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        out = json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            out = json.load(r)
+    except urllib.error.HTTPError as e:
+        # Log the request shape so the next 4xx is diagnosable from Railway logs.
+        try:
+            detail = e.read().decode("utf-8", "replace")[:500]
+        except Exception:
+            detail = ""
+        roles = [m.get("role") for m in messages]
+        n_chars = sum(len(str(m.get("content"))) for m in messages)
+        print(f"anthropic HTTP {e.code}: n_msgs={len(messages)} "
+              f"first_roles={roles[:4]} last_roles={roles[-4:]} "
+              f"chars={n_chars} detail={detail}", flush=True)
+        raise
     usage = out.get("usage", {})
     return out, {"input_tokens": usage.get("input_tokens", 0),
                  "output_tokens": usage.get("output_tokens", 0)}
@@ -252,33 +267,40 @@ TOOLS = [
 def _execute_tool(name, inp):
     try:
         if name == "run_python":
-            return _tool_run_python(inp.get("code", ""))
-        if name == "run_shell":
-            return _tool_run_shell(inp.get("command", ""))
-        if name == "read_file":
-            return _tool_read_file(inp.get("path", ""))
-        if name == "write_file":
-            return _tool_write_file(inp.get("path", ""), inp.get("content", ""))
-        if name == "list_files":
-            return _tool_list_files(inp.get("path", ""))
-        if name == "delete_file":
-            return _tool_delete_file(inp.get("path", ""))
-        if name == "send_file":
-            return _tool_send_file(inp.get("path", ""), inp.get("caption", ""))
-        if name == "fetch_url":
-            return _tool_fetch_url(inp.get("url", ""))
-        if name == "vultr":
-            return _tool_vultr(inp.get("command", ""))
-        if name == "laptop":
-            return _tool_laptop(inp.get("action", ""), inp.get("command", ""),
-                                inp.get("path", ""), inp.get("content", ""))
-        if name == "remember":
-            return _tool_remember(inp.get("fact", ""))
-        if name == "schedule":
-            return _tool_schedule(inp.get("when", ""), inp.get("task", ""))
-        return f"Unknown tool: {name}"
+            result = _tool_run_python(inp.get("code", ""))
+        elif name == "run_shell":
+            result = _tool_run_shell(inp.get("command", ""))
+        elif name == "read_file":
+            result = _tool_read_file(inp.get("path", ""))
+        elif name == "write_file":
+            result = _tool_write_file(inp.get("path", ""), inp.get("content", ""))
+        elif name == "list_files":
+            result = _tool_list_files(inp.get("path", ""))
+        elif name == "delete_file":
+            result = _tool_delete_file(inp.get("path", ""))
+        elif name == "send_file":
+            result = _tool_send_file(inp.get("path", ""), inp.get("caption", ""))
+        elif name == "fetch_url":
+            result = _tool_fetch_url(inp.get("url", ""))
+        elif name == "vultr":
+            result = _tool_vultr(inp.get("command", ""))
+        elif name == "laptop":
+            result = _tool_laptop(inp.get("action", ""), inp.get("command", ""),
+                                  inp.get("path", ""), inp.get("content", ""))
+        elif name == "remember":
+            result = _tool_remember(inp.get("fact", ""))
+        elif name == "schedule":
+            result = _tool_schedule(inp.get("when", ""), inp.get("task", ""))
+        else:
+            result = f"Unknown tool: {name}"
     except Exception as e:
         return f"Tool error: {e}"
+    # The API rejects empty tool_result content with HTTP 400, so never
+    # let an empty string through (read_file on an empty file, fetch_url
+    # on a text-less page).
+    if not result or not str(result).strip():
+        return "(no output)"
+    return result
 
 
 def _describe_step(name, inp):
@@ -315,6 +337,12 @@ def run_agent(history, max_steps=None):
     max_steps = max_steps or config.MAX_AGENT_STEPS
     total_in, total_out, steps = 0, 0, []
     messages = [{"role": m["role"], "content": m["content"]} for m in history]
+    # Guard: the API requires the first message to use the user role and
+    # rejects the request with HTTP 400 otherwise. A crash mid-turn can
+    # leave saved history with an odd count, and the load slice can then
+    # start on an assistant message — drop those so the request is valid.
+    while messages and messages[0].get("role") != "user":
+        messages.pop(0)
     text = ""
     for _ in range(max_steps):
         out, usage = _api_call(messages, TOOLS)

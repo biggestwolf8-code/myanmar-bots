@@ -18,6 +18,11 @@ import server
 from agent import run_agent
 
 API = config.API
+
+# Serializes message handling: the Telegram polling loop and the inbox
+# endpoint both run handle_message for the same owner chat_id in different
+# threads, and they share one history file.
+_HANDLE_LOCK = threading.Lock()
 USAGE_FILE = os.path.join(config.DATA_DIR, "usage.json")
 
 
@@ -129,6 +134,13 @@ def typing_loop(chat_id, stop):
 
 
 def handle_message(chat_id, text):
+    # Serialize with inbox handling: both threads use the same chat_id and
+    # share the history file, so load -> run -> save must be atomic.
+    with _HANDLE_LOCK:
+        _handle_message_inner(chat_id, text)
+
+
+def _handle_message_inner(chat_id, text):
     history = memory_store.load_history(chat_id)
     history.append({"role": "user", "content": text})
     stop = threading.Event()
