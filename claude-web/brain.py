@@ -426,7 +426,17 @@ def ask_claude_agent(history, workspace_dir, attachments=None,
 
     total_in, total_out = 0, 0
     steps = []
-    before = set(os.listdir(workspace_dir))
+    def _snapshot():
+        snap = {}
+        for name in os.listdir(workspace_dir):
+            p = os.path.join(workspace_dir, name)
+            if os.path.isfile(p):
+                try:
+                    snap[name] = os.path.getmtime(p)
+                except OSError:
+                    pass
+        return snap
+    before = _snapshot()
     text = ""
     for _ in range(max_steps):
         out = _api_call(MODEL, MAX_TOKENS, SYSTEM_PROMPT + AGENT_SYSTEM_ADDENDUM,
@@ -459,6 +469,7 @@ def ask_claude_agent(history, workspace_dir, attachments=None,
         text = ("I used all my steps — here's where I got to. "
                 "Ask me to continue if needed.")
     trim_history(history)
-    after = set(os.listdir(workspace_dir))
-    new_files = sorted(after - before)
+    after = _snapshot()
+    new_files = sorted(n for n, mt in after.items()
+                       if n not in before or before[n] != mt)
     return text, {"input_tokens": total_in, "output_tokens": total_out}, steps, new_files

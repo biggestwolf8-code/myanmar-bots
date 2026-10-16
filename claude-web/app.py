@@ -420,57 +420,79 @@ def api_upload_chat():
         return jsonify({"ok": False, "error": "Couldn't process that file."}), 400
 
     history = histories.setdefault(sid, [])
-    history.append({"role": "user", "content": text})
-    history[:] = history[-20:]
-    # Re-send images attached earlier this session on EVERY turn (including
-    # upload turns). If the model ever sees an "[Image attached]" placeholder
-    # without the image data, it falsely concludes it hallucinated earlier
-    # descriptions and "retracts" them.
-    prior = session_images.get(sid, [])
-    if ext in IMAGE_EXTS:
-        prior = prior[:-1]  # the just-uploaded image is already in attachments
-    for mime0, b640 in prior:
-        attachments.append({"kind": "image", "mime": mime0, "b64": b640})
+    hist_len = len(history)
+    agent_mode = (request.form.get("agent") or "").lower() in ("1", "true", "on")
+    steps, wsfiles = [], []
     try:
-        reply, api_usage = brain.ask_claude(history, attachments=attachments)
-        reply = reply.strip()
+        if agent_mode:
+            # Agent mode: the file lands in the workspace so the agent can
+            # actually work with it (run code on a CSV, read a doc, ...).
+            wsdir = workspace_dir(sid)
+            wsfname = os.path.basename(f.filename or "upload")
+            try:
+                with open(brain.safe_ws_path(wsdir, wsfname), "wb") as fh:
+                    fh.write(data)
+                ws_note = f"\n[File saved to your workspace as {wsfname}]"
+            except ValueError:
+                ws_note = ""
+            if stored_extra:
+                user_text = f"{stored_label}\n{stored_extra}\n\n{text}".strip() + ws_note
+            else:
+                user_text = ((stored_label + " " + text).strip()
+                             or stored_label) + ws_note
+            history.append({"role": "user", "content": user_text})
+            brain.trim_history(history)
+            agent_attachments = []
+            if ext in IMAGE_EXTS and session_images.get(sid):
+                mime_last, b64_last = session_images[sid][-1]
+                agent_attachments = [{"kind": "image", "mime": mime_last,
+                                      "b64": b64_last}]
+            reply, api_usage, steps, new_files = brain.ask_claude_agent(
+                history, wsdir, attachments=agent_attachments or None)
+            reply = (reply or "").strip()
+            wsfiles = [{"name": n, "url": "/wsfile/" + n} for n in new_files
+                       if os.path.isfile(os.path.join(wsdir, n))]
+        else:
+            history.append({"role": "user", "content": text})
+            brain.trim_history(history)
+            # Re-send images attached earlier this session on EVERY turn (including
+            # upload turns). If the model ever sees an "[Image attached]" placeholder
+            # without the image data, it falsely concludes it hallucinated earlier
+            # descriptions and "retracts" them.
+            prior = session_images.get(sid, [])
+            if ext in IMAGE_EXTS:
+                prior = prior[:-1]  # the just-uploaded image is already in attachments
+            for mime0, b640 in prior:
+                attachments.append({"kind": "image", "mime": mime0, "b64": b640})
+            reply, api_usage = brain.ask_claude(history, attachments=attachments)
+            reply = reply.strip()
     except Exception as ex:
         print("Claude API failed:", ex)
-        history.pop()
+        del history[hist_len:]  # roll back user msg + any partial agent turns
         return jsonify({"ok": False,
                          "error": "The AI didn't respond — try again in a moment."}), 502
     if not reply:
-        history.pop()
+        del history[hist_len:]
         return jsonify({"ok": False, "error": "Empty reply — try again."}), 502
-    # store the document text (not just a placeholder) so follow-up
-    # questions work; images are re-sent from session_images instead
-    if stored_extra:
-        stored_content = (f"{stored_label}\n{stored_extra}\n\n{text}").strip()
-    else:
-        stored_content = (stored_label + " " + text).strip() or stored_label
-    history[-1] = {"role": "user", "content": stored_content}
-    history.append({"role": "assistant", "content": reply})
-    history[:] = history[-20:]
+    if not agent_mode:
+        # store the document text (not just a placeholder) so follow-up
+        # questions work; images are re-sent from session_images instead
+        if stored_extra:
+            stored_content = (f"{stored_label}\n{stored_extra}\n\n{text}").strip()
+        else:
+            stored_content = (stored_label + " " + text).strip() or stored_label
+        history[-1] = {"role": "user", "content": stored_content}
+        history.append({"role": "assistant", "content": reply})
+        brain.trim_history(history)
     bump_daily(code)
     record_usage(code, api_usage)
 
-    clean, blocks = brain.extract_blocks(reply)
-    files = []
-    if blocks:
-        cleanup_files()
-        for kind, fname, fbytes, mime in brain.build_files(blocks):
-            fid = secrets.token_hex(8)
-            os.makedirs(os.path.join(DATA_DIR, "files"), exist_ok=True)
-            with open(os.path.join(DATA_DIR, "files", fid), "wb") as fh:
-                fh.write(fbytes)
-            filemeta[fid] = {"name": fname, "mime": mime, "sid": sid,
-                             "created": time.time()}
-            files.append({"id": fid, "name": fname, "mime": mime})
-        _save_json("webfiles.json", filemeta)
+    clean, files = _finalize_reply(sid, code, reply)
     save_all()
-    if blocks and not files:
+    if not clean and not files and not wsfiles:
         return jsonify({"ok": True, "reply": reply, "files": []})
-    return jsonify({"ok": True, "reply": clean or "Here you go! 📎", "files": files})
+    return jsonify({"ok": True, "reply": clean or "Here you go! 📎",
+                    "files": files, "steps": steps, "wsfiles": wsfiles})
 
 
 @app.route("/files/<fid>")

@@ -238,10 +238,11 @@ async function sendFile(input){
   try {
     const fd = new FormData();
     fd.append('file', file); fd.append('message', text);
+    fd.append('agent', activeTab==='agent' ? '1' : '0');
     const r = await fetch('/api/upload_chat',{method:'POST',body:fd});
     const j = await r.json();
     t.remove();
-    if (j.ok) addMsg('bot', j.reply, j.files);
+    if (j.ok) addMsg('bot', j.reply, j.files, j.steps, j.wsfiles);
     else addMsg('bot', '⚠️ '+(j.error||'Something went wrong.'));
   } catch(e){ t.remove(); addMsg('bot','⚠️ Connection error — try again.'); }
   sending = false; document.getElementById('sendBtn').disabled = false;
