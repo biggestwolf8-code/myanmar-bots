@@ -29,6 +29,8 @@ What you can do:
 - Fetch web pages as text via fetch_url.
 - Remember durable facts with the remember tool (they persist across conversations).
 - Schedule reminders and recurring checks with the schedule tool.
+- Create files (documents, spreadsheets, images, QR codes) in the workspace and send them
+  to Arkar on Telegram with the send_file tool.
 
 Long-term memory about Arkar:
 {long_memory}
@@ -154,6 +156,29 @@ def _tool_delete_file(path):
         return f"Failed: {e}"
 
 
+def _tool_send_file(path, caption=""):
+    """Send a workspace file to Arkar on Telegram as a downloadable document."""
+    import requests
+    try:
+        p = _safe_ws_path(path)
+        if not os.path.isfile(p):
+            return f"Failed: {path} not found."
+        size = os.path.getsize(p)
+        if size > 45 * 1024 * 1024:
+            return f"Failed: file is {size / 1048576:.1f}MB, Telegram limit is ~50MB."
+        with open(p, "rb") as fh:
+            r = requests.post(
+                f"{config.API}/sendDocument",
+                data={"chat_id": config.ADMIN_CHAT_ID,
+                      "caption": (caption or os.path.basename(p))[:1024]},
+                files={"document": (os.path.basename(p), fh)},
+                timeout=120)
+        ok = r.json().get("ok", False)
+        return f"Sent {path} to Arkar." if ok else f"Failed: Telegram said: {r.text[:200]}"
+    except Exception as e:
+        return f"Failed: {e}"
+
+
 def _tool_fetch_url(url):
     url = url.strip()
     if not url.startswith(("http://", "https://")):
@@ -209,6 +234,8 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}}},
     {"name": "delete_file", "description": "Delete a file from the agent workspace.",
      "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
+    {"name": "send_file", "description": "Send a file from the agent workspace to Arkar on Telegram as a downloadable document (up to ~45MB). Use after creating something for him: QR code image, config file, spreadsheet, PDF, report.",
+     "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "caption": {"type": "string"}}, "required": ["path"]}},
     {"name": "fetch_url", "description": "Fetch a web page and return its text content.",
      "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}},
     {"name": "vultr", "description": "Run a shell command on Arkar's Vultr server (Ubuntu 22.04, Singapore) over SSH. 60s limit. Confirm before destructive actions.",
@@ -236,6 +263,8 @@ def _execute_tool(name, inp):
             return _tool_list_files(inp.get("path", ""))
         if name == "delete_file":
             return _tool_delete_file(inp.get("path", ""))
+        if name == "send_file":
+            return _tool_send_file(inp.get("path", ""), inp.get("caption", ""))
         if name == "fetch_url":
             return _tool_fetch_url(inp.get("url", ""))
         if name == "vultr":
@@ -265,6 +294,8 @@ def _describe_step(name, inp):
         return "Listed files"
     if name == "delete_file":
         return f"Deleted {inp.get('path', '')}"
+    if name == "send_file":
+        return f"Sent file {inp.get('path', '')} to Arkar"
     if name == "fetch_url":
         return f"Fetched {inp.get('url', '')[:60]}"
     if name == "vultr":

@@ -1,3 +1,4 @@
 requests
 flask
 paramiko
+qrcode[pil]
