@@ -123,8 +123,20 @@
   <div class="logo">G</div>
   <h1>Chat GPT Plus API</h1>
   <p class="tagline">Your AI co-worker for drafting, writing, translating,<br>planning and more.</p>
-  <input id="codeInput" placeholder="INVITE CODE" maxlength="16" autocomplete="off">
-  <button id="redeemBtn" onclick="redeem()">Start chatting</button>
+  <div id="loginTabs" style="margin-bottom:12px">
+    <button id="tabCode" onclick="loginTab('code')" style="font-weight:700">Invite code</button>
+    <button id="tabEmail" onclick="loginTab('email')" style="font-weight:400;opacity:.7">Email login</button>
+  </div>
+  <div id="codePane">
+    <input id="codeInput" placeholder="INVITE CODE" maxlength="16" autocomplete="off">
+    <button id="redeemBtn" onclick="redeem()">Start chatting</button>
+  </div>
+  <div id="emailPane" style="display:none">
+    <input id="emailInput" placeholder="Email" autocomplete="email" style="margin-bottom:8px">
+    <input id="pwInput" type="password" placeholder="Password" autocomplete="current-password">
+    <button id="emailBtn" onclick="emailLogin()">Log in</button>
+    <p style="font-size:12px;color:#666">No account yet? Sign in with your invite code first, then create one from the menu.</p>
+  </div>
   <div id="loginErr"></div>
   <div class="powered">Powered by <strong>OpenAI</strong></div>
 </div>
@@ -145,8 +157,10 @@
       <div class="sub">your AI co-worker</div>
     </div>
     <div class="spacer"></div>
+    <button onclick="createAccount()" title="Create an email login so you never lose access">👤 Create account</button>
     <button onclick="logout()">Log out</button>
   </header>
+  <div id="bcastBar" style="display:none;max-width:820px;margin:10px auto 0;padding:10px 14px;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;font-size:14px;color:#92400e;"></div>
   <div id="msgs"></div>
   <div id="composer">
     <div id="fileChip" style="display:none;max-width:820px;margin:0 auto 8px;align-items:center;gap:10px;background:#eef0ff;border:1px solid #c9cdf7;border-radius:10px;padding:8px 12px;font-size:13px;">
@@ -269,7 +283,29 @@ async function boot(){
     await loadConvos(true);
     document.getElementById('msgInput').focus();
   }
+  if (j.ok) loadBroadcast();
 }
+async function loadBroadcast(){
+  try {
+    const r = await fetch('/api/broadcast');
+    const j = await r.json();
+    const bar = document.getElementById('bcastBar');
+    if (j.ok && j.broadcast && j.broadcast.id){
+      const seen = JSON.parse(localStorage.getItem('bcastSeen') || '[]');
+      if (seen.includes(j.broadcast.id)){ bar.style.display = 'none'; return; }
+      bar.innerHTML = '📢 ' + escapeHtml(j.broadcast.message) +
+        ' <button onclick="dismissBroadcast(\'' + j.broadcast.id + '\')" style="float:right;border:0;background:none;cursor:pointer;font-size:16px">✕</button>';
+      bar.style.display = 'block';
+    } else bar.style.display = 'none';
+  } catch(e){}
+}
+function dismissBroadcast(id){
+  const seen = JSON.parse(localStorage.getItem('bcastSeen') || '[]');
+  seen.push(id);
+  localStorage.setItem('bcastSeen', JSON.stringify(seen.slice(-20)));
+  document.getElementById('bcastBar').style.display = 'none';
+}
+function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 async function loadConvos(openActive){
   const r = await fetch('/api/convos');
   const j = await r.json();
@@ -317,6 +353,35 @@ async function redeem(){
   btn.disabled = false;
   if (j.ok) boot();
   else document.getElementById('loginErr').textContent = j.error || 'Something went wrong.';
+}
+function loginTab(which){
+  document.getElementById('codePane').style.display = which === 'code' ? '' : 'none';
+  document.getElementById('emailPane').style.display = which === 'email' ? '' : 'none';
+  document.getElementById('tabCode').style.fontWeight = which === 'code' ? '700' : '400';
+  document.getElementById('tabCode').style.opacity = which === 'code' ? '1' : '.7';
+  document.getElementById('tabEmail').style.fontWeight = which === 'email' ? '700' : '400';
+  document.getElementById('tabEmail').style.opacity = which === 'email' ? '1' : '.7';
+  document.getElementById('loginErr').textContent = '';
+}
+async function emailLogin(){
+  const email = document.getElementById('emailInput').value.trim();
+  const password = document.getElementById('pwInput').value;
+  const btn = document.getElementById('emailBtn');
+  btn.disabled = true;
+  const r = await fetch('/api/email_login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email, password})});
+  const j = await r.json();
+  btn.disabled = false;
+  if (j.ok) boot();
+  else document.getElementById('loginErr').textContent = j.error || 'Something went wrong.';
+}
+async function createAccount(){
+  const email = prompt('Enter your email address:');
+  if (!email) return;
+  const password = prompt('Choose a password (min 6 characters):');
+  if (!password) return;
+  const r = await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email, password})});
+  const j = await r.json();
+  alert(j.ok ? '✅ Account created! You can now log in with your email from any device.' : '⚠️ ' + (j.error || 'Failed.'));
 }
 let sending = false;
 let attachedFile = null;

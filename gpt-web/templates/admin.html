@@ -59,6 +59,17 @@
     <div id="codesOut" class="codes-out hidden"></div>
   </div>
 
+  <h2>📢 Broadcast banner</h2>
+  <div class="card">
+    <p style="font-size:13px;color:#666">Shows a dismissible banner at the top of the app for all signed-in customers. Max 500 chars.</p>
+    <textarea id="bcastMsg" rows="3" style="width:100%;font-size:14px" placeholder="e.g. 🎉 New: Agent mode is live! Tap the 🤖 button to try it."></textarea>
+    <div style="margin-top:8px">
+      <button onclick="setBroadcast()">Publish</button>
+      <button class="ghost" onclick="clearBroadcast()">Clear</button>
+      <span id="bcastStatus" style="margin-left:10px;font-size:13px"></span>
+    </div>
+  </div>
+
   <h2>Invite codes</h2>
   <div class="card" style="overflow-x:auto">
     <table id="codesTable">
@@ -120,6 +131,30 @@ async function revoke(code){
   await fetch('/api/admin/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
   boot();
 }
+async function setBroadcast(){
+  const msg = document.getElementById('bcastMsg').value.trim();
+  if (!msg){ document.getElementById('bcastStatus').textContent = 'Type a message first.'; return; }
+  const r = await fetch('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+  const j = await r.json();
+  document.getElementById('bcastStatus').textContent = j.ok ? '✅ Published.' : 'Error.';
+}
+async function clearBroadcast(){
+  const r = await fetch('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:''})});
+  const j = await r.json();
+  document.getElementById('bcastMsg').value = '';
+  document.getElementById('bcastStatus').textContent = j.ok ? 'Cleared.' : 'Error.';
+}
+async function loadBroadcast(){
+  try {
+    const r = await fetch('/api/admin/broadcast');
+    const j = await r.json();
+    if (j.ok && j.broadcast){
+      document.getElementById('bcastMsg').value = j.broadcast.message || '';
+      document.getElementById('bcastStatus').textContent = 'Currently live since ' + (j.broadcast.at || '');
+    }
+  } catch(e){}
+}
+loadBroadcast();
 document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 boot();
 </script>

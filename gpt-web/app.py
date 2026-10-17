@@ -22,6 +22,7 @@ import datetime
 import io
 import json
 import os
+import re
 import secrets
 import time
 
@@ -96,6 +97,7 @@ sessions = _load_json("gptsessions.json", {})
 histories = _load_json("gpthistories.json", {})
 usage = _load_json("gptusage.json", {})
 filemeta = _load_json("gptfiles.json", {})
+users = _load_json("gptusers.json", {})
 
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
@@ -106,6 +108,22 @@ def save_all():
     _save_json("gpthistories.json", histories)
     _save_json("gptusage.json", usage)
     _save_json("gptfiles.json", filemeta)
+    _save_json("gptusers.json", users)
+
+
+def hash_pw(pw, salt=None):
+    import hashlib
+    salt = salt or secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 200_000)
+    return f"{salt}${h.hex()}"
+
+
+def check_pw(pw, stored):
+    try:
+        salt, _ = stored.split("$", 1)
+    except ValueError:
+        return False
+    return hash_pw(pw, salt) == stored
 
 
 def make_code():
@@ -345,6 +363,49 @@ def api_redeem():
     e["used_by"] = sid
     e["used_at"] = datetime.datetime.now().isoformat(timespec="seconds")
     sessions[sid] = {"code": code, "created": e["used_at"]}
+    save_all()
+    session["sid"] = sid
+    session.permanent = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/signup", methods=["POST"])
+def api_signup():
+    """Create an email+password account linked to the current invite code.
+    Requires an active invite-code session."""
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False, "error": "Sign in with your invite code first."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pw = data.get("password") or ""
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return jsonify({"ok": False, "error": "Enter a valid email address."}), 400
+    if len(pw) < 6:
+        return jsonify({"ok": False, "error": "Password must be at least 6 characters."}), 400
+    if email in users:
+        return jsonify({"ok": False, "error": "This email is already registered — log in instead."}), 409
+    code = code_for_sid(sid)
+    users[email] = {"pw": hash_pw(pw), "code": code,
+                    "created": datetime.datetime.now().isoformat(timespec="seconds")}
+    save_all()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/email_login", methods=["POST"])
+def api_email_login():
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pw = data.get("password") or ""
+    u = users.get(email)
+    if not u or not check_pw(pw, u.get("pw", "")):
+        return jsonify({"ok": False, "error": "Wrong email or password."}), 401
+    code = u.get("code")
+    if code not in codes:
+        return jsonify({"ok": False, "error": "This account's subscription is gone — contact support."}), 410
+    sid = secrets.token_hex(16)
+    sessions[sid] = {"code": code, "created": datetime.datetime.now().isoformat(timespec="seconds"),
+                     "via": "email", "email": email}
     save_all()
     session["sid"] = sid
     session.permanent = True
@@ -753,6 +814,44 @@ def api_admin_revoke():
         histories.pop(sid, None)
     save_all()
     return jsonify({"ok": True})
+
+
+# ---------- broadcast banner ----------
+def _get_broadcast():
+    try:
+        with open(os.path.join(DATA_DIR, "broadcast.json"), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+@app.route("/api/broadcast")
+def api_broadcast():
+    if not current_sid():
+        return jsonify({"ok": False}), 401
+    b = _get_broadcast()
+    if not b.get("message"):
+        return jsonify({"ok": True, "broadcast": None})
+    return jsonify({"ok": True, "broadcast": b})
+
+
+@app.route("/api/admin/broadcast", methods=["GET", "POST"])
+def api_admin_broadcast():
+    if not is_admin():
+        return jsonify({"ok": False}), 403
+    if request.method == "GET":
+        b = _get_broadcast()
+        return jsonify({"ok": True, "broadcast": b or None})
+    data = request.get_json(force=True, silent=True) or {}
+    msg = (data.get("message") or "").strip()[:500]
+    if msg:
+        b = {"id": str(int(time.time())), "message": msg,
+             "at": datetime.datetime.now().isoformat()[:16]}
+    else:
+        b = {}
+    with open(os.path.join(DATA_DIR, "broadcast.json"), "w", encoding="utf-8") as fh:
+        json.dump(b, fh)
+    return jsonify({"ok": True, "broadcast": b or None})
 
 
 if __name__ == "__main__":
