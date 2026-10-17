@@ -50,6 +50,7 @@ def shrink_image(data, ext):
 DATA_DIR = os.environ.get("DATA_DIR", ".")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
+AGENT_DAILY_LIMIT = int(os.environ.get("AGENT_DAILY_LIMIT", "20"))
 PORT = int(os.environ.get("PORT", "5000"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -147,6 +148,32 @@ def bump_daily(code):
     else:
         d = {"day": today, "count": 1}
     e["daily"] = d
+
+
+def over_agent_limit(code):
+    today = datetime.date.today().isoformat()
+    e = codes.get(code, {})
+    d = e.get("agent_daily") or {}
+    if d.get("day") != today:
+        return False
+    return d.get("count", 0) >= AGENT_DAILY_LIMIT
+
+
+def bump_agent_daily(code):
+    today = datetime.date.today().isoformat()
+    e = codes.setdefault(code, {})
+    d = e.get("agent_daily") or {}
+    if d.get("day") == today:
+        d["count"] = d.get("count", 0) + 1
+    else:
+        d = {"day": today, "count": 1}
+    e["agent_daily"] = d
+
+
+def workspace_dir(sid):
+    d = os.path.join(DATA_DIR, "workspaces", sid)
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def record_usage(code, api_usage):
@@ -426,15 +453,29 @@ def api_chat():
         return jsonify({"ok": False,
                          "error": "You've reached today's message limit — come back tomorrow!"}), 429
 
+    agent_mode = bool(data.get("agent"))
+    if agent_mode and over_agent_limit(code):
+        return jsonify({"ok": False,
+                         "error": f"Agent mode limit reached ({AGENT_DAILY_LIMIT}/day) — come back tomorrow!"}), 429
+
     convo = active_convo(sid)
     msgs = convo["messages"]
     msgs.append({"role": "user", "content": text, "files": []})
     if not any(m["role"] == "user" for m in msgs[:-1]):
         convo["title"] = text[:42]
     convo["updated"] = time.time()
+    new_agent_files = []
     try:
-        reply, api_usage = brain.ask_gpt(api_turns_for(convo))
-        reply = reply.strip()
+        if agent_mode:
+            wsdir = workspace_dir(sid)
+            reply, api_usage, steps, new_agent_files = brain.ask_gpt_agent(
+                api_turns_for(convo), wsdir)
+            reply = reply.strip()
+            if steps:
+                reply += "\n\n⚙️ Steps: " + " → ".join(steps)
+        else:
+            reply, api_usage = brain.ask_gpt(api_turns_for(convo))
+            reply = reply.strip()
     except Exception as ex:
         print("OpenAI API failed:", ex)
         msgs.pop()
@@ -448,11 +489,23 @@ def api_chat():
     if len(msgs) > 40:
         del msgs[:-40]
     bump_daily(code)
+    if agent_mode:
+        bump_agent_daily(code)
     record_usage(code, api_usage)
 
     clean, img_blocks, doc_blocks = split_blocks(
         reply, text, pending_image=bool(convo.get("pending_image")))
     files = []
+    if agent_mode:
+        # offer agent-created workspace files as downloads
+        for fname in new_agent_files:
+            fpath = os.path.join(workspace_dir(sid), fname)
+            if os.path.isfile(fpath):
+                with open(fpath, "rb") as fh:
+                    fbytes = fh.read()
+                if len(fbytes) <= 10 * 1024 * 1024:
+                    files.append(store_file(sid, fname, fbytes,
+                                            "application/octet-stream"))
     blocked = False
     if img_blocks or doc_blocks:
         cleanup_files()

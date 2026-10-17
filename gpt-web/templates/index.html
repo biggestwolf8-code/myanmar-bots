@@ -110,6 +110,8 @@
   #imgCancel { border: 1px solid var(--line); background: #fff; color: var(--ink); }
   #imgGo { border: 0; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff; box-shadow: 0 3px 10px rgba(79,70,229,.28); }
   #composer button#sendBtn { padding: 0 24px; font-size: 15px; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff; border: 0; border-radius: 14px; cursor: pointer; font-weight: 700; box-shadow: 0 3px 10px rgba(79,70,229,.28); }
+  #composer button#agentBtn { padding: 0 14px; font-size: 14px; font-weight: 700; border-radius: 14px; cursor: pointer; border: 2px solid var(--accent); background: transparent; color: var(--accent); white-space: nowrap; }
+  #composer button#agentBtn.on { background: linear-gradient(135deg, #f59e0b, #ef4444); border-color: transparent; color: #fff; box-shadow: 0 3px 10px rgba(239,68,68,.35); }
   #composer button:disabled { opacity: .6; }
   #foot { text-align: center; font-size: 11.5px; color: var(--muted); padding: 8px 16px calc(10px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.95); letter-spacing: .2px; }
   #foot strong { font-weight: 600; color: #57534e; }
@@ -162,6 +164,7 @@
       </span>
       <input type="file" id="fileInput" class="hidden" accept="image/*,.pdf,.txt,.md,.csv" onchange="onFilePicked(this)">
       <input id="msgInput" placeholder="Ask anything…" autocomplete="off" onkeydown="if(event.key==='Enter')send()">
+      <button id="agentBtn" onclick="toggleAgent()" title="Agent mode: the AI uses tools (Python, files) to do multi-step work">🤖 Agent mode</button>
       <button id="sendBtn" onclick="send()">Send</button>
     </div>
   </div>
@@ -318,6 +321,15 @@ async function redeem(){
 let sending = false;
 let attachedFile = null;
 let attachedPreviewUrl = null;
+let agentMode = false;
+function toggleAgent(){
+  agentMode = !agentMode;
+  const b = document.getElementById('agentBtn');
+  b.classList.toggle('on', agentMode);
+  document.getElementById('msgInput').placeholder = agentMode
+    ? 'Agent mode: describe the task… (uses tools, 20/day)'
+    : 'Ask anything…';
+}
 function onFilePicked(input){
   const f = input.files[0];
   if (!f) return;
@@ -363,7 +375,7 @@ async function send(){
       const r = await fetch('/api/upload_chat',{method:'POST',body:fd});
       j = await r.json();
     } else {
-      const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
+      const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text, agent:agentMode})});
       j = await r.json();
     }
     t.remove();

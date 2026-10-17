@@ -329,3 +329,177 @@ def build_files(blocks):
         except Exception as e:
             print(f"file build failed ({kind}):", e)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Agent mode: multi-step tool-using loop (OpenAI function calling)
+# ---------------------------------------------------------------------------
+
+AGENT_MAX_STEPS = 4  # cost control: fewer than the Claude app's 6
+PYTHON_TIMEOUT = 30
+
+AGENT_SYSTEM_ADDENDUM = (
+    "\n\nAGENT MODE: You have tools — run_python (execute Python code in the user's "
+    "private workspace folder), write_file, read_file, list_files. When the user gives "
+    "you a multi-step task: briefly state your plan (2-4 short steps), then USE THE "
+    "TOOLS to do the work — never just describe what you would do. Chain steps: list "
+    "or read files first, run code to process them, write the results as files. If a "
+    "step fails, try a different approach once before asking the user. When finished, "
+    "summarize what you did and name every file you created. Keep plans and summaries "
+    "tight — the work matters more than the narration."
+)
+
+GPT_TOOLS = [
+    {"type": "function", "function": {
+        "name": "run_python",
+        "description": (
+            "Run Python code in the user's private workspace folder and get the output. "
+            "Use for calculations, data analysis, processing workspace files, or generating "
+            "charts (save as PNG with matplotlib if available). 30 second timeout. "
+            "Standard library plus openpyxl, fpdf2, Pillow and pypdf are installed. "
+            "Print the results you want to see. Files you create land in the workspace."),
+        "parameters": {"type": "object",
+                       "properties": {"code": {"type": "string",
+                                              "description": "Python code to execute"}},
+                       "required": ["code"]},
+    }},
+    {"type": "function", "function": {
+        "name": "write_file",
+        "description": "Write a text file into the user's workspace (creates or overwrites).",
+        "parameters": {"type": "object",
+                       "properties": {
+                           "path": {"type": "string", "description": "File name, e.g. 'report.md'"},
+                           "content": {"type": "string", "description": "Full file content"}},
+                       "required": ["path", "content"]},
+    }},
+    {"type": "function", "function": {
+        "name": "read_file",
+        "description": "Read a text file from the user's workspace (first ~20000 characters).",
+        "parameters": {"type": "object",
+                       "properties": {"path": {"type": "string", "description": "File name"}},
+                       "required": ["path"]},
+    }},
+    {"type": "function", "function": {
+        "name": "list_files",
+        "description": "List the files in the user's workspace.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+]
+
+
+def safe_ws_path(workspace_dir, path):
+    base = os.path.realpath(workspace_dir)
+    p = os.path.realpath(os.path.join(base, path or ""))
+    if p != base and not p.startswith(base + os.sep):
+        raise ValueError("path escapes workspace")
+    return p
+
+
+def run_python_sandbox(code, workspace_dir, timeout=PYTHON_TIMEOUT):
+    import subprocess, sys, tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".py", dir=workspace_dir,
+                                     delete=False) as fh:
+        fh.write(code)
+        tmp = fh.name
+    try:
+        r = subprocess.run([sys.executable, tmp], cwd=workspace_dir,
+                           capture_output=True, text=True, timeout=timeout)
+        out = (r.stdout or "") + (("\n[stderr]\n" + r.stderr) if r.stderr.strip() else "")
+        out += f"\n[exit code: {r.returncode}]"
+        return r.returncode == 0, out.strip()[:12000]
+    except subprocess.TimeoutExpired:
+        return False, f"Timed out after {timeout}s."
+    except Exception as e:
+        return False, f"Failed to run: {e}"
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def execute_tool(name, args, workspace_dir):
+    args = args or {}
+    try:
+        if name == "run_python":
+            ok, out = run_python_sandbox(args.get("code", ""), workspace_dir)
+            return out, ("Ran Python" if ok else "Python failed")
+        if name == "write_file":
+            p = safe_ws_path(workspace_dir, args.get("path", ""))
+            os.makedirs(os.path.dirname(p) or workspace_dir, exist_ok=True)
+            with open(p, "w", encoding="utf-8") as fh:
+                fh.write(args.get("content", ""))
+            return f"Wrote {args.get('path')}", f"Wrote {args.get('path')}"
+        if name == "read_file":
+            p = safe_ws_path(workspace_dir, args.get("path", ""))
+            with open(p, encoding="utf-8") as fh:
+                return fh.read(20000), f"Read {args.get('path')}"
+        if name == "list_files":
+            names = sorted(os.listdir(workspace_dir))
+            return "\n".join(names) or "(empty)", "Listed files"
+    except Exception as e:
+        return f"ERROR: {e}", "Tool error"
+    return f"ERROR: unknown tool {name}", "Unknown tool"
+
+
+def ask_gpt_agent(history, workspace_dir, max_steps=AGENT_MAX_STEPS):
+    """Agentic tool-using loop. history: list of {"role","content"} (mutated
+    in place with assistant/tool turns). Returns (final_text, usage, steps, new_files).
+    Raises on API failure."""
+    os.makedirs(workspace_dir, exist_ok=True)
+    api_messages = [{"role": "system", "content": SYSTEM_PROMPT + AGENT_SYSTEM_ADDENDUM}]
+    for m in history:
+        api_messages.append({"role": m["role"], "content": m.get("content", "")})
+
+    def _push(msg):
+        api_messages.append(msg)
+        history.append(msg)
+
+    total_in, total_out, steps = 0, 0, []
+    before = {n for n in os.listdir(workspace_dir)
+              if os.path.isfile(os.path.join(workspace_dir, n))}
+    text = ""
+    for _ in range(max_steps):
+        payload = {"model": MODEL, "messages": api_messages,
+                   "max_completion_tokens": MAX_TOKENS, "tools": GPT_TOOLS}
+        out = _post_with_fallback(payload, MAX_TOKENS)
+        u = out.get("usage", {})
+        total_in += u.get("prompt_tokens", 0)
+        total_out += u.get("completion_tokens", 0)
+        msg = (out.get("choices") or [{}])[0].get("message", {})
+        tool_calls = msg.get("tool_calls") or []
+        if not tool_calls:
+            text = (msg.get("content") or "").strip()
+            _push({"role": "assistant", "content": text})
+            break
+        _push({"role": "assistant", "content": msg.get("content") or "",
+               "tool_calls": [{"id": tc.get("id"),
+                               "type": "function",
+                               "function": {"name": tc["function"]["name"],
+                                            "arguments": tc["function"].get("arguments", "{}")}}
+                              for tc in tool_calls]})
+        for tc in tool_calls:
+            name = tc["function"]["name"]
+            try:
+                args = json.loads(tc["function"].get("arguments") or "{}")
+            except ValueError:
+                args = {}
+            res_text, summary = execute_tool(name, args, workspace_dir)
+            steps.append(summary)
+            _push({"role": "tool", "tool_call_id": tc.get("id"), "content": res_text})
+    else:
+        # hit max steps without a final answer: ask for a summary
+        api_messages.append({"role": "user",
+                             "content": "Summarize what you accomplished in 2-3 sentences."})
+        payload = {"model": MODEL, "messages": api_messages,
+                   "max_completion_tokens": MAX_TOKENS}
+        out = _post_with_fallback(payload, MAX_TOKENS)
+        u = out.get("usage", {})
+        total_in += u.get("prompt_tokens", 0)
+        total_out += u.get("completion_tokens", 0)
+        text = ((out.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+        _push({"role": "assistant", "content": text})
+    after = {n for n in os.listdir(workspace_dir)
+             if os.path.isfile(os.path.join(workspace_dir, n))}
+    new_files = sorted(after - before)
+    return text, {"input_tokens": total_in, "output_tokens": total_out}, steps, new_files
