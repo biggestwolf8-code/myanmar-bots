@@ -308,7 +308,8 @@ def cleanup_files():
 @app.route("/")
 def index():
     from flask import render_template
-    return render_template("index.html", logged_in=bool(current_sid()))
+    return render_template("index.html", logged_in=bool(current_sid()),
+                           model_name=brain.MODEL)
 
 
 @app.route("/i/<code>")
