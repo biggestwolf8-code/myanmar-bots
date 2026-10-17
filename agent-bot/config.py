@@ -8,7 +8,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 MODEL = os.environ.get("MODEL", "claude-sonnet-5-5")
-ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "8028025915")
+ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "7061620871")
 
 # Vultr VM access (SSH from the agent)
 VULTR_HOST = os.environ.get("VULTR_HOST", "149.28.150.78")

@@ -4,7 +4,7 @@ Arkar's private AI agent on Telegram — chats, runs code, works with files, fet
 remembers things, schedules reminders, and can reach his **Vultr server** (SSH) and his
 **Windows laptop** (companion worker).
 
-**Owner-only.** Only `ADMIN_CHAT_ID` (8028025915) can talk to it. No invite codes — an agent
+**Owner-only.** Only `ADMIN_CHAT_ID` (@HenryRealGood, 7061620871) can talk to it. No invite codes — an agent
 with shell access must never be shared.
 
 ## Deploy (Railway)
@@ -19,7 +19,7 @@ Env vars:
 - `BOT_TOKEN` — Telegram bot token from @BotFather
 - `ANTHROPIC_API_KEY` — Claude API key
 - `MODEL` — default `claude-sonnet-5-5`
-- `ADMIN_CHAT_ID` — `8028025915`
+- `ADMIN_CHAT_ID` — `7061620871` (@HenryRealGood)
 - `DATA_DIR` — `/data`
 - `VULTR_HOST` — `149.28.150.78`
 - `VULTR_USER` — `root`

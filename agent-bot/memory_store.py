@@ -16,7 +16,7 @@ os.makedirs(HIST_DIR, exist_ok=True)
 
 MEMORY_FILE = os.path.join(MEM_DIR, "MEMORY.md")
 VERSION_FILE = os.path.join(MEM_DIR, "memory_version.txt")
-MEMORY_VERSION = 6
+MEMORY_VERSION = 7
 
 SEED_ADDITIONS = {
     2: """
@@ -60,6 +60,11 @@ SEED_ADDITIONS = {
 - LIST ("list VPN customers"): show name, IP, expiry date, status.
 - Pricing is Arkar's call — never quote prices yourself. If a customer doesn't pay, Arkar tells you to remove them.
 """,
+    7: """
+## Owner Telegram account changed (added 2026-10-17)
+- Arkar's admin account for this bot is now @HenryRealGood (Telegram user id 7061620871), set 2026-10-17.
+- The old personal id 8028025915 is no longer the admin — ADMIN_CHAT_ID env is set to the new id and the bot must not reply to the old one.
+""",
 }
 
 
@@ -88,7 +93,8 @@ def ensure_seed():
 
 SEED_MEMORY = """# Agent memory — Arkar Myowin
 
-- Owner: Arkar Myowin. Telegram user id 8028025915. Timezone Asia/Bangkok.
+- Owner: Arkar Myowin (@HenryRealGood, Telegram user id 7061620871). Timezone Asia/Bangkok.
+  His older account (id 8028025915) is no longer the bot admin — only @HenryRealGood can use this bot.
 - Speaks English and Burmese (Myanmar). Learning Thai.
 - Runs "MasterClass English By Sayar Arkar" — online English courses for Myanmar learners.
 - Runs "Biggest Seller Myanmar" — digital subscription reselling (Telegram channel, ~3.5K subscribers).
