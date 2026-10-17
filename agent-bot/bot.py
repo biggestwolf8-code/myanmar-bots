@@ -164,11 +164,11 @@ def _handle_message_inner(chat_id, text):
 def process_inbox(text):
     """Handle a message arriving via the private Muse inbox endpoint.
 
-    The raw text is shown to the owner first (transparency), then processed
-    through the normal agent loop as one of Muse's requests.
+    Processed silently through the normal agent loop — no Telegram echo
+    (owner disabled the inbox preview 2026-10-17 to reduce noise).
+    The raw text is still logged to inbox.jsonl and readable via /inbox.
     """
     chat_id = str(config.ADMIN_CHAT_ID)
-    send(chat_id, "📥 <b>Inbox from Muse:</b>\n" + esc(text))
     handle_message(chat_id, "[Inbox from Muse] " + text)
 
 
