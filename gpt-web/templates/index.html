@@ -176,7 +176,7 @@
           <button onclick="document.getElementById('fileInput').click()"><span style="font-size:18px;">📎</span><span>Upload photo or file<span class="opt-sub">PNG, JPG, PDF, TXT, CSV…</span></span></button>
         </div>
       </span>
-      <input type="file" id="fileInput" class="hidden" accept="image/*,.pdf,.txt,.md,.csv" onchange="onFilePicked(this)">
+      <input type="file" id="fileInput" class="hidden" multiple accept="image/*,.pdf,.txt,.md,.csv" onchange="onFilePicked(this)">
       <div class="row" style="margin-bottom:6px;justify-content:flex-end">
         <button id="agentBtn" onclick="toggleAgent()" title="Agent mode: the AI uses tools (Python, files) to do multi-step work">🤖 Agent</button>
       </div>
@@ -389,7 +389,7 @@ async function createAccount(){
   alert(j.ok ? '✅ Account created! You can now log in with your email from any device.' : '⚠️ ' + (j.error || 'Failed.'));
 }
 let sending = false;
-let attachedFile = null;
+let attachedFiles = [];
 let attachedPreviewUrl = null;
 let agentMode = false;
 function toggleAgent(){
@@ -401,20 +401,26 @@ function toggleAgent(){
     : 'Ask anything…';
 }
 function onFilePicked(input){
-  const f = input.files[0];
-  if (!f) return;
-  if (f.size > 10*1024*1024){ alert('File too big — 10MB max.'); input.value=''; return; }
-  attachedFile = f;
-  document.getElementById('fileName').textContent = f.name;
+  const picked = Array.from(input.files || []).slice(0, 5);
+  if (!picked.length) return;
+  for (const f of picked){
+    if (f.size > 10*1024*1024){ alert(f.name + ': file too big — 10MB max.'); continue; }
+    attachedFiles.push(f);
+  }
+  input.value = '';
+  if (!attachedFiles.length) return;
+  const names = attachedFiles.map(f => f.name).join(', ');
+  document.getElementById('fileName').textContent = attachedFiles.length + ' file(s): ' + names;
   const thumb = document.getElementById('fileThumb');
-  if (f.type.startsWith('image/')){
-    attachedPreviewUrl = URL.createObjectURL(f);
+  const firstImg = attachedFiles.find(f => f.type.startsWith('image/'));
+  if (firstImg){
+    attachedPreviewUrl = URL.createObjectURL(firstImg);
     thumb.src = attachedPreviewUrl; thumb.classList.remove('hidden');
   } else { thumb.classList.add('hidden'); attachedPreviewUrl = null; }
   document.getElementById('fileChip').style.display = 'flex';
 }
 function clearAttachment(){
-  attachedFile = null; attachedPreviewUrl = null;
+  attachedFiles = []; attachedPreviewUrl = null;
   document.getElementById('fileInput').value = '';
   document.getElementById('fileChip').style.display = 'none';
 }
@@ -422,11 +428,11 @@ async function send(){
   if (sending) return;
   const inp = document.getElementById('msgInput');
   const text = inp.value.trim();
-  const file = attachedFile;
-  if (!text && !file) return;
+  const files = attachedFiles;
+  if (!text && !files.length) return;
   sending = true; document.getElementById('sendBtn').disabled = true;
-  const ub = addMsg('user', text || ('📎 '+file.name));
-  if (file && file.type.startsWith('image/') && attachedPreviewUrl){
+  const ub = addMsg('user', text || ('📎 ' + files.map(f => f.name).join(', ')));
+  if (files.length && attachedPreviewUrl){
     const img = document.createElement('img');
     img.src = attachedPreviewUrl;
     img.style.cssText = 'max-width:100%;border-radius:10px;margin-top:6px;display:block;';
@@ -438,10 +444,10 @@ async function send(){
   const box = document.getElementById('msgs'); box.appendChild(t); box.scrollTop = box.scrollHeight;
   try {
     let j;
-    if (file){
+    if (files.length){
       const fd = new FormData();
       fd.append('message', text);
-      fd.append('file', file);
+      for (const f of files) fd.append('file', f);
       const r = await fetch('/api/upload_chat',{method:'POST',body:fd});
       j = await r.json();
     } else {

@@ -608,45 +608,49 @@ def api_chat():
 
 @app.route("/api/upload_chat", methods=["POST"])
 def api_upload_chat():
-    """Chat turn with a file attachment (photo or document). Multipart form."""
+    """Chat turn with file attachment(s) (photo or document). Multipart form."""
     sid = current_sid()
     if not sid:
         return jsonify({"ok": False, "error": "Not signed in."}), 401
     code = code_for_sid(sid)
     text = (request.form.get("message") or "").strip()
-    f = request.files.get("file")
-    if not f or not f.filename:
+    files = request.files.getlist("file")
+    files = [f for f in files if f and f.filename]
+    if not files:
         return jsonify({"ok": False, "error": "No file attached."}), 400
+    if len(files) > 5:
+        return jsonify({"ok": False, "error": "Max 5 files at once."}), 400
     if len(text) > 6000:
         return jsonify({"ok": False, "error": "Message too long (6000 chars max)."}), 400
     if over_daily_limit(code):
         return jsonify({"ok": False,
                          "error": "You've reached today's message limit — come back tomorrow!"}), 429
 
-    ext = os.path.splitext(f.filename)[1].lower()
-    if ext not in ALLOWED_EXTS:
-        return jsonify({"ok": False,
-                         "error": "That file type isn't supported (photos, PDF, TXT, Markdown, CSV)."}), 400
-    data = f.read()
-    if len(data) > MAX_UPLOAD_BYTES:
-        return jsonify({"ok": False, "error": "File too big (10MB max)."}), 400
-    if not data:
-        return jsonify({"ok": False, "error": "Empty file."}), 400
-
     attachments = []
-    stored_label = ""
+    stored_labels = []
     try:
-        if ext in IMAGE_EXTS:
-            mime, img_bytes = shrink_image(data, ext)
-            attachments.append({"kind": "image", "mime": mime,
-                                "b64": base64.b64encode(img_bytes).decode()})
-            stored_label = f"[Image attached: {f.filename}]"
-        else:
-            ok, doc_text = brain.extract_doc_text(f.filename, data)
-            if not ok:
-                return jsonify({"ok": False, "error": f"Couldn't read that file: {doc_text}"}), 400
-            attachments.append({"kind": "doc", "name": f.filename, "text": doc_text})
-            stored_label = f"[Document attached: {f.filename}]"
+        for f in files:
+            ext = os.path.splitext(f.filename)[1].lower()
+            if ext not in ALLOWED_EXTS:
+                return jsonify({"ok": False,
+                                 "error": f"{f.filename}: that file type isn't supported (photos, PDF, TXT, Markdown, CSV)."}), 400
+            data = f.read()
+            if len(data) > MAX_UPLOAD_BYTES:
+                return jsonify({"ok": False, "error": f"{f.filename}: file too big (10MB max)."}), 400
+            if not data:
+                return jsonify({"ok": False, "error": f"{f.filename}: empty file."}), 400
+            if ext in IMAGE_EXTS:
+                mime, img_bytes = shrink_image(data, ext)
+                attachments.append({"kind": "image", "mime": mime,
+                                    "b64": base64.b64encode(img_bytes).decode()})
+                stored_labels.append(f"[Image attached: {f.filename}]")
+            else:
+                ok, doc_text = brain.extract_doc_text(f.filename, data)
+                if not ok:
+                    return jsonify({"ok": False, "error": f"Couldn't read {f.filename}: {doc_text}"}), 400
+                attachments.append({"kind": "doc", "name": f.filename, "text": doc_text})
+                stored_labels.append(f"[Document attached: {f.filename}]")
+        stored_label = " ".join(stored_labels)
     except Exception as e:
         print("upload processing failed:", e)
         return jsonify({"ok": False, "error": "Couldn't process that file."}), 400
@@ -667,7 +671,7 @@ def api_upload_chat():
     stored_content = (stored_label + " " + text).strip()
     msgs.append({"role": "user", "content": stored_content, "files": []})
     if not any(m["role"] == "user" for m in msgs[:-1]):
-        convo["title"] = (text or f.filename or "Attachment")[:42]
+        convo["title"] = (text or files[0].filename or "Attachment")[:42]
     convo["updated"] = time.time()
     amsg = {"role": "assistant", "content": reply, "files": []}
     msgs.append(amsg)
