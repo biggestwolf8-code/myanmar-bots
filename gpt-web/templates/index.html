@@ -301,6 +301,7 @@ async function loadBroadcast(){
       bar.innerHTML = '📢 ' + escapeHtml(j.broadcast.message) +
         ' <button onclick="dismissBroadcast(\'' + j.broadcast.id + '\')" style="float:right;border:0;background:none;cursor:pointer;font-size:16px">✕</button>';
       bar.style.display = 'block';
+      setTimeout(function(){ bar.style.display = 'none'; }, 10000);
     } else bar.style.display = 'none';
   } catch(e){}
 }
