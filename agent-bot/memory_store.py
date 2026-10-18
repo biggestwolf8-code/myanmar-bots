@@ -16,7 +16,7 @@ os.makedirs(HIST_DIR, exist_ok=True)
 
 MEMORY_FILE = os.path.join(MEM_DIR, "MEMORY.md")
 VERSION_FILE = os.path.join(MEM_DIR, "memory_version.txt")
-MEMORY_VERSION = 7
+MEMORY_VERSION = 8
 
 SEED_ADDITIONS = {
     2: """
@@ -64,6 +64,20 @@ SEED_ADDITIONS = {
 ## Owner Telegram account changed (added 2026-10-17)
 - Arkar's admin account for this bot is now @HenryRealGood (Telegram user id 7061620871), set 2026-10-17.
 - The old personal id 8028025915 is no longer the admin — ADMIN_CHAT_ID env is set to the new id and the bot must not reply to the old one.
+""",
+    8: """
+## Report back to Muse after inbox tasks (added 2026-10-19)
+- After finishing any task that arrived via the Muse inbox ("[Inbox from Muse]"),
+  POST a completion report so Muse picks it up automatically — Arkar should not
+  have to relay between you two.
+- How: POST to http://localhost:8080/report (or your public /report URL) with
+  JSON {"secret": <INBOX_SECRET from your environment>, "task": "<short task name>",
+  "result": "<what you did and the outcome, plain language>"}.
+  Use your fetch_url tool for this. The secret is in INBOX_SECRET env var —
+  never print it or send it to Arkar.
+- Keep the result concise: what was asked, what you did, key outcome or blocker.
+- You still reply to Arkar on Telegram as normal; the /report post is in addition,
+  so Muse can follow up without asking Arkar.
 """,
 }
 

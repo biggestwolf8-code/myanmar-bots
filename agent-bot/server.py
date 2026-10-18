@@ -4,6 +4,9 @@ GET  /laptop/poll?secret=...    -> pending tasks (worker long-polls this)
 POST /laptop/result              -> {secret, id, ok, output}
 POST /inbox                      -> {secret, text}  (private channel from Muse;
                                     Arkar reads it with /inbox)
+POST /report                     -> {secret, task, result}  (agent posts completion
+                                    reports here; Muse polls GET /reports)
+GET  /reports                    -> {secret}  (recent completion reports for Muse)
 GET  /health                     -> ok
 """
 import json
@@ -93,6 +96,62 @@ def inbox():
     log_inbox(text)
     threading.Thread(target=inbox_handler, args=(text,), daemon=True).start()
     return jsonify({"ok": True})
+
+
+def _reports_path():
+    return os.path.join(config.DATA_DIR, "reports.jsonl")
+
+
+@app.route("/report", methods=["POST"])
+def report():
+    """Agent posts a completion report here after finishing an inbox task.
+    Muse polls GET /reports to pick them up automatically."""
+    data = request.get_json(silent=True) or {}
+    if not _inbox_auth(data):
+        return jsonify({"ok": False}), 403
+    task = (data.get("task") or "").strip()[:500]
+    result = (data.get("result") or "").strip()[:4000]
+    if not task or not result:
+        return jsonify({"ok": False, "error": "task and result required"}), 400
+    try:
+        with open(_reports_path(), "a") as fh:
+            fh.write(json.dumps({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "task": task,
+                "result": result,
+                "seen": False,
+            }) + "\n")
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/reports", methods=["GET", "POST"])
+def reports():
+    """Muse polls this to collect the agent's completion reports.
+    Marks returned reports as seen."""
+    data = request.get_json(silent=True) or {}
+    secret = data.get("secret") or request.args.get("secret")
+    if not secret or secret != config.INBOX_SECRET:
+        return jsonify({"ok": False}), 403
+    path = _reports_path()
+    items = []
+    if os.path.exists(path):
+        try:
+            with open(path) as fh:
+                items = [json.loads(l) for l in fh.read().strip().split("\n") if l.strip()]
+        except Exception:
+            pass
+    new = [it for it in items if not it.get("seen")]
+    for it in items:
+        it["seen"] = True
+    try:
+        with open(path, "w") as fh:
+            for it in items[-50:]:
+                fh.write(json.dumps(it) + "\n")
+    except Exception:
+        pass
+    return jsonify({"ok": True, "reports": new})
 
 
 def run():
