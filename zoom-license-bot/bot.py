@@ -841,7 +841,8 @@ def daily_check_job():
                         continue
                 # Sweep-mode summary (also sent when live check found no changes)
                 counts = {}
-                for a in store["accounts"].values():
+                for email in fleet_emails(store):
+                    a = store["accounts"].get(email, {})
                     st = a.get("last_type", "unknown")
                     counts[st] = counts.get(st, 0) + 1
                 ls = store.get("last_sweep_at", "")
