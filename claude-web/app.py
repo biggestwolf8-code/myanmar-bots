@@ -18,9 +18,11 @@ Admin panel: https://<host>/admin
 """
 import base64
 import datetime
+import hashlib
 import io
 import json
 import os
+import re
 import secrets
 import time
 
@@ -91,6 +93,8 @@ app.secret_key = get_secret_key()
 codes = _load_json("webcodes.json", {})
 # sid -> {"code": code, "created": ts}
 sessions = _load_json("websessions.json", {})
+# email -> {"pw": hash, "code": code, "created": ts}
+users = _load_json("webusers.json", {})
 # sid -> [ {"role":..., "content":...} ]
 histories = _load_json("webhistories.json", {})
 # code -> {"input": int, "output": int, "cost": float}
@@ -107,6 +111,21 @@ def save_all():
     _save_json("webhistories.json", histories)
     _save_json("webusage.json", usage)
     _save_json("webfiles.json", filemeta)
+    _save_json("webusers.json", users)
+
+
+def hash_pw(pw, salt=None):
+    salt = salt or secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 200_000)
+    return f"{salt}${h.hex()}"
+
+
+def check_pw(pw, stored):
+    try:
+        salt, _ = stored.split("$", 1)
+    except ValueError:
+        return False
+    return hash_pw(pw, salt) == stored
 
 
 def make_code():
@@ -129,6 +148,18 @@ def current_sid():
 
 def code_for_sid(sid):
     return sessions[sid]["code"]
+
+
+def hist_key(sid):
+    """Chat history and images follow the invite code, not the browser
+    session — so the same chat survives signup, email login, and device
+    switches. One-time migration of old sid-keyed entries."""
+    code = code_for_sid(sid)
+    if sid in histories and code not in histories:
+        histories[code] = histories.pop(sid)
+    if sid in session_images and code not in session_images:
+        session_images[code] = session_images.pop(sid)
+    return code
 
 
 def over_daily_limit(code):
@@ -263,6 +294,50 @@ def api_redeem():
     return jsonify({"ok": True})
 
 
+@app.route("/api/signup", methods=["POST"])
+def api_signup():
+    """Create an email+password account linked to the current invite code.
+    Requires an active invite-code session. Chat history follows the code,
+    so nothing is lost."""
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False, "error": "Sign in with your invite code first."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pw = data.get("password") or ""
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return jsonify({"ok": False, "error": "Enter a valid email address."}), 400
+    if len(pw) < 6:
+        return jsonify({"ok": False, "error": "Password must be at least 6 characters."}), 400
+    if email in users:
+        return jsonify({"ok": False, "error": "This email is already registered — log in instead."}), 409
+    code = code_for_sid(sid)
+    users[email] = {"pw": hash_pw(pw), "code": code,
+                    "created": datetime.datetime.now().isoformat(timespec="seconds")}
+    save_all()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/email_login", methods=["POST"])
+def api_email_login():
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pw = data.get("password") or ""
+    u = users.get(email)
+    if not u or not check_pw(pw, u.get("pw", "")):
+        return jsonify({"ok": False, "error": "Wrong email or password."}), 401
+    code = u.get("code")
+    if code not in codes:
+        return jsonify({"ok": False, "error": "This account's access is gone — contact support."}), 410
+    sid = secrets.token_hex(16)
+    sessions[sid] = {"code": code, "created": datetime.datetime.now().isoformat(timespec="seconds"),
+                     "via": "email", "email": email}
+    save_all()
+    session["sid"] = sid
+    session.permanent = True
+    return jsonify({"ok": True})
+
+
 @app.route("/api/me")
 def api_me():
     sid = current_sid()
@@ -282,9 +357,10 @@ def api_new():
     sid = current_sid()
     if not sid:
         return jsonify({"ok": False}), 401
-    histories.pop(sid, None)
-    session_images.pop(sid, None)
-    persist_images(sid)
+    hk = hist_key(sid)
+    histories.pop(hk, None)
+    session_images.pop(hk, None)
+    persist_images(hk)
     _save_json("webhistories.json", histories)
     return jsonify({"ok": True})
 
@@ -296,13 +372,14 @@ def api_new():
 session_images = _load_json("webimages.json", {})
 
 
-def persist_images(sid):
-    imgs = session_images.get(sid, [])[-3:]
+def persist_images(key):
+    imgs = session_images.get(key, [])[-3:]
     if imgs:
-        session_images[sid] = imgs
+        session_images[key] = imgs
     else:
-        session_images.pop(sid, None)
-    for s in [s for s in session_images if s not in sessions]:
+        session_images.pop(key, None)
+    live_codes = set(sessions[s]["code"] for s in sessions)
+    for s in [s for s in session_images if s not in sessions and s not in live_codes]:
         session_images.pop(s, None)
     _save_json("webimages.json", session_images)
 
@@ -313,6 +390,7 @@ def api_chat():
     if not sid:
         return jsonify({"ok": False, "error": "Not signed in."}), 401
     code = code_for_sid(sid)
+    hk = hist_key(sid)
     data = request.get_json(force=True, silent=True) or {}
     text = (data.get("message") or "").strip()
     agent_mode = bool(data.get("agent"))
@@ -324,7 +402,7 @@ def api_chat():
         return jsonify({"ok": False,
                          "error": "You've reached today's message limit — come back tomorrow!"}), 429
 
-    history = histories.setdefault(sid, [])
+    history = histories.setdefault(hk, [])
     hist_len = len(history)
     history.append({"role": "user", "content": text})
     brain.trim_history(history)
@@ -340,7 +418,7 @@ def api_chat():
         else:
             # re-send images attached earlier this session so follow-ups can see them
             attachments = [{"kind": "image", "mime": mime, "b64": b64}
-                           for mime, b64 in session_images.get(sid, [])]
+                           for mime, b64 in session_images.get(hk, [])]
             reply, api_usage = brain.ask_claude(history, attachments=attachments or None)
             reply = reply.strip()
     except Exception as ex:
@@ -372,6 +450,7 @@ def api_upload_chat():
     if not sid:
         return jsonify({"ok": False, "error": "Not signed in."}), 401
     code = code_for_sid(sid)
+    hk = hist_key(sid)
     text = (request.form.get("message") or "").strip()
     f = request.files.get("file")
     if not f or not f.filename:
@@ -399,7 +478,7 @@ def api_upload_chat():
             mime, img_bytes = shrink_image(data, ext)
             b64 = base64.b64encode(img_bytes).decode()
             attachments.append({"kind": "image", "mime": mime, "b64": b64})
-            session_images.setdefault(sid, []).append([mime, b64])
+            session_images.setdefault(hk, []).append([mime, b64])
             persist_images(sid)
             stored_label = f"[Image attached: {f.filename}]"
         elif ext == ".pdf":
@@ -419,7 +498,7 @@ def api_upload_chat():
         print("upload processing failed:", e)
         return jsonify({"ok": False, "error": "Couldn't process that file."}), 400
 
-    history = histories.setdefault(sid, [])
+    history = histories.setdefault(hk, [])
     hist_len = len(history)
     agent_mode = (request.form.get("agent") or "").lower() in ("1", "true", "on")
     steps, wsfiles = [], []
@@ -443,8 +522,8 @@ def api_upload_chat():
             history.append({"role": "user", "content": user_text})
             brain.trim_history(history)
             agent_attachments = []
-            if ext in IMAGE_EXTS and session_images.get(sid):
-                mime_last, b64_last = session_images[sid][-1]
+            if ext in IMAGE_EXTS and session_images.get(hk):
+                mime_last, b64_last = session_images[hk][-1]
                 agent_attachments = [{"kind": "image", "mime": mime_last,
                                       "b64": b64_last}]
             reply, api_usage, steps, new_files = brain.ask_claude_agent(
@@ -459,7 +538,7 @@ def api_upload_chat():
             # upload turns). If the model ever sees an "[Image attached]" placeholder
             # without the image data, it falsely concludes it hallucinated earlier
             # descriptions and "retracts" them.
-            prior = session_images.get(sid, [])
+            prior = session_images.get(hk, [])
             if ext in IMAGE_EXTS:
                 prior = prior[:-1]  # the just-uploaded image is already in attachments
             for mime0, b640 in prior:
@@ -675,7 +754,10 @@ def api_admin_revoke():
     e["used_at"] = None
     if sid:
         sessions.pop(sid, None)
-        histories.pop(sid, None)
+    histories.pop(code, None)
+    histories.pop(sid, None)
+    session_images.pop(code, None)
+    session_images.pop(sid, None)
     save_all()
     return jsonify({"ok": True})
 
