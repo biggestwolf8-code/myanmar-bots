@@ -1167,10 +1167,55 @@ def sweep_job():
             # Step 2: re-check Basic accounts via Playwright — DISABLED
             # (Chromium cannot run on Railway; use /renewed or manual checks)
             log.info("Skipping Playwright re-check (disabled on Railway)")
+
+            # Step 3: report sweep to Muse via the agent board (Arkar's rule:
+            # every sweep must be rechecked by Muse right away)
+            try:
+                _report_sweep_to_muse(store, expired)
+            except Exception:
+                log.exception("sweep report to Muse failed")
         except Exception as e:
             log.exception("sweep job error")
         # Every 6 hours
         _time.sleep(6 * 3600)
+
+
+def _report_sweep_to_muse(store, expired):
+    """POST sweep summary to the agent's /report board so Muse picks it up
+    within a minute and rechecks. Uses AGENT_REPORT_SECRET env var."""
+    import json as _json
+    import urllib.request as _urlreq
+    secret = os.environ.get("AGENT_REPORT_SECRET", "").strip()
+    if not secret:
+        return
+    counts = {}
+    basics = []
+    problems = []
+    for email in fleet_emails(store):
+        a = store["accounts"].get(email, {})
+        st = a.get("last_type") or "unknown"
+        counts[st] = counts.get(st, 0) + 1
+        if st == "Basic":
+            basics.append(short_email(email))
+        if a.get("sweep_status") in ("BLOCKED", "ERROR"):
+            problems.append(f"{short_email(email)}: {a.get('sweep_status')}")
+    summary = (
+        f"Zoom sweep completed {datetime.datetime.now(datetime.timezone.utc).isoformat()}.\n"
+        f"Accounts: {sum(counts.values())} | "
+        + ", ".join(f"{k} ({v})" for k, v in sorted(counts.items())) + "\n"
+        f"Newly expired this sweep: {', '.join(short_email(e) for e in sorted(expired)) or 'none'}\n"
+        f"Currently Basic: {', '.join(sorted(basics)) or 'none'}\n"
+        f"Blocked/error: {'; '.join(problems) or 'none'}"
+    )
+    payload = _json.dumps({
+        "secret": secret,
+        "task": "[ZOOM-SWEEP] 6-hour sweep report",
+        "result": summary,
+    }).encode()
+    req = _urlreq.Request(
+        "https://agent-bot-production-d4b3.up.railway.app/report",
+        data=payload, headers={"Content-Type": "application/json"})
+    _urlreq.urlopen(req, timeout=20).read()
 
 
 def main():
