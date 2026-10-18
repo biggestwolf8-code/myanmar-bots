@@ -148,6 +148,16 @@ def code_for_sid(sid):
     return sessions[sid]["code"]
 
 
+def hist_key(sid):
+    """Conversation store follows the invite code, not the browser session —
+    so the same chats survive signup, email login, and device switches.
+    One-time migration of old sid-keyed entries."""
+    code = code_for_sid(sid)
+    if sid in histories and code not in histories:
+        histories[code] = histories.pop(sid)
+    return code
+
+
 def over_daily_limit(code):
     today = datetime.date.today().isoformat()
     e = codes.get(code, {})
@@ -204,8 +214,10 @@ def record_usage(code, api_usage):
 
 
 def get_convo_store(sid):
-    """Conversations for a session, migrating legacy flat history."""
-    h = histories.get(sid)
+    """Conversations for a session, migrating legacy flat history.
+    Keyed by invite code so chats survive signup / email login / new devices."""
+    hk = hist_key(sid)
+    h = histories.get(hk)
     if not h or "convos" not in h:
         legacy = h if isinstance(h, list) else []
         msgs = []
@@ -218,7 +230,7 @@ def get_convo_store(sid):
         h = {"convos": [{"id": "c1", "title": "Chat", "messages": msgs,
                          "created": time.time(), "updated": time.time()}],
              "active": "c1"}
-        histories[sid] = h
+        histories[hk] = h
     return h
 
 
@@ -816,7 +828,8 @@ def api_admin_revoke():
     e["used_at"] = None
     if sid:
         sessions.pop(sid, None)
-        histories.pop(sid, None)
+    histories.pop(code, None)
+    histories.pop(sid, None)
     save_all()
     return jsonify({"ok": True})
 

@@ -387,7 +387,7 @@ async function createAccount(){
   if (!password) return;
   const r = await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email, password})});
   const j = await r.json();
-  alert(j.ok ? '✅ Account created! You can now log in with your email from any device.' : '⚠️ ' + (j.error || 'Failed.'));
+  alert(j.ok ? '✅ Account created! You can now log in with your email from any device — your chats carry over.' : '⚠️ ' + (j.error || 'Failed.'));
 }
 let sending = false;
 let attachedFiles = [];
