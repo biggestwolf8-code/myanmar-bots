@@ -886,6 +886,27 @@ def healthz():
     return {"ok": True}
 
 
+@app.get("/accounts")
+def accounts():
+    """Read-only account summary for Muse. Protected by INGEST_SECRET."""
+    if request.headers.get("X-Ingest-Secret", "") != INGEST_SECRET:
+        return {"ok": False, "error": "forbidden"}, 403
+    store = load_store()
+    accts = store.get("accounts", {})
+    out = []
+    for email, a in accts.items():
+        out.append({
+            "id": short_email(email),
+            "last_type": a.get("last_type"),
+            "sweep_status": a.get("sweep_status"),
+            "license_expires_at": a.get("license_expires_at"),
+            "last_check": a.get("last_check"),
+        })
+    return {"ok": True, "count": len(out),
+            "last_sweep_at": store.get("last_sweep_at"),
+            "accounts": out}
+
+
 @app.get("/diag")
 def diag():
     """Safe diagnostic: verifies Telegram token without exposing it."""
