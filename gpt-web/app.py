@@ -51,6 +51,7 @@ def shrink_image(data, ext):
 DATA_DIR = os.environ.get("DATA_DIR", ".")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
+DAILY_COST_LIMIT = float(os.environ.get("DAILY_COST_LIMIT", "1.0"))
 AGENT_DAILY_LIMIT = int(os.environ.get("AGENT_DAILY_LIMIT", "20"))
 PORT = int(os.environ.get("PORT", "5000"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -167,6 +168,15 @@ def over_daily_limit(code):
     return d.get("count", 0) >= DAILY_LIMIT
 
 
+def over_daily_cost_limit(code):
+    today = datetime.date.today().isoformat()
+    e = codes.get(code, {})
+    d = e.get("daily") or {}
+    if d.get("day") != today:
+        return False
+    return d.get("cost", 0.0) >= DAILY_COST_LIMIT
+
+
 def bump_daily(code):
     today = datetime.date.today().isoformat()
     e = codes.setdefault(code, {})
@@ -207,10 +217,18 @@ def workspace_dir(sid):
 def record_usage(code, api_usage):
     inp = api_usage.get("input_tokens", 0)
     out = api_usage.get("output_tokens", 0)
+    cost = brain.cost_for(inp, out)
     u = usage.setdefault(code, {"input": 0, "output": 0, "cost": 0.0})
     u["input"] += inp
     u["output"] += out
-    u["cost"] += brain.cost_for(inp, out)
+    u["cost"] += cost
+    # Also track in daily counter for the $1/day cap
+    today = datetime.date.today().isoformat()
+    e = codes.setdefault(code, {})
+    d = e.get("daily") or {}
+    if d.get("day") == today:
+        d["cost"] = d.get("cost", 0.0) + cost
+        e["daily"] = d
 
 
 def get_convo_store(sid):
@@ -526,6 +544,9 @@ def api_chat():
     if over_daily_limit(code):
         return jsonify({"ok": False,
                          "error": "You've reached today's message limit — come back tomorrow!"}), 429
+    if over_daily_cost_limit(code):
+        return jsonify({"ok": False,
+                         "error": "You've reached today's $1 usage limit — come back tomorrow!"}), 429
 
     agent_mode = bool(data.get("agent"))
     if agent_mode and over_agent_limit(code):
@@ -637,6 +658,9 @@ def api_upload_chat():
     if over_daily_limit(code):
         return jsonify({"ok": False,
                          "error": "You've reached today's message limit — come back tomorrow!"}), 429
+    if over_daily_cost_limit(code):
+        return jsonify({"ok": False,
+                         "error": "You've reached today's $1 usage limit — come back tomorrow!"}), 429
 
     attachments = []
     stored_labels = []
