@@ -255,6 +255,7 @@ CLASSES = {
     "level2": "Level 2 Speaking",
 }
 HW_FILE = os.path.join(DATA_DIR, "homework.json")
+USAGE_FILE = os.path.join(DATA_DIR, "token_usage.json")
 REMINDER_AFTER_HOURS = 20  # one nudge ~20h after assignment, if not done
 COMPLETION_MIN_EXCHANGES = 4  # don't judge before a real try
 COMPLETION_CHECK_EVERY = 4  # re-check every N exchanges
@@ -433,6 +434,9 @@ def classify_completion(hw, user_id):
             max_tokens=150,
             system=CLASSIFIER_SYSTEM,
         ).strip().splitlines()
+        _u2 = getattr(ask_claude, "last_usage", None)
+        if _u2:
+            record_token_usage(user_id, _u2["input"], _u2["output"], _u2["model"])
     except Exception as e:
         print("completion check failed:", e)
         return False, ""
@@ -665,7 +669,59 @@ def ask_claude(messages, model=None, max_tokens=400, system=None):
     )
     with urllib.request.urlopen(req, timeout=60) as r:
         out = json.load(r)
+    # Capture token usage for cost tracking
+    usage = out.get("usage", {})
+    ask_claude.last_usage = {
+        "input": usage.get("input_tokens", 0),
+        "output": usage.get("output_tokens", 0),
+        "model": model or MODEL,
+    }
     return "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
+
+
+def load_token_usage():
+    try:
+        with open(USAGE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_token_usage(data):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = USAGE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(tmp, USAGE_FILE)
+
+
+# Cost per 1M tokens (USD)
+MODEL_PRICES = {
+    "claude-haiku-4-5-20251001": (0.80, 4.00),
+    "claude-sonnet-4-5-20250929": (3.00, 15.00),
+    "claude-opus-4-1-20250805": (15.00, 75.00),
+}
+
+
+def record_token_usage(user_id, input_tokens, output_tokens, model):
+    """Record token usage for a user. Returns estimated cost."""
+    # Find price for model (match by prefix)
+    in_price, out_price = 3.00, 15.00  # default Sonnet pricing
+    for key, (ip, op) in MODEL_PRICES.items():
+        if model and key.split("-")[1] in model:
+            in_price, out_price = ip, op
+            break
+    cost = (input_tokens / 1_000_000) * in_price + (output_tokens / 1_000_000) * out_price
+    data = load_token_usage()
+    u = data.get(str(user_id), {"input": 0, "output": 0, "cost": 0.0, "calls": 0})
+    u["input"] += input_tokens
+    u["output"] += output_tokens
+    u["cost"] += cost
+    u["calls"] += 1
+    u["model"] = model
+    data[str(user_id)] = u
+    save_token_usage(data)
+    return cost
 
 
 def over_daily_limit(user_id):
@@ -747,6 +803,9 @@ def tutor_reply(user_id, user_text):
     history[:] = history[-20:]  # keep last 10 exchanges
     try:
         reply = ask_claude(history, system=tutor_system_for(user_id)).strip()
+        _u = getattr(ask_claude, "last_usage", None)
+        if _u:
+            record_token_usage(user_id, _u["input"], _u["output"], _u["model"])
     except Exception as e:
         print("Claude API failed:", e)
         history.pop()  # don't keep the failed turn
@@ -1222,6 +1281,37 @@ def handle_admin_command(chat_id, user_id, text):
                 left = trial_days_left(e["used_by"])
                 trial = " 🆓 trial" + (f" ({left}d left)" if left else " (expired)")
             lines.append(f"• {c} → {e['used_by']}{label}{cls}{trial}")
+        send_text(chat_id, "\n".join(lines)[:4000])
+        return True
+
+    if cmd == "/topusers":
+        data = load_token_usage()
+        if not data:
+            send_text(chat_id, "No token usage recorded yet.")
+            return True
+        codes = load_codes()
+        # Map user_id -> name/label
+        names = {}
+        for c, e in codes.items():
+            uid = str(e.get("used_by", ""))
+            if uid:
+                names[uid] = e.get("label") or c
+        ranked = sorted(data.items(), key=lambda x: -x[1].get("cost", 0))
+        total_cost = sum(u.get("cost", 0) for u in data.values())
+        total_in = sum(u.get("input", 0) for u in data.values())
+        total_out = sum(u.get("output", 0) for u in data.values())
+        lines = [f"💰 Token usage by student (total ${total_cost:.2f}):", ""]
+        for uid, u in ranked[:20]:
+            name = names.get(uid, f"id:{uid}")
+            lines.append(
+                f"• {name}: ${u.get('cost',0):.2f} "
+                f"({u.get('input',0)//1000}k in / {u.get('output',0)//1000}k out, "
+                f"{u.get('calls',0)} calls)"
+            )
+        if len(ranked) > 20:
+            lines.append(f"... and {len(ranked)-20} more")
+        lines.append("")
+        lines.append(f"Total: {total_in//1000}k in / {total_out//1000}k out")
         send_text(chat_id, "\n".join(lines)[:4000])
         return True
 
