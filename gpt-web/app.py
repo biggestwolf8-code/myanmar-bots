@@ -400,6 +400,30 @@ def api_redeem():
     return jsonify({"ok": True})
 
 
+@app.route("/api/my_usage", methods=["GET"])
+def api_my_usage():
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False, "error": "Not signed in."}), 401
+    code = code_for_sid(sid)
+    u = usage.get(code, {"input": 0, "output": 0, "cost": 0.0})
+    today = datetime.date.today().isoformat()
+    e = codes.get(code, {})
+    d = e.get("daily") or {}
+    daily_cost = d.get("cost", 0.0) if d.get("day") == today else 0.0
+    daily_count = d.get("count", 0) if d.get("day") == today else 0
+    return jsonify({
+        "ok": True,
+        "total_cost": round(u.get("cost", 0.0), 4),
+        "total_input": u.get("input", 0),
+        "total_output": u.get("output", 0),
+        "daily_cost": round(daily_cost, 4),
+        "daily_count": daily_count,
+        "daily_cost_limit": DAILY_COST_LIMIT,
+        "daily_msg_limit": DAILY_LIMIT,
+    })
+
+
 @app.route("/api/signup", methods=["POST"])
 def api_signup():
     """Create an email+password account linked to the current invite code.

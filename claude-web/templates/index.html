@@ -122,6 +122,7 @@
       <div class="sub">your AI co-worker</div>
     </div>
     <div class="spacer"></div>
+    <div id="usagePill" class="pill" style="cursor:pointer" title="Click for details" onclick="showUsage()">$0.00 today</div>
     <button onclick="newChat()">+ New chat</button>
     <button onclick="createAccount()" title="Create an email login so you never lose access">👤 Create account</button>
     <button onclick="logout()">Log out</button>
@@ -280,7 +281,28 @@ async function send(){
   sending = false; document.getElementById('sendBtn').disabled = false;
   document.getElementById('msgInput').focus();
 }
-async function newChat(){
+async function showUsage() {
+  fetch("/api/my_usage").then(r => r.json()).then(d => {
+    if (!d.ok) return;
+    alert(
+      "Your usage:\n\n" +
+      "Today: $" + d.daily_cost.toFixed(4) + " / $" + d.daily_cost_limit.toFixed(2) + " (" + d.daily_count + "/" + d.daily_msg_limit + " msgs)\n" +
+      "All time: $" + d.total_cost.toFixed(4) + "\n" +
+      "Tokens: " + d.total_input.toLocaleString() + " in / " + d.total_output.toLocaleString() + " out"
+    );
+  });
+}
+function updateUsagePill() {
+  fetch("/api/my_usage").then(r => r.json()).then(d => {
+    if (!d.ok) return;
+    const pill = document.getElementById("usagePill");
+    if (pill) pill.textContent = "$" + d.daily_cost.toFixed(2) + " today";
+  });
+}
+// Refresh pill every 30s and after each message
+setInterval(updateUsagePill, 30000);
+
+function newChat(){
   await fetch('/api/new',{method:'POST'});
   document.getElementById('msgs').innerHTML = '';
   addMsg('bot','✨ Fresh start! What would you like to work on?');
@@ -358,5 +380,6 @@ async function wsUpload(input){
 document.getElementById('codeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') redeem(); });
 boot();
 </script>
+<script>updateUsagePill();</script>
 </body>
 </html>

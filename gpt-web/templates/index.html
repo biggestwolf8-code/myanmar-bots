@@ -155,6 +155,7 @@
     <div>
       <div class="title">Chat GPT Plus API <span class="pill">API</span> <span class="pill" style="background:#e8f5e9;border-color:#a5d6a7;color:#2e7d32">{{ model_name }}</span></div>
       <div class="sub">your AI co-worker</div>
+      <div id="usagePill" class="pill" style="cursor:pointer;margin-top:4px;display:inline-block" title="Click for details" onclick="showUsage()">$0.00 today</div>
     </div>
     <div class="spacer"></div>
     <button onclick="createAccount()" title="Create an email login so you never lose access">👤 Create account</button>
@@ -473,6 +474,29 @@ async function newChat(){
 async function logout(){ await fetch('/api/logout',{method:'POST'}); location.reload(); }
 document.getElementById('codeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') redeem(); });
 boot();
+</script>
+
+<script>
+function showUsage() {
+  fetch("/api/my_usage").then(r => r.json()).then(d => {
+    if (!d.ok) return;
+    alert(
+      "Your usage:\n\n" +
+      "Today: $" + d.daily_cost.toFixed(4) + " / $" + d.daily_cost_limit.toFixed(2) + " (" + d.daily_count + "/" + d.daily_msg_limit + " msgs)\n" +
+      "All time: $" + d.total_cost.toFixed(4) + "\n" +
+      "Tokens: " + d.total_input.toLocaleString() + " in / " + d.total_output.toLocaleString() + " out"
+    );
+  });
+}
+function updateUsagePill() {
+  fetch("/api/my_usage").then(r => r.json()).then(d => {
+    if (!d.ok) return;
+    const pill = document.getElementById("usagePill");
+    if (pill) pill.textContent = "$" + d.daily_cost.toFixed(2) + " today";
+  });
+}
+setInterval(updateUsagePill, 30000);
+updateUsagePill();
 </script>
 </body>
 </html>
