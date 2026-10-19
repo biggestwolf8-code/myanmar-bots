@@ -302,6 +302,8 @@ def api_redeem():
     e = codes.get(code)
     if not e:
         return jsonify({"ok": False, "error": "Invalid invite code."}), 404
+    if e.get("banned"):
+        return jsonify({"ok": False, "error": e.get("ban_message", "This code has been disabled.")}), 403
     if e.get("used_by"):
         return jsonify({"ok": False, "error": "This invite code was already used."}), 410
     sid = secrets.token_hex(16)
@@ -777,6 +779,14 @@ def api_admin_revoke():
     sid = e.get("used_by")
     e["used_by"] = None
     e["used_at"] = None
+    # Optional ban with message
+    ban_msg = (data.get("ban_message") or "").strip()
+    if ban_msg:
+        e["banned"] = True
+        e["ban_message"] = ban_msg
+    else:
+        e.pop("banned", None)
+        e.pop("ban_message", None)
     if sid:
         sessions.pop(sid, None)
     histories.pop(code, None)
