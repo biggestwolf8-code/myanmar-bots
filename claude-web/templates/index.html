@@ -302,7 +302,7 @@ function updateUsagePill() {
 // Refresh pill every 30s and after each message
 setInterval(updateUsagePill, 30000);
 
-function newChat(){
+async function newChat(){
   await fetch('/api/new',{method:'POST'});
   document.getElementById('msgs').innerHTML = '';
   addMsg('bot','✨ Fresh start! What would you like to work on?');
