@@ -71,6 +71,21 @@ RECEIPT_MSG = (
 # cleared when the receipt arrives (forwarded to admin for approval).
 VPN_ORDERS_FILE = os.path.join(BASE_DIR, "vpn_pending.json")
 
+# Pending app orders: customer chat_id -> {product, plan}. For Chat GPT Plus / Claude AI Pro.
+APP_ORDERS_FILE = os.path.join(BASE_DIR, "app_pending.json")
+
+# Web app URLs for instant code generation
+APP_URLS = {
+    "Chat GPT Plus": "https://gpt-web-production-ba94.up.railway.app",
+    "Claude AI Pro": "https://claude-web-production-6603.up.railway.app",
+}
+APP_PRODUCTS = ["Chat GPT Plus", "Claude AI Pro"]
+
+# Plan label -> days for code expiry
+APP_PLAN_DAYS = {
+    "1 Month": 30, "3 Months": 90, "6 Months": 180, "1 Year": 365,
+}
+
 VPN_PAYMENT_MSG = (
     "💳 To order Biggest VPN ({plan} — {price:,} Ks):\n\n"
     "1️⃣ Pay to any of these:\n"
@@ -142,6 +157,64 @@ def save_vpn_orders(d):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(d, f)
     os.replace(tmp, VPN_ORDERS_FILE)
+
+
+def load_app_orders():
+    try:
+        with open(APP_ORDERS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_app_orders(d):
+    tmp = APP_ORDERS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f)
+    os.replace(tmp, APP_ORDERS_FILE)
+
+
+def kb_app_buy(product):
+    """Buy buttons for each app plan (Chat GPT Plus / Claude AI Pro)."""
+    items = [it for it in CATALOG if it["product"] == product]
+    rows = [[{"text": f"🛒 Buy {it['plan']} — {it['price_ks']:,} Ks",
+              "callback_data": f"appbuy:{product}:{it['plan']}"}] for it in items]
+    rows.append([{"text": "⬅️ Back", "callback_data": prod_callback(product)}])
+    return {"inline_keyboard": rows}
+
+
+def create_app_code(product, plan_label, customer_id):
+    """Call the web app's subscription API to generate an invite code.
+    Returns (ok, code, link) or (False, error_message, None)."""
+    import urllib.request
+    base_url = APP_URLS.get(product)
+    if not base_url:
+        return False, f"Unknown app: {product}", None
+    secret = os.environ.get("SUBSCRIPTION_SECRET", "").strip()
+    if not secret:
+        return False, "SUBSCRIPTION_SECRET not configured", None
+    # Extract days from plan label (e.g. "Private Access / Unlimited Devices / 1 Month")
+    days = 30
+    for label, d in APP_PLAN_DAYS.items():
+        if label in plan_label:
+            days = d
+            break
+    payload = json.dumps({
+        "secret": secret,
+        "days": days,
+        "label": f"subscription-bot/{customer_id}",
+    }).encode()
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/api/subscription/create_code",
+            data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            resp = json.loads(r.read().decode())
+        if resp.get("ok"):
+            return True, resp["code"], resp["link"]
+        return False, resp.get("error", "unknown error"), None
+    except Exception as e:
+        return False, str(e), None
 
 
 def kb_vpn_buy(product):
@@ -368,6 +441,25 @@ def handle_message(msg, fwd_map):
                          "callback_data": f"vpnok:{chat_id}:{plan}"},
                         {"text": "❌ Decline",
                          "callback_data": f"vpnno:{chat_id}"}]]})
+                return
+            # If this customer tapped an app Buy button, give admin one-tap approve.
+            app_orders = load_app_orders()
+            app_order = app_orders.get(chat_id)
+            if app_order and ADMIN_CHAT_ID:
+                product, plan = app_order["product"], app_order["plan"]
+                price = next((it["price_ks"] for it in CATALOG
+                              if it["product"] == product
+                              and it["plan"] == plan), 0)
+                api("sendMessage", chat_id=ADMIN_CHAT_ID,
+                    text=(f"🤖 {product} order: {plan} — {price:,} Ks\n"
+                          f"Customer: {chat_id}\n"
+                          "Tap to approve & auto-deliver invite code, or decline."),
+                    reply_markup={"inline_keyboard": [[
+                        {"text": "✅ Approve & Deliver",
+                         "callback_data": f"appok:{chat_id}"},
+                        {"text": "❌ Decline",
+                         "callback_data": f"appno:{chat_id}"}]]})
+                return
         return
 
     if "text" not in msg:
@@ -494,6 +586,11 @@ def handle_callback(cb):
                 edit(f"🛡️ {product} — choose a plan:\n"
                      "4 countries included: Singapore, Japan, UK, USA.",
                      kb_vpn_buy(product))
+            elif product in APP_PRODUCTS:
+                edit(f"🤖 {product} — choose a plan:\n"
+                     "Private Access / Unlimited Devices.\n"
+                     "Instant invite code on approval.",
+                     kb_app_buy(product))
             else:
                 edit(product_text(product), kb_back(int(ci)))
         except (ValueError, IndexError, KeyError):
@@ -509,6 +606,26 @@ def handle_callback(cb):
         edit(VPN_PAYMENT_MSG.format(plan=plan, price=price),
              {"inline_keyboard": [[{"text": "⬅️ Plans",
                                     "callback_data": prod_callback("Biggest VPN")}]]})
+    elif data.startswith("appbuy:"):
+        # Customer tapped Buy for Chat GPT Plus / Claude AI Pro
+        try:
+            _, product, plan = data.split(":", 2)
+        except ValueError:
+            return
+        if product not in APP_PRODUCTS:
+            return
+        price = next((it["price_ks"] for it in CATALOG
+                      if it["product"] == product
+                      and it["plan"] == plan), 0)
+        orders = load_app_orders()
+        orders[chat_id] = {"product": product, "plan": plan, "at": time.time()}
+        save_app_orders(orders)
+        edit(f"💳 To order {product} ({plan} — {price:,} Ks):\n\n"
+             f"KBZPay: 09403720481\nWavePay: 09780695959\nAYAPay: 09754926216\n"
+             f"(Account: Arkar Myo Win)\n\n"
+             f"📸 Send your payment receipt screenshot here.",
+             {"inline_keyboard": [[{"text": "⬅️ Plans",
+                                    "callback_data": prod_callback(product)}]]})
     elif data.startswith("vpnok:"):
         # Admin approved a VPN order: vpnok:<customer_chat_id>:<plan>
         try:
@@ -543,6 +660,54 @@ def handle_callback(cb):
         orders = load_vpn_orders()
         orders.pop(cust_id, None)
         save_vpn_orders(orders)
+    elif data.startswith("appok:"):
+        # Admin approved an app order: appok:<customer_chat_id>
+        try:
+            _, cust_id = data.split(":", 1)
+        except ValueError:
+            return
+        if chat_id != ADMIN_CHAT_ID:
+            return
+        orders = load_app_orders()
+        order = orders.get(cust_id)
+        if not order:
+            api("sendMessage", chat_id=chat_id,
+                text=f"❌ No pending app order for {cust_id}.")
+            return
+        product, plan = order["product"], order["plan"]
+        api("sendMessage", chat_id=cust_id,
+            text=f"✅ Payment confirmed! Generating your {product} invite code… ⚡")
+        ok, code, link = create_app_code(product, plan, cust_id)
+        if ok:
+            api("sendMessage", chat_id=cust_id,
+                text=f"🎉 Your {product} is ready!\n\n"
+                     f"📋 Plan: {plan}\n"
+                     f"🔑 Invite code: `{code}`\n"
+                     f"🔗 Or tap to redeem: {link}\n\n"
+                     f"Enter the code in the app to activate.",
+                parse_mode="Markdown")
+            api("sendMessage", chat_id=chat_id,
+                text=f"✅ {product} delivered to {cust_id} ({plan}, code {code}).")
+        else:
+            api("sendMessage", chat_id=chat_id,
+                text=f"❌ Code generation failed for {cust_id} ({product}): {code}")
+            api("sendMessage", chat_id=cust_id,
+                text="⚠️ There was an issue generating your code. "
+                     "Please contact @biggestseller1.")
+        orders.pop(cust_id, None)
+        save_app_orders(orders)
+    elif data.startswith("appno:"):
+        try:
+            _, cust_id = data.split(":", 1)
+        except ValueError:
+            return
+        if chat_id != ADMIN_CHAT_ID:
+            return
+        api("sendMessage", chat_id=cust_id,
+            text="❌ We couldn't confirm your payment. Please contact @biggestseller1.")
+        orders = load_app_orders()
+        orders.pop(cust_id, None)
+        save_app_orders(orders)
 
 
 def main():

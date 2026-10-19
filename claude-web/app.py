@@ -50,6 +50,7 @@ def shrink_image(data, ext):
 
 DATA_DIR = os.environ.get("DATA_DIR", ".")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+SUBSCRIPTION_SECRET = os.environ.get("SUBSCRIPTION_SECRET", "")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
 DAILY_COST_LIMIT = float(os.environ.get("DAILY_COST_LIMIT", "1.0"))
 PORT = int(os.environ.get("PORT", "5000"))
@@ -769,6 +770,25 @@ def api_admin_newcodes():
     _save_json("webcodes.json", codes)
     return jsonify({"ok": True, "codes": fresh})
 
+
+
+@app.route("/api/subscription/create_code", methods=["POST"])
+def api_subscription_create_code():
+    """Generate an invite code for the subscription bot on approved purchase.
+    Auth: SUBSCRIPTION_SECRET env var must match the 'secret' field."""
+    if not SUBSCRIPTION_SECRET:
+        return jsonify({"ok": False, "error": "not_configured"}), 500
+    data = request.get_json(force=True, silent=True) or {}
+    if data.get("secret") != SUBSCRIPTION_SECRET:
+        return jsonify({"ok": False}), 403
+    days = int(data.get("days", 30))
+    label = (data.get("label") or "subscription-bot")[:50]
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    c = make_code()
+    codes[c] = {"used_by": None, "label": label, "created": now,
+                "used_at": None, "daily": None, "expires_days": days}
+    _save_json("webcodes.json", codes)
+    return jsonify({"ok": True, "code": c, "link": invite_link(c)})
 
 @app.route("/api/admin/revoke", methods=["POST"])
 def api_admin_revoke():
