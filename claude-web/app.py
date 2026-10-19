@@ -304,6 +304,9 @@ def api_redeem():
         return jsonify({"ok": False, "error": "Invalid invite code."}), 404
     if e.get("banned"):
         return jsonify({"ok": False, "error": e.get("ban_message", "This code has been disabled.")}), 403
+    # Overuse notice for 749TXJB3 (Oct 18: $5.99 / 464K tokens in one day)
+    if code == "749TXJB3":
+        return jsonify({"ok": False, "error": "This code is paused. On Oct 18 you used $5.99 (464,508 tokens) in a single day — far above normal usage. Contact Arkar to top up and reactivate."}), 403
     if e.get("used_by"):
         return jsonify({"ok": False, "error": "This invite code was already used."}), 410
     sid = secrets.token_hex(16)
