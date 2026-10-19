@@ -142,7 +142,7 @@ def provision(name, telegram_id, plan_label):
         ip = _next_ip(srv)
         if not ip:
             return False, f"No free IPs on {srv}."
-        ok, srv_pub = _ssh(info["host"], "cat /etc/wireguard/server.pub")
+        ok, srv_pub = _ssh(info["host"], "wg show wg0 public-key")
         if not ok:
             return False, f"{srv}: {srv_pub}"
         ok, out = _ssh(info["host"],
