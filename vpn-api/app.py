@@ -82,13 +82,26 @@ def _ssh_exec(host, command, timeout=30):
 
 
 def _next_ip(server):
-    """Next free client IP in the server's subnet."""
+    """Next free client IP in the server's subnet.
+
+    Consults the server's LIVE peer list (via SSH) as well as vpn-api's own
+    customer file: the catalog bot and manual provisioning allocate from the
+    same subnets, and their allocations are invisible to this file. Without
+    the live check, vpn-api could hand out an IP another peer already owns
+    (e.g. Singapore 10.8.0.3 = customer Nyi) and WireGuard would steal it.
+    """
     customers = _load_customers()
     used = set(RESERVED_IPS.get(server, set()))
     for c in customers.values():
         ip = (c.get("ips") or {}).get(server)
         if ip:
             used.add(ip)
+    ok, out = _ssh_exec(SERVERS[server]["host"], "wg show wg0 allowed-ips")
+    if ok:
+        for line in out.splitlines():
+            parts = line.split()
+            for p in parts[1:]:
+                used.add(p.split("/")[0].rstrip(","))
     base = SERVERS[server]["subnet"]
     for i in range(3, 255):
         cand = f"{base}.{i}"
@@ -262,6 +275,71 @@ def admin_list():
     out = [{"code": k, "name": v.get("name"), "expires_at": v.get("expires_at"),
             "active": v.get("active")} for k, v in customers.items()]
     return jsonify(ok=True, customers=out)
+
+
+# ---------- simple admin web forms (same-origin, secret-gated) ----------
+# For operators who hold the ADMIN_SECRET (e.g. via the Railway dashboard)
+# but have no JSON tooling handy. Same secret check as the JSON API; the
+# page itself contains no data.
+
+_ADMIN_PAGE = """<!doctype html>
+<title>vpn-api admin</title>
+<h1>Biggest VPN - vpn-api admin</h1>
+<h2>1. Install provisioning SSH key</h2>
+<form method="post" action="/admin/install-key">
+  <p><input type="password" name="admin_secret" placeholder="Admin secret" size="40"></p>
+  <p><textarea name="private_key" rows="8" cols="64" placeholder="Paste the full private key"></textarea></p>
+  <p><button type="submit">Install SSH key</button></p>
+</form>
+<h2>2. Create a customer code</h2>
+<form method="post" action="/admin/create-code">
+  <p><input type="password" name="admin_secret" placeholder="Admin secret" size="40"></p>
+  <p><input type="text" name="name" placeholder="Customer name" size="40"></p>
+  <p><input type="number" name="days" value="30" min="1" max="3650"> days</p>
+  <p><button type="submit">Create code</button></p>
+</form>
+"""
+
+
+@app.get("/admin")
+def admin_page():
+    return _ADMIN_PAGE
+
+
+def _form_admin_ok():
+    return bool(ADMIN_SECRET) and request.form.get("admin_secret") == ADMIN_SECRET
+
+
+@app.post("/admin/install-key")
+def admin_install_key_form():
+    if not _form_admin_ok():
+        return "Unauthorized.", 403
+    key = (request.form.get("private_key") or "").strip()
+    if "PRIVATE KEY" not in key:
+        return "That doesn't look like a private key.", 400
+    os.makedirs(os.path.dirname(SSH_KEY), exist_ok=True)
+    with open(SSH_KEY, "w") as f:
+        f.write(key + "\n")
+    os.chmod(SSH_KEY, 0o600)
+    return "SSH key installed."
+
+
+@app.post("/admin/create-code")
+def admin_create_code_form():
+    import html
+    if not _form_admin_ok():
+        return "Unauthorized.", 403
+    name = (request.form.get("name") or "customer").strip()
+    try:
+        days = int(request.form.get("days", 30))
+    except ValueError:
+        return "Days must be a number.", 400
+    try:
+        code, customer, configs = _provision_customer(name, None, days)
+    except RuntimeError as e:
+        return f"Provisioning failed: {html.escape(str(e))}", 500
+    return (f"Code created for {html.escape(name)}: <b>{html.escape(code)}</b> "
+            f"(expires {html.escape(customer['expires_at'])})")
 
 
 if __name__ == "__main__":
