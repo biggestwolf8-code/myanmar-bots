@@ -218,10 +218,10 @@ def redeem_code_for(email, code):
 @app.route("/i/<code>")
 def invite(code):
     code = (code or "").strip().upper()
-    if not codes.get(code):
+    entry = codes.get(code)
+    if not entry:
         return render_template("auth.html", mode="register",
                                error="That invite code doesn't exist."), 404
-    session["pending_code"] = code
     email = current_user()
     if email:
         ok, msg = redeem_code_for(email, code)
@@ -230,8 +230,28 @@ def invite(code):
             return render_template("auth.html", mode="register",
                                    error=msg), 403
         return redirect("/")
-    return render_template("auth.html", mode="register", code=code,
-                           note="You're invited! Create your account to get started.")
+    used_by = entry.get("used_by")
+    if used_by:
+        owner = users.get(used_by) or {}
+        if owner.get("kind") == "invite":
+            # The link itself is the credential for instant accounts:
+            # opening it signs straight back into the same account.
+            new_session(used_by)
+            return redirect("/")
+        # Code belongs to an email account — that user signs in normally.
+        session["pending_code"] = code
+        return redirect("/login")
+    # Fresh code: create an instant account — no signup form, no password.
+    # The invite link is the only credential; the session lasts 90 days.
+    acct = "invite-" + code
+    users[acct] = {"pw": generate_password_hash(secrets.token_hex(16)),
+                   "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                   "disabled": False, "kind": "invite"}
+    user_data(acct)  # initialize per-user store
+    redeem_code_for(acct, code)
+    save_all()
+    new_session(acct)
+    return redirect("/settings?first=1")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -1115,7 +1135,13 @@ def doc_pdf(doc_id):
     doc = find_doc(d, doc_id)
     if not doc:
         abort(404)
-    data = render_doc_pdf(d, doc)
+    try:
+        data = render_doc_pdf(d, doc)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return ("Sorry — the PDF couldn't be created. "
+                "Please try again."), 500
     fname = "%s.pdf" % (doc.get("number") or "document")
     return send_file(io.BytesIO(data), mimetype="application/pdf",
                      as_attachment=True, download_name=fname)
@@ -1135,6 +1161,25 @@ def public_view(token):
                                    cur=d["business"].get("currency", "MMK"),
                                    statuses=STATUS_LABELS,
                                    type_titles=TYPE_TITLES)
+    abort(404)
+
+
+@app.route("/s/<token>/pdf")
+def public_pdf(token):
+    """Shared-link PDF download — no account needed."""
+    for email, d in invdata.items():
+        doc = find_doc_by_token(d, token)
+        if doc:
+            try:
+                data = render_doc_pdf(d, doc)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+                return ("Sorry — the PDF couldn't be created. "
+                        "Please try again."), 500
+            fname = "%s.pdf" % (doc.get("number") or "document")
+            return send_file(io.BytesIO(data), mimetype="application/pdf",
+                             as_attachment=True, download_name=fname)
     abort(404)
 
 

@@ -29,16 +29,38 @@ check("admin creates code", len(codes) == 1, f"codes={codes}")
 code = codes[0]
 c.get("/admin/logout")
 
-# register with code
-r = c.get("/i/" + code)
-check("invite link prefills", r.status_code == 200 and code.encode() in r.data)
-r = c.post("/register", data={"email": "user@example.com", "password": "secret12", "code": code}, follow_redirects=False)
+# invite link = instant access, no signup form
+r = c.get("/i/" + code, follow_redirects=False)
+check("invite link signs in instantly", r.status_code == 302
+      and r.headers["Location"].startswith("/settings"))
+check("code marked used by invite account",
+      A.codes[code].get("used_by") == "invite-" + code)
+check("invite account created", ("invite-" + code) in A.users
+      and A.users["invite-" + code].get("kind") == "invite")
+
+# opening the same link in a fresh browser signs back into the same account
+c3 = A.app.test_client()
+r = c3.get("/i/" + code, follow_redirects=False)
+check("invite link reopens same account", r.status_code == 302
+      and r.headers["Location"] == "/")
+check("still one invite account",
+      len([k for k in A.users if k.startswith("invite-")]) == 1)
+
+# email registration with a fresh code still works
+check("admin re-login", login_admin())
+r = c.post("/admin/codes", data={"n": 1, "label": "test2"}, follow_redirects=True)
+codes2 = [k for k in A.codes.keys() if k != code]
+check("admin creates second code", len(codes2) == 1)
+code2 = codes2[0]
+c.get("/admin/logout")
+c.get("/logout")
+r = c.post("/register", data={"email": "user@example.com", "password": "secret12", "code": code2}, follow_redirects=False)
 check("register redirects", r.status_code == 302)
-check("code marked used", A.codes[code].get("used_by") == "user@example.com")
+check("code2 marked used", A.codes[code2].get("used_by") == "user@example.com")
 
 # code reuse rejected
 c2 = A.app.test_client()
-r = c2.post("/register", data={"email": "x@example.com", "password": "secret12", "code": code})
+r = c2.post("/register", data={"email": "x@example.com", "password": "secret12", "code": code2})
 check("code single-use", r.status_code == 400)
 
 # register without code rejected
@@ -101,6 +123,16 @@ check("pdf 200", r.status_code == 200 and r.mimetype == "application/pdf", f"{r.
 pdf_bytes = r.data
 check("pdf non-trivial", len(pdf_bytes) > 5000, str(len(pdf_bytes)))
 open("/tmp/test-invoice.pdf", "wb").write(pdf_bytes)
+
+# shared link: public page shows a Download PDF button, PDF works logged-out
+anon = A.app.test_client()
+r = anon.get("/s/" + doc["share_token"])
+check("public view 200", r.status_code == 200)
+check("public view has pdf button", b"/pdf" in r.data and b"Download PDF" in r.data)
+r = anon.get("/s/" + doc["share_token"] + "/pdf")
+check("public pdf 200 no login", r.status_code == 200 and r.mimetype == "application/pdf",
+      f"{r.status_code} {r.mimetype}")
+check("public pdf same bytes", r.data == pdf_bytes)
 
 from pypdf import PdfReader
 reader = PdfReader(io.BytesIO(pdf_bytes))
