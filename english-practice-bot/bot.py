@@ -373,6 +373,67 @@ def assign_homework(class_key, text):
     return hw, sent, failed
 
 
+LEVEL2_PROMO_EN = (
+    "🎉 Level 2 Speaking — Early Bird! 🎉\n\n"
+    "Ready to speak English the way natives do? Level 2 starts November 2 (Monday)! 🚀\n\n"
+    "📅 Mon, Tue & Wed — 8:30–10:00 PM (Myanmar time)\n"
+    "⏳ 2 months · Zoom live + video recordings\n"
+    "💰 150,000 MMK / ฿1,200 total\n"
+    "🎁 First 20 students: only 100,000 MMK / ฿800!\n\n"
+    "👉 Message @SayarArkarBot to reserve your seat before the early-bird spots are gone!"
+)
+
+LEVEL2_PROMO_MM = (
+    "🎉 Level 2 Speaking — Early Bird! 🎉\n\n"
+    "Native speaker တွေလိုပြောတတ်ချင်ပြီလား? Level 2 ကို နိုဝင်ဘာ ၂ (တနင်္လာ) နေ့မှာ စပါမယ်! 🚀\n\n"
+    "📅 တနင်္လာ၊ အင်္ဂါ & ဗုဒ္ဓဟူး — ည ၈:၃၀–၁၀:၀၀ (မြန်မာအချိန်)\n"
+    "⏳ ၂ လ · Zoom live + ဗီဒီယို recordings\n"
+    "💰 စုစုပေါင်း ၁၅၀,၀၀၀ ကျပ် / ฿၁,၂၀၀\n"
+    "🎁 ပထမဆုံး အယောက် ၂၀: ၁၀၀,၀၀၀ ကျပ် / ฿၈၀၀ သာကျသင့်ပါမယ်!\n\n"
+    "👉 Early-bird နေရာတွေ ကုန်မသွားခင် အခုပဲ message ပို့ပြီး နေရာယူထားလိုက်ပါ!"
+)
+
+
+def maybe_send_level2_promo():
+    """One-time Level 2 early-bird promo broadcast (approved by Arkar
+    2026-10-20). Triggered by env SEND_LEVEL2_PROMO=1; the
+    level2_promo_sent flag in the homework store makes it fire exactly
+    once. Sends EN + MM posts to every Level 1 student and to the
+    'Native level 1' group, then reports the counts to the admin."""
+    if os.environ.get("SEND_LEVEL2_PROMO", "").strip() != "1":
+        return
+    data = load_hw()
+    if data.get("level2_promo_sent"):
+        return
+    sent, failed = 0, []
+    for uid, label in students_in_class("level1"):
+        if send_text(uid, LEVEL2_PROMO_EN) and send_text(uid, LEVEL2_PROMO_MM):
+            sent += 1
+        else:
+            failed.append(label or str(uid))
+    groups_posted = []
+    for gid, info in data.get("known_groups", {}).items():
+        title = (info or {}).get("title", "")
+        t = title.lower()
+        if "native" in t and "level 1" in t:
+            if send_text(gid, LEVEL2_PROMO_EN) and send_text(gid, LEVEL2_PROMO_MM):
+                groups_posted.append(title)
+    data["level2_promo_sent"] = {
+        "at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "students_sent": sent, "students_failed": failed,
+        "groups": groups_posted,
+    }
+    save_hw(data)
+    print(f"LEVEL2_PROMO sent: students={sent} failed={len(failed)} "
+          f"groups={groups_posted}", flush=True)
+    if ADMIN_CHAT_ID:
+        msg = (f"✅ Level 2 promo sent: {sent} Level 1 students"
+               + (f", {len(failed)} failed" if failed else ""))
+        msg += (f"; posted in group: {', '.join(groups_posted)}"
+                if groups_posted else "; ⚠️ 'Native level 1' group not found")
+        send_text(ADMIN_CHAT_ID, msg)
+
+
 HOMEWORK_STEER = (
     "\n\nThe student's current homework for their {cls} class is: \"{task}\". "
     "Gently steer the conversation so they complete this homework through speaking "
@@ -1733,6 +1794,10 @@ def main():
     offset = 0
     last_reminder_check = 0
     print("Practice tutor bot started. Polling...")
+    try:
+        maybe_send_level2_promo()
+    except Exception as e:
+        print("level2 promo failed:", e)
     while True:
         try:
             res = tg("getUpdates", {"offset": offset, "timeout": 50}, timeout=70)
