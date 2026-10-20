@@ -19,6 +19,7 @@ Admin panel: https://<host>/admin
 """
 import base64
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -815,6 +816,24 @@ def api_admin_login():
         session.permanent = True
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "Wrong password."}), 403
+
+
+@app.route("/api/admin/rotate_secret", methods=["POST"])
+def api_admin_rotate_secret():
+    """Rotate the Flask session signing key (2026-10-20: the old value was
+    accidentally committed to the public repo). Admin-guarded. The new key
+    is generated server-side, persisted to the volume, and takes effect
+    immediately; all existing sessions are invalidated once (users simply
+    log in again). Returns a fingerprint so rotation can be verified
+    without the value ever leaving the server."""
+    if not is_admin():
+        return jsonify({"ok": False}), 403
+    new = secrets.token_hex(32)
+    with open(os.path.join(DATA_DIR, "secret.key"), "w", encoding="utf-8") as f:
+        f.write(new)
+    app.secret_key = new
+    fp = hashlib.sha256(new.encode()).hexdigest()[:12]
+    return jsonify({"ok": True, "fp": fp})
 
 
 @app.route("/api/admin/data")

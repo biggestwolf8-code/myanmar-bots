@@ -9,8 +9,10 @@ POST /report                     -> {secret, task, result}  (agent posts complet
 GET  /reports                    -> {secret}  (recent completion reports for Muse)
 GET  /health                     -> ok
 """
+import hashlib
 import json
 import os
+import secrets
 import threading
 from datetime import datetime, timezone
 
@@ -81,6 +83,25 @@ def laptop_result():
     data = request.get_json(force=True)
     remote.worker_result(data.get("id"), data.get("ok"), data.get("output", ""))
     return jsonify({"ok": True})
+
+
+@app.route("/admin/rotate_worker_secret", methods=["POST"])
+def rotate_worker_secret():
+    """Rotate the laptop-companion worker secret (2026-10-20: the old value
+    was accidentally committed to the public repo). Guarded by the inbox
+    secret, which was never exposed. The new secret is generated
+    server-side, persisted to the volume, and takes effect immediately.
+    Returns a fingerprint so rotation can be verified without the value
+    ever leaving the server."""
+    data = request.get_json(silent=True) or {}
+    if not _inbox_auth(data):
+        return jsonify({"ok": False}), 403
+    new = secrets.token_hex(16)
+    with open(os.path.join(config.DATA_DIR, "worker_secret.txt"), "w") as fh:
+        fh.write(new)
+    config.WORKER_SECRET = new
+    fp = hashlib.sha256(new.encode()).hexdigest()[:12]
+    return jsonify({"ok": True, "fp": fp})
 
 
 @app.route("/inbox", methods=["POST"])

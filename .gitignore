@@ -4,3 +4,5 @@ forward_map.json
 relay_map.json
 .env
 vpn_ssh_key
+worker_secret.txt
+secret.key
