@@ -434,6 +434,39 @@ def maybe_send_level2_promo():
         send_text(ADMIN_CHAT_ID, msg)
 
 
+def maybe_send_level2_promo_group():
+    """Group-only re-run for the Level 2 promo (env SEND_LEVEL2_PROMO_GROUP=1).
+    The original broadcast reached the students but found no matching group,
+    so this posts EN + MM to the 'Native level 1' group once the bot has
+    seen it. Fires once (level2_promo_group_sent flag)."""
+    if os.environ.get("SEND_LEVEL2_PROMO_GROUP", "").strip() != "1":
+        return
+    data = load_hw()
+    if data.get("level2_promo_group_sent"):
+        return
+    groups_posted = []
+    for gid, info in data.get("known_groups", {}).items():
+        title = (info or {}).get("title", "")
+        t = title.lower()
+        if "native" in t and "level 1" in t:
+            if send_text(gid, LEVEL2_PROMO_EN) and send_text(gid, LEVEL2_PROMO_MM):
+                groups_posted.append(title)
+    if not groups_posted:
+        print("LEVEL2_PROMO_GROUP: no matching group yet "
+              f"(known: {[ (i or {}).get('title') for i in data.get('known_groups', {}).values() ]})",
+              flush=True)
+        return
+    data["level2_promo_group_sent"] = {
+        "at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "groups": groups_posted,
+    }
+    save_hw(data)
+    print(f"LEVEL2_PROMO_GROUP sent: groups={groups_posted}", flush=True)
+    if ADMIN_CHAT_ID:
+        send_text(ADMIN_CHAT_ID,
+                  f"✅ Level 2 promo posted in group: {', '.join(groups_posted)}")
+
+
 HOMEWORK_STEER = (
     "\n\nThe student's current homework for their {cls} class is: \"{task}\". "
     "Gently steer the conversation so they complete this homework through speaking "
@@ -1798,6 +1831,10 @@ def main():
         maybe_send_level2_promo()
     except Exception as e:
         print("level2 promo failed:", e)
+    try:
+        maybe_send_level2_promo_group()
+    except Exception as e:
+        print("level2 promo group failed:", e)
     while True:
         try:
             res = tg("getUpdates", {"offset": offset, "timeout": 50}, timeout=70)
