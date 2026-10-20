@@ -119,7 +119,7 @@ def _provision_customer(name, telegram_id, days):
         if not ip:
             raise RuntimeError(f"No free IPs on {srv}")
         # get server public key
-        ok, out = _ssh_exec(info["host"], "cat /etc/wireguard/server.pub")
+        ok, out = _ssh_exec(info["host"], "wg show wg0 public-key")
         if not ok:
             raise RuntimeError(f"{srv}: cannot read server key: {out}")
         server_pub = out.strip()
@@ -182,6 +182,22 @@ def login():
     return jsonify(ok=True, name=c.get("name"), expires_at=c["expires_at"],
                    days_left=days_left, configs=c.get("configs", {}),
                    servers={k: v["country"] for k, v in SERVERS.items()})
+
+
+@app.post("/api/admin/ssh-key")
+def admin_ssh_key():
+    """Install the SSH private key used for provisioning (one-time setup)."""
+    data = request.get_json(force=True, silent=True) or {}
+    if not _require_admin(data):
+        return jsonify(ok=False, error="Unauthorized."), 403
+    key = (data.get("private_key") or "").strip()
+    if "PRIVATE KEY" not in key:
+        return jsonify(ok=False, error="That doesn't look like a private key."), 400
+    os.makedirs(os.path.dirname(SSH_KEY), exist_ok=True)
+    with open(SSH_KEY, "w") as f:
+        f.write(key + "\n")
+    os.chmod(SSH_KEY, 0o600)
+    return jsonify(ok=True, installed=True)
 
 
 @app.post("/api/admin/create")
