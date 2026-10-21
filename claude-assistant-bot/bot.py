@@ -132,7 +132,7 @@ def tg(method, params=None, timeout=30):
         return json.load(r)
 
 
-def send_text(chat_id, text, reply_to=None):
+def send_text(chat_id, text, reply_to=None, keyboard=None):
     # Telegram caps a message at 4096 chars — split long replies into
     # sequential messages instead of letting them get cut off.
     chunks = []
@@ -149,12 +149,43 @@ def send_text(chat_id, text, reply_to=None):
         params = {"chat_id": chat_id, "text": c}
         if reply_to and i == 0:
             params["reply_to_message_id"] = reply_to
+        # Persistent visible tab: keyboard on the last chunk of every message
+        # unless the caller passes an explicit markup (False suppresses it).
+        kb = commands_keyboard() if keyboard is None else keyboard
+        if kb and i == len(chunks) - 1:
+            params["reply_markup"] = kb
         try:
             result = tg("sendMessage", params)
         except Exception as e:
             print("sendMessage failed:", e)
             return None
     return result
+
+
+COMMANDS_BTN = "📋 Commands"
+
+
+def commands_keyboard():
+    """Persistent visible tab — a single Commands button, always on screen."""
+    return json.dumps({
+        "keyboard": [[{"text": COMMANDS_BTN}]],
+        "resize_keyboard": True,
+    })
+
+
+COMMANDS_TEXT = (
+    "📋 Commands\n\n"
+    "/new — start a fresh conversation\n"
+    "/usage — see your usage today\n"
+    "/start — restart the bot"
+)
+
+COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
+    "\n\n👑 Admin commands\n"
+    "/newcodes [N] — make N single-use invite links\n"
+    "/users — list activated users\n"
+    "/revoke CODE — revoke an invite or user"
+)
 
 
 def send_typing(chat_id):
@@ -554,6 +585,11 @@ def handle_update(u):
         return
 
     if not text:
+        return
+    if text == COMMANDS_BTN:
+        send_text(chat_id,
+                  COMMANDS_TEXT_ADMIN if is_admin(user_id) else COMMANDS_TEXT,
+                  thread)
         return
     if text.startswith("/new"):
         histories.pop(user_id, None)

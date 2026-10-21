@@ -49,9 +49,19 @@ KEYBOARD = {
          {"text": "\U0001f4b0 Fees / \u101e\u1004\u103a\u1010\u1014\u103a\u1038\u1000\u103c\u1031\u1038"}],
         [{"text": "\U0001f4dd Enroll / \u1021\u1015\u103a\u1014\u103e\u1036\u101b\u1014\u103a"},
          {"text": "\U0001f64b Talk to teacher / \u1006\u101b\u102c\u1014\u1036\u1037\u1015\u103c\u1031\u102c\u101b\u1014\u103a"}],
+        [{"text": "\U0001f4cb Commands"}],
     ],
     "resize_keyboard": True,
 }
+
+COMMANDS_BTN = "\U0001f4cb Commands"
+COMMANDS_TEXT = (
+    "\U0001f4cb Commands — tap a button below or type your question.\n\n"
+    "/start — show the main menu again\n\n"
+    "\U0001f4cb လုပ်ဆောင်ချက်များ — အောက်က ခလုတ်များကို နှိပ်၍ဖြစ်စေ၊ "
+    "မေးခွန်းကို ရိုက်၍ဖြစ်စေ မေးနိုင်ပါသည်။\n\n"
+    "/start — main menu ကို ပြန်ပြရန်"
+)
 
 FALLBACK_MSG = (
     "Thanks! I've passed your message to Sayar Arkar - he'll reply here soon. \U0001f64f\n"
@@ -93,8 +103,9 @@ def send_threaded(chat_id, text, msg, reply_markup=None):
     params = {"chat_id": chat_id, "text": text}
     if msg.get("chat", {}).get("type") in ("group", "supergroup"):
         params["reply_to_message_id"] = msg["message_id"]
-    if reply_markup is not None:
-        params["reply_markup"] = reply_markup
+    # Persistent visible tab: keep the reply keyboard on every message unless
+    # the caller passes an explicit markup.
+    params["reply_markup"] = KEYBOARD if reply_markup is None else reply_markup
     return api("sendMessage", **params)
 
 
@@ -170,6 +181,10 @@ def handle_update(upd, fwd_map):
 
     if text.startswith("/start"):
         send_threaded(chat_id, WELCOME, msg, reply_markup=KEYBOARD)
+        return
+
+    if text == COMMANDS_BTN:
+        send_threaded(chat_id, COMMANDS_TEXT, msg)
         return
 
     entry = find_answer(text)

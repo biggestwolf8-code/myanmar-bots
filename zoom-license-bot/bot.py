@@ -305,13 +305,42 @@ def tg(method, **params):
         return {"ok": False}
 
 
-def send(chat_id, text, parse_mode=None, silent=False):
-    # split long messages
-    for i in range(0, len(text), 3900):
-        kw = {"chat_id": chat_id, "text": text[i:i + 3900],
+COMMANDS_BTN = "📋 Commands"
+COMMANDS_KEYBOARD = {
+    "keyboard": [[{"text": COMMANDS_BTN}]],
+    "resize_keyboard": True,
+}
+COMMANDS_TEXT = (
+    "📋 Commands\n\n"
+    "/check — last known license statuses\n"
+    "/status — status counts summary\n"
+    "/accounts — authorization coverage\n"
+    "/list licensed|basic|problems — list accounts by status\n"
+    "/expiring — licenses expiring within 2 days\n"
+    "/alerts on|off — change alerts on/off\n"
+    "/start — about this bot"
+)
+COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
+    "\n\n👑 Admin commands\n"
+    "/renewed [YYYY-MM-DD] id1 id2 … — stamp just-renewed accounts\n"
+    "/backdate YYYY-MM-DD — fallback license start date\n"
+    "/billing gp|manual id1 id2 … — Google Play auto-renew marking\n"
+    "/reauth <email> — authorize link (OAuth mode)\n"
+    "/alertshere — send license alerts to this chat too\n"
+    "/alertstop — stop alerts in this chat"
+)
+
+
+def send(chat_id, text, parse_mode=None, silent=False, keyboard=True):
+    # split long messages; persistent Commands tab goes on the last chunk
+    chunks = [text[i:i + 3900] for i in range(0, len(text), 3900)] or [""]
+    for i, chunk in enumerate(chunks):
+        kw = {"chat_id": chat_id, "text": chunk,
               "disable_notification": silent}
         if parse_mode:
             kw["parse_mode"] = parse_mode
+        if keyboard and i == len(chunks) - 1:
+            kw["reply_markup"] = COMMANDS_KEYBOARD
         tg("sendMessage", **kw)
 
 
@@ -439,6 +468,9 @@ def fmt_warnings(warns):
 def handle_message(msg):
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
+    if text == COMMANDS_BTN:
+        send(chat_id, COMMANDS_TEXT_ADMIN if is_admin(msg) else COMMANDS_TEXT)
+        return
     if not text.startswith("/"):
         return
     parts = text.split()

@@ -35,19 +35,43 @@ def tg(method, **params):
         return {}
 
 
-def send(chat_id, text, parse_html=True):
+COMMANDS_BTN = "📋 Commands"
+COMMANDS_KEYBOARD = {
+    "keyboard": [[{"text": COMMANDS_BTN}]],
+    "resize_keyboard": True,
+}
+COMMANDS_TEXT = (
+    "📋 <b>Commands</b>\n\n"
+    "/tasks — list scheduled tasks\n"
+    "/inbox — recent messages from Muse\n"
+    "/memory — what I remember\n"
+    "/forget — clear conversation history\n"
+    "/remind &lt;when&gt; to &lt;what&gt; — set a reminder\n"
+    "/cancel &lt;id&gt; — cancel a scheduled task\n"
+    "/usage — API usage stats\n"
+    "/start — about this agent"
+)
+
+
+def send(chat_id, text, parse_html=True, keyboard=True):
     if not text:
         return
-    # split long messages
+    # split long messages; persistent Commands tab goes on the last chunk
+    chunks = []
     while len(text) > 4000:
         cut = text.rfind("\n", 0, 4000)
         if cut < 1000:
             cut = 4000
-        tg("sendMessage", chat_id=chat_id, text=text[:cut],
-           parse_mode="HTML" if parse_html else None)
+        chunks.append(text[:cut])
         text = text[cut:]
-    tg("sendMessage", chat_id=chat_id, text=text,
-       parse_mode="HTML" if parse_html else None)
+    chunks.append(text)
+    for i, chunk in enumerate(chunks):
+        kw = {"chat_id": chat_id, "text": chunk}
+        if parse_html:
+            kw["parse_mode"] = "HTML"
+        if keyboard and i == len(chunks) - 1:
+            kw["reply_markup"] = COMMANDS_KEYBOARD
+        tg("sendMessage", **kw)
 
 
 def esc(s):
@@ -200,6 +224,9 @@ def main():
             if chat_id != str(config.ADMIN_CHAT_ID):
                 tg("sendMessage", chat_id=chat_id,
                    text="This is a private agent. Please ask Arkar for access.")
+                continue
+            if text == COMMANDS_BTN:
+                send(chat_id, COMMANDS_TEXT)
                 continue
             if text.startswith("/"):
                 handle_command(chat_id, text)

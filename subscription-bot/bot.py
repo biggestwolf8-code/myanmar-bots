@@ -66,6 +66,26 @@ RECEIPT_MSG = (
     "📸 ပြေစာရရှိပါပြီ! Admin စစ်ဆေးပြီး ဒီမှာပဲ အတည်ပြုပေးပါမယ်။ 🙏"
 )
 
+# ---------- persistent visible Commands tab ----------
+COMMANDS_BTN = "📋 Commands"
+COMMANDS_KEYBOARD = {
+    "keyboard": [[{"text": COMMANDS_BTN}]],
+    "resize_keyboard": True,
+}
+COMMANDS_TEXT = (
+    "📋 Commands — tap a button above or type your question.\n\n"
+    "/start — show the main menu again\n\n"
+    "📋 လုပ်ဆောင်ချက်များ — အပေါ်က ခလုတ်များကို နှိပ်၍ဖြစ်စေ၊ "
+    "မေးခွန်းကို ရိုက်၍ဖြစ်စေ မေးနိုင်ပါသည်။\n\n"
+    "/start — main menu ကို ပြန်ပြရန်"
+)
+COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
+    "\n\n👑 Admin commands\n"
+    "/vpnlist — list active VPN customers\n"
+    "/vpnrenew CODE days — extend a VPN customer\n"
+    "/vpnrevoke CODE — revoke a VPN customer"
+)
+
 # ---------- VPN purchase flow ----------
 # Pending VPN orders: customer chat_id -> plan label. Set when they tap Buy,
 # cleared when the receipt arrives (forwarded to admin for approval).
@@ -321,8 +341,9 @@ def send_threaded(chat_id, text, msg, reply_markup=None):
     params = {"chat_id": chat_id, "text": text}
     if msg.get("chat", {}).get("type") in ("group", "supergroup"):
         params["reply_to_message_id"] = msg["message_id"]
-    if reply_markup is not None:
-        params["reply_markup"] = reply_markup
+    # Persistent visible tab: keep the Commands keyboard on every message
+    # unless the caller passes an explicit markup (inline keyboards etc.).
+    params["reply_markup"] = COMMANDS_KEYBOARD if reply_markup is None else reply_markup
     return api("sendMessage", **params)
 
 
@@ -532,6 +553,11 @@ def handle_message(msg, fwd_map):
 
     if text.startswith("/start"):
         send_threaded(chat_id, WELCOME, msg, reply_markup=kb_cats())
+        return
+
+    if text == COMMANDS_BTN:
+        send_threaded(chat_id,
+                      COMMANDS_TEXT_ADMIN if is_admin else COMMANDS_TEXT, msg)
         return
 
     faq = find_faq(text)

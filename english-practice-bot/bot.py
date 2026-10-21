@@ -143,10 +143,16 @@ def tg(method, params=None, timeout=30):
         return json.load(r)
 
 
-def send_text(chat_id, text, reply_to=None):
+def send_text(chat_id, text, reply_to=None, keyboard=None):
     params = {"chat_id": chat_id, "text": text}
     if reply_to:
         params["reply_to_message_id"] = reply_to
+    # Persistent visible tab: every message carries the Commands keyboard
+    # unless the caller passes an explicit markup (False suppresses it).
+    if keyboard is None:
+        keyboard = commands_keyboard()
+    if keyboard:
+        params["reply_markup"] = keyboard
     try:
         return tg("sendMessage", params)
     except Exception as e:
@@ -698,6 +704,39 @@ def class_keyboard():
         "one_time_keyboard": True,
         "resize_keyboard": True,
     })
+
+
+COMMANDS_BTN = "📋 Commands"
+
+
+def commands_keyboard():
+    """Persistent visible tab — a single Commands button, always on screen."""
+    return json.dumps({
+        "keyboard": [[{"text": COMMANDS_BTN}]],
+        "resize_keyboard": True,
+    })
+
+
+COMMANDS_TEXT = (
+    "📋 Commands\n\n"
+    "/new — start a fresh conversation\n"
+    "/homework — see your current homework\n"
+    "/pause — pause homework reminders\n"
+    "/resume — resume homework\n"
+    "/report — your learning report card\n"
+    "/askclasses — ask about available classes\n"
+    "/start — restart the bot"
+)
+
+COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
+    "\n\n👑 Admin commands\n"
+    "/newcodes [N] [class] — make N single-use invite links\n"
+    "/trialcodes [N] [days] — make N trial links\n"
+    "/users — list activated students\n"
+    "/revoke CODE — revoke an invite or user\n"
+    "/setclass CODE class — set a student's class\n"
+    "/topusers — token usage by student"
+)
 
 
 def send_with_keyboard(chat_id, text, keyboard_json, reply_to=None):
@@ -1757,6 +1796,11 @@ def handle_update(u):
         return
 
     if not text:
+        return
+    if text == COMMANDS_BTN:
+        send_text(chat_id,
+                  COMMANDS_TEXT_ADMIN if is_admin(user_id) else COMMANDS_TEXT,
+                  thread)
         return
     if text.startswith("/new"):
         histories.pop(user_id, None)
