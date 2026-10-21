@@ -180,9 +180,14 @@ def health():
 
 @app.post("/api/login")
 def login():
-    """App login: {code} -> configs + subscription status."""
+    """App login: {code, device_id} -> configs + subscription status.
+
+    One code = one device. The first device_id to log in with a code binds
+    it; a different device_id on the same code is rejected (403).
+    """
     data = request.get_json(force=True, silent=True) or {}
     code = (data.get("code") or "").strip()
+    device_id = (data.get("device_id") or "").strip()
     customers = _load_customers()
     c = customers.get(code)
     if not c or not c.get("active"):
@@ -191,6 +196,15 @@ def login():
     now = datetime.now(timezone.utc)
     if now > exp:
         return jsonify(ok=False, error="Subscription expired."), 403
+
+    bound = c.get("device_id")
+    if bound:
+        if device_id and device_id != bound:
+            return jsonify(ok=False, error="This code is already used on another device."), 403
+    elif device_id:
+        c["device_id"] = device_id
+        _save_customers(customers)
+
     days_left = (exp - now).days
     return jsonify(ok=True, name=c.get("name"), expires_at=c["expires_at"],
                    days_left=days_left, configs=c.get("configs", {}),
@@ -267,13 +281,29 @@ def admin_revoke():
     return jsonify(ok=True, errors=errors)
 
 
+@app.post("/api/admin/unbind")
+def admin_unbind():
+    """Clear the device binding for a code (e.g. customer got a new phone)."""
+    data = request.get_json(force=True, silent=True) or {}
+    if not _require_admin(data):
+        return jsonify(ok=False, error="Unauthorized."), 403
+    customers = _load_customers()
+    c = customers.get(data.get("code", ""))
+    if not c:
+        return jsonify(ok=False, error="Unknown code."), 404
+    c.pop("device_id", None)
+    _save_customers(customers)
+    return jsonify(ok=True, unbound=True)
+
+
 @app.get("/api/admin/list")
 def admin_list():
     if request.args.get("admin_secret") != ADMIN_SECRET or not ADMIN_SECRET:
         return jsonify(ok=False, error="Unauthorized."), 403
     customers = _load_customers()
     out = [{"code": k, "name": v.get("name"), "expires_at": v.get("expires_at"),
-            "active": v.get("active")} for k, v in customers.items()]
+            "active": v.get("active"), "device_id": v.get("device_id")}
+           for k, v in customers.items()]
     return jsonify(ok=True, customers=out)
 
 
