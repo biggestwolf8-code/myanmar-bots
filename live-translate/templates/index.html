@@ -24,6 +24,8 @@
   .tran { font-size: 23px; line-height: 1.45; margin-top: 3px; }
   #dl { width: 100%; padding: 12px; margin-top: 20px; font-size: 15px; border-radius: 10px;
     border: 1px solid #33436b; background: #1a2748; color: #fff; }
+  #sum { width: 100%; padding: 12px; margin-top: 20px; font-size: 15px; border-radius: 10px;
+    border: 0; background: #2e7d32; color: #fff; }
 </style>
 </head>
 <body>
@@ -54,6 +56,11 @@
   <div id="status">Ready</div>
 
   <div id="feed"></div>
+  <button id="sum">📝 Summarize lecture</button>
+  <div id="summary" style="display:none; margin-top:14px; padding:14px; border:1px solid #33436b; border-radius:10px; background:#101a30;">
+    <h2 style="margin:0 0 8px; font-size:17px;">📝 Lecture summary</h2>
+    <div id="summaryBody" style="white-space:pre-wrap; font-size:16px; line-height:1.55;"></div>
+  </div>
   <button id="dl">⬇ Download transcript</button>
 </main>
 <script>
@@ -155,8 +162,30 @@ $("toggle").addEventListener("click", async () => {
   recordCycle(src, tgt);
 });
 
+let lectureSummary = "";
+
+$("sum").addEventListener("click", async () => {
+  const tgt = $("pair").value.split("-")[1];
+  const full = transcript.map(p => p.orig + "\n→ " + p.tran).join("\n\n");
+  if (full.length < 50) { setStatus("⚠ Not enough lecture to summarize yet"); return; }
+  setStatus("📝 Summarizing the lecture…");
+  try {
+    const r = await fetch("/api/summarize", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: codeEl.value.trim(), transcript: full, tgt })
+    });
+    const j = await r.json();
+    if (!j.ok) { setStatus("⚠ " + (j.error || "Error")); return; }
+    lectureSummary = j.summary;
+    $("summaryBody").textContent = j.summary;
+    $("summary").style.display = "block";
+    setStatus("✅ Summary ready");
+  } catch (e) { setStatus("⚠ Connection problem"); }
+});
+
 $("dl").addEventListener("click", () => {
-  const lines = transcript.map(p => p.orig + "\n→ " + p.tran).join("\n\n");
+  let lines = transcript.map(p => p.orig + "\n→ " + p.tran).join("\n\n");
+  if (lectureSummary) lines += "\n\n======== LECTURE SUMMARY ========\n\n" + lectureSummary;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([lines], { type: "text/plain" }));
   a.download = "class-transcript.txt";

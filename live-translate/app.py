@@ -91,6 +91,45 @@ def _translate(text, src, tgt):
     return (r.json()["choices"][0]["message"]["content"] or "").strip()
 
 
+@app.post("/api/summarize")
+def summarize():
+    payload = request.get_json(silent=True) or {}
+    if ACCESS_CODE and payload.get("code") != ACCESS_CODE:
+        return jsonify(ok=False, error="Invalid access code."), 403
+    if not OPENAI_API_KEY:
+        return jsonify(ok=False,
+                       error="OPENAI_API_KEY not configured on server."), 503
+    transcript = (payload.get("transcript") or "").strip()
+    if len(transcript) < 50:
+        return jsonify(ok=False, error="Transcript too short to summarize."), 400
+    # Keep the tail if the lecture was very long (~120k chars max)
+    transcript = transcript[-120000:]
+    tgt = (payload.get("tgt") or "th").strip()
+    if tgt not in LANG_NAME:
+        return jsonify(ok=False, error="Bad language."), 400
+    system = (
+        "You are a study assistant. The input is a transcript of a university "
+        f"lecture. Write a study summary in {LANG_NAME[tgt]} that a student "
+        "can revise from: (1) Main topics covered, (2) Key points under each "
+        "topic, (3) Important terms and their definitions, (4) Any examples "
+        "the professor gave. Be concise but complete. Output only the summary."
+    )
+    try:
+        r = requests.post(
+            f"{OPENAI_BASE}/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                     "Content-Type": "application/json"},
+            json={"model": "gpt-4o-mini", "temperature": 0.3,
+                  "messages": [{"role": "system", "content": system},
+                               {"role": "user", "content": transcript}]},
+            timeout=120)
+        r.raise_for_status()
+        summary = (r.json()["choices"][0]["message"]["content"] or "").strip()
+    except requests.RequestException as e:
+        return jsonify(ok=False, error=f"Upstream error: {e}"), 502
+    return jsonify(ok=True, summary=summary)
+
+
 @app.post("/api/chunk")
 def chunk():
     if not _code_ok():
