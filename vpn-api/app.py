@@ -182,8 +182,10 @@ def health():
 def login():
     """App login: {code, device_id} -> configs + subscription status.
 
-    One code = one device. The first device_id to log in with a code binds
-    it; a different device_id on the same code is rejected (403).
+    Device control: a code allows up to max_devices (default 1) unique
+    devices. The first devices to log in bind automatically; further
+    unique devices are rejected (403). Admin can raise max_devices or
+    unbind via the admin endpoints.
     """
     data = request.get_json(force=True, silent=True) or {}
     code = (data.get("code") or "").strip()
@@ -197,12 +199,16 @@ def login():
     if now > exp:
         return jsonify(ok=False, error="Subscription expired."), 403
 
-    bound = c.get("device_id")
-    if bound:
-        if device_id and device_id != bound:
-            return jsonify(ok=False, error="This code is already used on another device."), 403
-    elif device_id:
-        c["device_id"] = device_id
+    # Migrate old single-device format
+    if "device_ids" not in c:
+        c["device_ids"] = [c.pop("device_id")] if c.get("device_id") else []
+    max_devices = int(c.get("max_devices", 1))
+    device_ids = c.get("device_ids", [])
+    if device_id and device_id not in device_ids:
+        if len(device_ids) >= max_devices:
+            return jsonify(ok=False, error="This code has reached its device limit."), 403
+        device_ids.append(device_id)
+        c["device_ids"] = device_ids
         _save_customers(customers)
 
     days_left = (exp - now).days
@@ -236,11 +242,22 @@ def admin_create():
     telegram_id = data.get("telegram_id")
     days = int(data.get("days", 30))
     try:
+        max_devices = int(data.get("max_devices", 1))
+    except (TypeError, ValueError):
+        max_devices = 1
+    if max_devices < 1:
+        max_devices = 1
+    try:
         code, customer, configs = _provision_customer(name, telegram_id, days)
     except RuntimeError as e:
         return jsonify(ok=False, error=str(e)), 500
+    # set device limit
+    customers = _load_customers()
+    customers[code]["max_devices"] = max_devices
+    customers[code]["device_ids"] = []
+    _save_customers(customers)
     return jsonify(ok=True, code=code, expires_at=customer["expires_at"],
-                   configs=configs)
+                   max_devices=max_devices, configs=configs)
 
 
 @app.post("/api/admin/renew")
@@ -283,7 +300,7 @@ def admin_revoke():
 
 @app.post("/api/admin/unbind")
 def admin_unbind():
-    """Clear the device binding for a code (e.g. customer got a new phone)."""
+    """Clear all device bindings for a code (e.g. customer got new phones)."""
     data = request.get_json(force=True, silent=True) or {}
     if not _require_admin(data):
         return jsonify(ok=False, error="Unauthorized."), 403
@@ -292,8 +309,30 @@ def admin_unbind():
     if not c:
         return jsonify(ok=False, error="Unknown code."), 404
     c.pop("device_id", None)
+    c["device_ids"] = []
     _save_customers(customers)
     return jsonify(ok=True, unbound=True)
+
+
+@app.post("/api/admin/set_max_devices")
+def admin_set_max_devices():
+    """Set how many devices a code allows (e.g. customer buys 2-device plan)."""
+    data = request.get_json(force=True, silent=True) or {}
+    if not _require_admin(data):
+        return jsonify(ok=False, error="Unauthorized."), 403
+    customers = _load_customers()
+    c = customers.get(data.get("code", ""))
+    if not c:
+        return jsonify(ok=False, error="Unknown code."), 404
+    try:
+        n = int(data.get("max_devices", 1))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="max_devices must be a number."), 400
+    if n < 1:
+        return jsonify(ok=False, error="max_devices must be >= 1."), 400
+    c["max_devices"] = n
+    _save_customers(customers)
+    return jsonify(ok=True, max_devices=n)
 
 
 @app.get("/api/admin/list")
@@ -302,7 +341,9 @@ def admin_list():
         return jsonify(ok=False, error="Unauthorized."), 403
     customers = _load_customers()
     out = [{"code": k, "name": v.get("name"), "expires_at": v.get("expires_at"),
-            "active": v.get("active"), "device_id": v.get("device_id")}
+            "active": v.get("active"),
+            "device_ids": v.get("device_ids", []),
+            "max_devices": v.get("max_devices", 1)}
            for k, v in customers.items()]
     return jsonify(ok=True, customers=out)
 
