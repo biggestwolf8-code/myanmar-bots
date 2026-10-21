@@ -21,6 +21,7 @@ from flask import Flask, jsonify, request
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 CUSTOMERS_FILE = os.path.join(DATA_DIR, "vpn_customers.json")
+ANNOUNCEMENTS_FILE = os.path.join(DATA_DIR, "announcements.json")
 SSH_KEY = os.path.join(DATA_DIR, "ssh", "id_ed25519")
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 
@@ -52,6 +53,22 @@ def _save_customers(data):
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
     os.replace(tmp, CUSTOMERS_FILE)
+
+
+def _load_announcements():
+    try:
+        with open(ANNOUNCEMENTS_FILE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return []
+
+
+def _save_announcements(data):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = ANNOUNCEMENTS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+    os.replace(tmp, ANNOUNCEMENTS_FILE)
 
 
 def _ssh_exec(host, command, timeout=30):
@@ -212,9 +229,12 @@ def login():
         _save_customers(customers)
 
     days_left = (exp - now).days
+    announcements = _load_announcements()
+    latest = announcements[-1] if announcements else None
     return jsonify(ok=True, name=c.get("name"), expires_at=c["expires_at"],
                    days_left=days_left, configs=c.get("configs", {}),
-                   servers={k: v["country"] for k, v in SERVERS.items()})
+                   servers={k: v["country"] for k, v in SERVERS.items()},
+                   announcement=latest)
 
 
 @app.post("/api/admin/ssh-key")
@@ -335,6 +355,34 @@ def admin_set_max_devices():
     return jsonify(ok=True, max_devices=n)
 
 
+@app.post("/api/admin/announce")
+def admin_announce():
+    """Post a broadcast announcement. All app users see it on next login."""
+    data = request.get_json(force=True, silent=True) or {}
+    if not _require_admin(data):
+        return jsonify(ok=False, error="Unauthorized."), 403
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify(ok=False, error="Message is required."), 400
+    announcements = _load_announcements()
+    ann = {
+        "id": secrets.token_urlsafe(8),
+        "message": message,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    announcements.append(ann)
+    # keep last 20
+    _save_announcements(announcements[-20:])
+    return jsonify(ok=True, announcement=ann)
+
+
+@app.get("/api/admin/announcements")
+def admin_announcements():
+    if request.args.get("admin_secret") != ADMIN_SECRET or not ADMIN_SECRET:
+        return jsonify(ok=False, error="Unauthorized."), 403
+    return jsonify(ok=True, announcements=_load_announcements())
+
+
 @app.get("/api/admin/list")
 def admin_list():
     if request.args.get("admin_secret") != ADMIN_SECRET or not ADMIN_SECRET:
@@ -368,6 +416,12 @@ _ADMIN_PAGE = """<!doctype html>
   <p><input type="text" name="name" placeholder="Customer name" size="40"></p>
   <p><input type="number" name="days" value="30" min="1" max="3650"> days</p>
   <p><button type="submit">Create code</button></p>
+</form>
+<h2>3. Broadcast announcement</h2>
+<form method="post" action="/admin/announce">
+  <p><input type="password" name="admin_secret" placeholder="Admin secret" size="40"></p>
+  <p><textarea name="message" rows="4" cols="64" placeholder="Message to all app users"></textarea></p>
+  <p><button type="submit">Broadcast</button></p>
 </form>
 """
 
@@ -411,6 +465,25 @@ def admin_create_code_form():
         return f"Provisioning failed: {html.escape(str(e))}", 500
     return (f"Code created for {html.escape(name)}: <b>{html.escape(code)}</b> "
             f"(expires {html.escape(customer['expires_at'])})")
+
+
+@app.post("/admin/announce")
+def admin_announce_form():
+    import html
+    if not _form_admin_ok():
+        return "Unauthorized.", 403
+    message = (request.form.get("message") or "").strip()
+    if not message:
+        return "Message is required.", 400
+    announcements = _load_announcements()
+    ann = {
+        "id": secrets.token_urlsafe(8),
+        "message": message,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    announcements.append(ann)
+    _save_announcements(announcements[-20:])
+    return f"Broadcast sent: {html.escape(message)}"
 
 
 if __name__ == "__main__":
