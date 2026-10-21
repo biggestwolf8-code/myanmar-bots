@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Translate — MasterClass English</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #0f1420; color: #f2f4f8; }
+  header { padding: 14px 16px; background: #16203a; }
+  header h1 { font-size: 19px; margin: 0; }
+  header p { margin: 4px 0 0; color: #9fb2d8; font-size: 13px; }
+  main { padding: 14px 16px 40px; max-width: 720px; margin: 0 auto; }
+  label { font-size: 13px; color: #9fb2d8; display: block; margin: 12px 0 5px; }
+  select, input[type=text] { width: 100%; padding: 11px; font-size: 16px; border-radius: 9px;
+    border: 1px solid #33436b; background: #1a2748; color: #fff; box-sizing: border-box; }
+  #toggle { width: 100%; padding: 17px; font-size: 19px; font-weight: 700; border: 0;
+    border-radius: 12px; margin-top: 18px; background: #ff6b00; color: #fff; }
+  #toggle.live { background: #c62828; }
+  #status { text-align: center; color: #9fb2d8; margin-top: 9px; font-size: 14px; min-height: 20px; }
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 15px; }
+  #feed { margin-top: 18px; }
+  .pair { border-top: 1px solid #26345a; padding: 11px 2px; }
+  .orig { color: #8ea3cc; font-size: 14px; }
+  .tran { font-size: 23px; line-height: 1.45; margin-top: 3px; }
+  #dl { width: 100%; padding: 12px; margin-top: 20px; font-size: 15px; border-radius: 10px;
+    border: 1px solid #33436b; background: #1a2748; color: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎙️ Live Translate</h1>
+  <p>Record your lecture — understand every word</p>
+</header>
+<main>
+  <label>Translation direction</label>
+  <select id="pair">
+    <option value="en-th" selected>English → Thai</option>
+    <option value="th-en">Thai → English</option>
+    <option value="en-my">English → Myanmar</option>
+    <option value="my-en">Myanmar → English</option>
+    <option value="th-my">Thai → Myanmar</option>
+    <option value="th-en">Thai → English</option>
+  </select>
+
+  <label>Class access code (ask your teacher)</label>
+  <input type="text" id="code" placeholder="Access code" autocomplete="off">
+
+  <label class="row" style="margin-top:14px;">
+    <input type="checkbox" id="speak" checked style="width:20px;height:20px;">
+    Speak translations aloud on this phone
+  </label>
+
+  <button id="toggle">▶ Start listening</button>
+  <div id="status">Ready</div>
+
+  <div id="feed"></div>
+  <button id="dl">⬇ Download transcript</button>
+</main>
+<script>
+const TTS_LANG = { en: "en-US", my: "my-MM", th: "th-TH" };
+const $ = id => document.getElementById(id);
+const codeEl = $("code");
+codeEl.value = localStorage.getItem("lt_code") || "";
+codeEl.addEventListener("change", () => localStorage.setItem("lt_code", codeEl.value.trim()));
+
+let running = false, stream = null, recorder = null, analyser = null, audioCtx = null;
+let transcript = [];
+
+function setStatus(t) { $("status").textContent = t; }
+
+function rmsLevel() {
+  if (!analyser) return 1;
+  const buf = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(buf);
+  let sum = 0; for (const v of buf) sum += v * v;
+  return Math.sqrt(sum / buf.length);
+}
+
+async function sendChunk(blob, src, tgt) {
+  const fd = new FormData();
+  fd.append("audio", blob, "chunk.webm");
+  fd.append("src", src); fd.append("tgt", tgt); fd.append("code", codeEl.value.trim());
+  try {
+    const r = await fetch("/api/chunk", { method: "POST", body: fd });
+    const j = await r.json();
+    if (!j.ok) { setStatus("⚠ " + (j.error || "Error")); return; }
+    if (!j.original || !j.translation) return;
+    showPair(j.original, j.translation);
+    if ($("speak").checked) speak(j.translation, tgt);
+  } catch (e) { setStatus("⚠ Connection problem — still listening…"); }
+}
+
+function showPair(orig, tran) {
+  transcript.push({ orig, tran });
+  const div = document.createElement("div");
+  div.className = "pair";
+  const o = document.createElement("div"); o.className = "orig"; o.textContent = orig;
+  const t = document.createElement("div"); t.className = "tran"; t.textContent = tran;
+  div.appendChild(o); div.appendChild(t);
+  const feed = $("feed");
+  feed.insertBefore(div, feed.firstChild);
+  while (feed.children.length > 60) feed.removeChild(feed.lastChild);
+}
+
+function speak(text, tgt) {
+  if (!("speechSynthesis" in window)) return;
+  if (speechSynthesis.getVoices().length === 0) return;
+  if (speechSynthesis.pending && speechSynthesis.speaking) speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = TTS_LANG[tgt] || "en-US";
+  u.rate = 1.0;
+  speechSynthesis.speak(u);
+}
+
+function recordCycle(src, tgt) {
+  if (!running) return;
+  const level = rmsLevel();
+  recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+  const chunks = [];
+  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = () => {
+    if (level > 0.012 && chunks.length) {
+      setStatus("🔄 Translating…");
+      sendChunk(new Blob(chunks, { type: "audio/webm" }), src, tgt)
+        .then(() => { if (running) setStatus("🎧 Listening…"); });
+    }
+    if (running) recordCycle(src, tgt);
+  };
+  recorder.start();
+  setTimeout(() => { if (recorder && recorder.state === "recording") recorder.stop(); }, 4000);
+}
+
+$("toggle").addEventListener("click", async () => {
+  if (running) {
+    running = false;
+    if (recorder && recorder.state === "recording") recorder.stop();
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    $("toggle").textContent = "▶ Start listening";
+    $("toggle").classList.remove("live");
+    setStatus("Stopped");
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) { setStatus("⚠ Microphone permission denied"); return; }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  audioCtx.createMediaStreamSource(stream).connect(analyser);
+  const [src, tgt] = $("pair").value.split("-");
+  running = true;
+  $("toggle").textContent = "⏹ Stop";
+  $("toggle").classList.add("live");
+  setStatus("🎧 Listening…");
+  recordCycle(src, tgt);
+});
+
+$("dl").addEventListener("click", () => {
+  const lines = transcript.map(p => p.orig + "\n→ " + p.tran).join("\n\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines], { type: "text/plain" }));
+  a.download = "class-transcript.txt";
+  a.click();
+});
+</script>
+</body>
+</html>

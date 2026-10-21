@@ -56,15 +56,28 @@ def _transcribe(audio_bytes, filename, src):
 
 
 def _translate(text, src, tgt):
+    classroom_context = {
+        # university student recording a native professor's lecture
+        "th": ("The setting is a university lecture: the speaker is a native "
+               "English-speaking professor, the listener is a Thai student. "
+               "Translate academic and technical terms precisely; keep the "
+               "tone appropriate for study notes."),
+        # Thai students may ask questions in their own language
+        "en": ("The setting is a university lecture hall. Translate "
+               "accurately and naturally, keeping the tone of the speaker."),
+        # English-teaching class for Myanmar students
+        "my": ("The setting is an English-teaching class for Myanmar "
+               "students, so translate teaching terms precisely: grammar = "
+               "သဒ္ဒါ (never သင်္ချာ/mathematics), vocabulary = ဝေါဟာရ, "
+               "pronunciation = အသံထွက်, sentence = ဝါကျ."),
+    }
     system = (
         "You are a live classroom interpreter. Translate the speaker's words "
         f"from {LANG_NAME[src]} to {LANG_NAME[tgt]}. Output ONLY the "
         "translation, in natural spoken style, keeping names and numbers "
-        "accurate. The setting is an English-teaching class for Myanmar "
-        "students, so translate teaching terms precisely: grammar = သဒ္ဒါ "
-        "(never သင်္ချာ/mathematics), vocabulary = ဝေါဟာရ, pronunciation = "
-        "အသံထွက်, sentence = ဝါကျ. If the input is not real speech (noise, "
-        "music, a fragment with no meaning), output nothing at all."
+        f"accurate. {classroom_context[tgt]} If the input is not real "
+        "speech (noise, music, a fragment with no meaning), output nothing "
+        "at all."
     )
     r = requests.post(
         f"{OPENAI_BASE}/chat/completions",
