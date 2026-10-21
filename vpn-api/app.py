@@ -423,6 +423,13 @@ _ADMIN_PAGE = """<!doctype html>
   <p><textarea name="message" rows="4" cols="64" placeholder="Message to all app users"></textarea></p>
   <p><button type="submit">Broadcast</button></p>
 </form>
+<h2>4. Set device limit for a code</h2>
+<form method="post" action="/admin/set-max-devices">
+  <p><input type="password" name="admin_secret" placeholder="Admin secret" size="40"></p>
+  <p><input type="text" name="code" placeholder="Code" size="40"></p>
+  <p><input type="number" name="max_devices" value="1" min="1"> devices</p>
+  <p><button type="submit">Set limit</button></p>
+</form>
 """
 
 
@@ -484,6 +491,26 @@ def admin_announce_form():
     announcements.append(ann)
     _save_announcements(announcements[-20:])
     return f"Broadcast sent: {html.escape(message)}"
+
+
+@app.post("/admin/set-max-devices")
+def admin_set_max_devices_form():
+    import html
+    if not _form_admin_ok():
+        return "Unauthorized.", 403
+    customers = _load_customers()
+    c = customers.get((request.form.get("code") or "").strip(), "")
+    if not c:
+        return "Unknown code.", 404
+    try:
+        n = int(request.form.get("max_devices", 1))
+    except ValueError:
+        return "max_devices must be a number.", 400
+    if n < 1:
+        return "max_devices must be >= 1.", 400
+    c["max_devices"] = n
+    _save_customers(customers)
+    return f"Code {html.escape(request.form.get('code','').strip())} now allows {n} device(s)."
 
 
 if __name__ == "__main__":
