@@ -59,6 +59,8 @@ import urllib.request
 
 import requests
 
+import course as video_course
+
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -158,6 +160,63 @@ def send_text(chat_id, text, reply_to=None, keyboard=None):
     except Exception as e:
         print("sendMessage failed:", e)
         return None
+
+
+def send_protected_video(chat_id, file_id, caption=""):
+    """Send a course video so it can't be saved or forwarded (protect_content)."""
+    try:
+        return tg("sendVideo", {
+            "chat_id": chat_id,
+            "video": file_id,
+            "caption": caption[:1024],
+            "protect_content": "true",
+            "supports_streaming": "true",
+        }, timeout=90)
+    except Exception as e:
+        print("sendVideo failed:", e)
+        return None
+
+
+def send_protected_document(chat_id, file_id, caption=""):
+    """Send a course worksheet so it can't be saved or forwarded."""
+    try:
+        return tg("sendDocument", {
+            "chat_id": chat_id,
+            "document": file_id,
+            "caption": caption[:1024],
+            "protect_content": "true",
+        }, timeout=90)
+    except Exception as e:
+        print("sendDocument failed:", e)
+        return None
+
+
+def send_course_list(chat_id, page=0, thread=None):
+    params = {"chat_id": chat_id, "text": video_course.course_intro(),
+              "reply_markup": json.dumps(video_course.course_keyboard(page))}
+    if thread:
+        params["reply_to_message_id"] = thread
+    try:
+        return tg("sendMessage", params)
+    except Exception as e:
+        print("sendMessage failed:", e)
+        return None
+
+
+def send_course_set(chat_id, n, thread=None):
+    """Deliver one course set: protected video + protected worksheet."""
+    n = int(n)
+    title = dict(video_course.SETS).get(n, f"Set {n}")
+    video_id, pdf_id = video_course.media_for(n)
+    if not video_id:
+        send_text(chat_id,
+                  f"⏳ Set {n} ({title}) is being uploaded — try again in a little while!",
+                  thread)
+        return
+    caption = f"🎬 Set {n}: {title}\n{video_course.COURSE_NAME}"
+    send_protected_video(chat_id, video_id, caption)
+    if pdf_id:
+        send_protected_document(chat_id, pdf_id, f"📄 Worksheet — Set {n}: {title}")
 
 
 def send_typing(chat_id):
@@ -720,6 +779,7 @@ def commands_keyboard():
 COMMANDS_TEXT = (
     "📋 Commands\n\n"
     "/new — start a fresh conversation\n"
+    "/course — video course: Pre-Intermediate Level Speaking Topics\n"
     "/homework — see your current homework\n"
     "/pause — pause homework reminders\n"
     "/resume — resume homework\n"
@@ -958,6 +1018,7 @@ START_MSG = (
     "I'll gently correct your mistakes and help you sound more natural.\n\n"
     "Commands:\n"
     "/new — start a fresh conversation\n"
+    "/course — video course (100 speaking topics)\n"
     "/homework — see your current homework\n"
     "/pause — pause your homework\n"
     "/resume — resume your homework"
@@ -1234,7 +1295,7 @@ def handle_my_chat_member(mcm):
 
 
 def handle_callback(cq):
-    """Tap handling for inline buttons (admin only)."""
+    """Tap handling for inline buttons (course buttons: any activated student)."""
     data = cq.get("data", "")
     user_id = cq.get("from", {}).get("id")
     cq_id = cq.get("id")
@@ -1248,6 +1309,39 @@ def handle_callback(cq):
                                       "show_alert": alert})
         except Exception as e:
             print("answerCallbackQuery failed:", e)
+
+    # Course navigation — any activated student (not just admin).
+    if data.startswith("course:"):
+        if not is_activated(user_id):
+            answer("This course is for MasterClass English students only.", alert=True)
+            return
+        parts = data.split(":")
+        if parts[1] == "p":
+            try:
+                page = int(parts[2])
+            except (ValueError, IndexError):
+                page = 0
+            answer()
+            try:
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": video_course.course_intro(),
+                    "reply_markup": json.dumps(video_course.course_keyboard(page)),
+                })
+            except Exception as e:
+                print("editMessageText failed:", e)
+            return
+        if parts[1] == "s":
+            try:
+                set_n = int(parts[2])
+            except (ValueError, IndexError):
+                answer("Unknown set.")
+                return
+            answer(f"Sending Set {set_n}…")
+            send_course_set(chat_id, set_n)
+            return
+        answer("Unknown action.")
+        return
 
     if not is_admin(user_id):
         answer("Only the admin can do that.", alert=True)
@@ -1805,6 +1899,9 @@ def handle_update(u):
     if text.startswith("/new"):
         histories.pop(user_id, None)
         send_text(chat_id, "✨ Fresh start! What would you like to talk about?", thread)
+        return
+    if text.startswith("/course"):
+        send_course_list(chat_id, 0, thread)
         return
     if text.startswith("/homework"):
         send_text(chat_id, student_homework_status(user_id), thread)

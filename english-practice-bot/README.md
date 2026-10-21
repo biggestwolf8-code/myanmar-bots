@@ -48,3 +48,18 @@ The bot is private — strangers can't run up your API bill:
 
 Invite state lives in `codes.json` under `DATA_DIR` — on Railway, attach a
 volume at `/data` and set `DATA_DIR=/data` so invites survive redeploys.
+
+## Video course (2026-10-21)
+
+`/course` opens the **Pre-Intermediate Level Speaking Topics** course: 100 sets
+as tappable options (10 per page, starting from Set 1 at the top). Tapping a
+set sends its speaking video + worksheet PDF.
+
+- Videos and worksheets are sent with `protect_content` — students can't save
+  or forward them in Telegram (screen recording can't be blocked).
+- Media is served by Telegram `file_id` (see `course_file_ids.json`) — no
+  media hosting needed on the server.
+- `course.py` holds the 100 set titles + keyboard builder; `bot.py` handles
+  `/course` and the `course:p:` / `course:s:` callbacks (students allowed).
+- Seeding: `python3 upload_course_media.py` with `BOT_TOKEN` + `ADMIN_CHAT_ID`
+  set — uploads all 200 files once and writes `course_file_ids.json`.
