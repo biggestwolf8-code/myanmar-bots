@@ -3,7 +3,8 @@
 MasterClass Articulation — lecturer voiceover builder for demo videos.
 
 1. Computes exact per-segment timings from make_demos.py builders.
-2. Builds Myanmar (+English keywords) narration scripts per segment.
+2. Builds ENGLISH-ONLY lecturer narration scripts per segment
+   (Arkar 2026-10-22: no Myanmar voice — English lecturer only).
 3. Synthesizes via the PRODUCTION app's /api/admin/narrate endpoint
    (admin session; password from env ADMIN_PW; voice onyx = male lecturer).
 4. Measures each MP3; flags overruns (shorten script, never stretch video).
@@ -76,56 +77,75 @@ def all_maps():
             out[f'lesson-{lid}'] = ('topic', L, topic_map(L))
     return out
 
-# ------------------------------------------------------- scripts
-DRILL_TITLES = {
-    's-th': NY("TH အသံ လေ့ကျင့်ခန်း"),
-    's-vw': NY("V နဲ့ W အသံ လေ့ကျင့်ခန်း"),
-    's-zs': NY("S နဲ့ Z အသံ လေ့ကျင့်ခန်း"),
-    's-rl': NY("R နဲ့ L အသံ လေ့ကျင့်ခန်း"),
-    's-final': NY("အဆုံးသတ် အသံများ လေ့ကျင့်ခန်း"),
-    's-clusters': NY("အသံတွဲများ လေ့ကျင့်ခန်း"),
+# ------------------------------------------------------- scripts (ENGLISH ONLY)
+# Lecturer-style English narration. Tips are kept <= 42 chars so they fit
+# the 2.5s topic-demo budget at ~17 chars/sec (onyx voice, speed 1.0).
+DRILL_TITLES_EN = {
+    's-th': "The 'th' sounds.",
+    's-vw': "V versus W.",
+    's-zs': "Z versus S.",
+    's-rl': "R versus L.",
+    's-final': "Final consonants.",
+    's-clusters': "Consonant clusters.",
 }
-S_TIP_TRY = NY("သင့်အလှည့် — လိုက်ဆိုကြည့်ပါ")
-S_TURN_SHORT = NY("သင့်အလှည့် — လိုက်ဆိုပါ")
+TURN_EN = "Your turn. Repeat after me."
+OUTRO_EN = "Keep practicing!"
 
-def art_caps(slot):
+EN_TIPS = {
+    'th':  "Tongue between the teeth. Blow air out.",
+    'thd': "Same position. Now add your voice.",
+    'f':   "Top teeth on the lower lip. Blow air.",
+    'v':   "Teeth on the lower lip. Now buzz.",
+    'w':   "Round your lips. Tongue rises at back.",
+    's':   "Tongue near the ridge. Hiss the air.",
+    'z':   "Same tongue spot. Turn voice on.",
+    'sh':  "Middle of tongue rises. Say shhh.",
+    'zh':  "Same as sh. Now add your voice.",
+    'r':   "Curl the tongue back. Touch nothing.",
+    'l':   "Tip on the ridge. Air flows sideways.",
+    't':   "Tip seals the ridge. Then release.",
+    'd':   "Same seal. Now add your voice.",
+    'k':   "Back of tongue seals. Then release.",
+    'g':   "Same back seal. Add your voice.",
+    'p':   "Lips press shut. Then pop open.",
+    'b':   "Same lip seal. Add your voice.",
+    'm':   "Lips shut. Hum through your nose.",
+    'n':   "Tip on the ridge. Hum through nose.",
+    'h':   "Mouth open. Breathe out with voice.",
+    'ii':  "Tongue high and forward. Say eee.",
+    'uu':  "Tongue high at back. Round the lips.",
+}
+
+def en_tip(slot):
     keys = slot if isinstance(slot, list) else [slot]
-    return [m.ARTS[k]['cap_my'] for k in keys]
+    return " ".join(EN_TIPS[k] for k in keys)
 
 def drill_scripts(lid, lesson, segs):
-    cfg = m.DRILLS[lid]
     pairs = [p['en'].replace(' — ', ', ') for p in lesson.get('phrases', [])[:2]]
     scr = {}
     for label, f, n, *rest in segs:
         if label == 'title':
-            scr[label] = (DRILL_TITLES[lid], 1.0)
+            scr[label] = (DRILL_TITLES_EN[lid], 1.0)
         elif label.startswith('demo'):
-            demo = rest[0]
-            caps = art_caps(demo)
-            ex = pairs[int(label[4:])] if int(label[4:]) < len(pairs) else ''
-            txt = "။ ".join(caps)
-            if ex:
-                txt += "။ " + ex
-            scr[label] = (txt, 1.0)
+            scr[label] = (en_tip(rest[0]), 1.0)
         elif label == 'tip':
-            scr[label] = (S_TIP_TRY, 1.0)
+            scr[label] = ("Your turn. Say: " + ". ".join(pairs) + ".", 1.0)
     return scr
 
 def topic_scripts(lid, lesson, segs):
     scr = {}
     for label, f, n, *rest in segs:
         if label == 'title':
-            scr[label] = (lesson['title_my'], 1.0)
+            scr[label] = (lesson['title'], 1.0)
         elif label.endswith('_card'):
             pi = int(label[1:].split('_')[0])
             scr[label] = (lesson['phrases'][pi]['en'], 1.0)
         elif '_demo' in label:
-            slot = rest[0]
-            scr[label] = ("။ ".join(art_caps(slot)), 1.0)
+            scr[label] = (en_tip(rest[0]), 1.0)
         elif label.endswith('_turn'):
-            scr[label] = (S_TURN_SHORT, 1.0)
+            scr[label] = (TURN_EN, 1.0)
         elif label == 'outro':
-            scr[label] = (m.S_KEEP_MY, 1.0)  # verified: ဆက်လက်လေ့ကျင့်ပါ
+            scr[label] = (OUTRO_EN, 1.0)
     return scr
 
 def build_scripts():
@@ -164,10 +184,10 @@ def mp3_dur(path):
 # ------------------------------------------------------- commands
 def cmd_calibrate():
     samples = [
-        ("TH အသံ လေ့ကျင့်ခန်း", 1.0),
-        ("လျှာဖျားကို သွားကြားထားပြီး လေမှုတ်ထုတ်ပါ။ thin, tin", 1.0),
+        ("The 'th' sounds.", 1.0),
+        ("Tongue between the teeth. Blow air out.", 1.0),
         ("Hi, my name is Arkar. What's yours?", 1.0),
-        ("သင့်အလှည့် — မော်ဒယ်အတိုင်း လိုက်ဆိုပါ", 1.0),
+        ("Your turn. Repeat after me.", 1.0),
     ]
     os.makedirs('/tmp/narr_cal', exist_ok=True)
     for i, (t, sp) in enumerate(samples):
@@ -246,9 +266,19 @@ def cmd_mux():
                '-c:a', 'aac', '-b:a', '96k', track]
         subprocess.run(cmd, check=True)
         tmp = vpath + '.muxed.mp4'
+        # explicit maps: video from the original, audio ONLY from the new
+        # narration track (the old file may already carry a previous voiceover).
+        # Pad (never cut): if the narration is shorter than the video, extend
+        # the audio with silence to the full video duration.
+        vdur = float(subprocess.run(
+            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+             '-of', 'csv=p=0', vpath],
+            capture_output=True, text=True).stdout.strip())
         subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', vpath, '-i', track,
-                        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '96k',
-                        '-movflags', '+faststart', '-shortest', tmp], check=True)
+                        '-map', '0:v:0', '-map', '1:a:0',
+                        '-c:v', 'copy', '-af', 'apad', '-c:a', 'aac', '-b:a', '96k',
+                        '-movflags', '+faststart', '-t', f'{vdur:.3f}', tmp],
+                       check=True)
         os.replace(tmp, vpath)
         print(f"MUXED {vid}: {os.path.getsize(vpath)/1e6:.1f}MB", flush=True)
 
