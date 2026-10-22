@@ -212,7 +212,7 @@ def check_fit():
     return bad
 
 def cmd_mux():
-    for vid, (segs, scr) in all_maps().items():
+    for vid, (segs, scr) in build_scripts().items():
         vpath = os.path.join(m.OUT_DIR, f'{vid}.mp4')
         if not os.path.exists(vpath):
             print(f"SKIP {vid}: video missing"); continue
