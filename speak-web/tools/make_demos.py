@@ -667,6 +667,15 @@ def your_turn_card():
     ], line_gap=1.5)
     return img
 
+def word_card(header, lines):
+    img, d = blank()
+    center_text(d, _s(W / 2), _s(210), header, fen(46, True), ACCENT)
+    y = _s(540)
+    for w in lines:
+        h_ = center_text(d, _s(W / 2), y, w, fen(78, True), INK)
+        y += h_ * 2.1
+    return img
+
 def tip_card(tip_my, pairs):
     img, d = blank()
     center_text(d, _s(W / 2), _s(230), 'Tip', fen(58, True), ACCENT)
@@ -755,13 +764,45 @@ def demo_slot_frames(slot, move_n=19, hold_n=24):
 
 # ================================================================ VIDEO BUILDERS
 DRILLS = {
-    's-th': dict(symbol='/θ/ /ð/', demos=['th', 'thd']),
-    's-vw': dict(symbol='/v/ /w/', demos=['v', 'w']),
-    's-zs': dict(symbol='/s/ /z/', demos=['s', 'z']),
-    's-rl': dict(symbol='/l/ /r/', demos=['l', 'r']),
-    's-final': dict(symbol='/t/ · /k/', demos=['t', 'k']),
-    's-clusters': dict(symbol='s → t → r', demos=[['s', 't'], ['p', 'l']]),
+    's-th': dict(symbol='/θ/ /ð/', demos=['th', 'thd'], words=[
+        ('/θ/ · no voice', ['thin', 'think', 'thank']),
+        ('/θ/ · no voice', ['three', 'teeth', 'bath']),
+        ('/θ/ · no voice', ['month', 'through', 'birthday']),
+        ('/ð/ · with voice', ['this', 'that', 'these']),
+        ('/ð/ · with voice', ['those', 'they', 'them']),
+        ('/ð/ · with voice', ['their', 'with', 'breathe']),
+    ]),
+    's-vw': dict(symbol='/v/ /w/', demos=['v', 'w'], words=[
+        ('/v/ vs /w/', ['very — wary', 'vine — wine']),
+        ('/v/ vs /w/', ['vest — west', 'vet — wet']),
+        ('/v/ vs /w/', ['verse — worse', 'van — one']),
+    ]),
+    's-zs': dict(symbol='/s/ /z/', demos=['s', 'z'], words=[
+        ('/s/ vs /z/', ['sip — zip', 'Sue — zoo']),
+        ('/s/ vs /z/', ['bus — buzz', 'ice — eyes']),
+        ('/s/ vs /z/', ['face — phase', 'rice — rise']),
+        ('/s/ vs /z/', ['price — prize', 'loose — lose']),
+    ]),
+    's-rl': dict(symbol='/l/ /r/', demos=['l', 'r'], words=[
+        ('/r/ vs /l/', ['red — led', 'right — light']),
+        ('/r/ vs /l/', ['read — lead', 'road — load']),
+        ('/r/ vs /l/', ['fry — fly', 'grass — glass']),
+    ]),
+    's-final': dict(symbol='/t/ · /k/', demos=['t', 'k'], words=[
+        ('Final consonants', ['worked', 'liked', 'stopped']),
+        ('Final consonants', ['jumped', 'asked', 'watched']),
+        ('Final consonants', ['missed', 'walked', 'talked']),
+        ('Final consonants', ['fixed', 'laughed', 'helped']),
+    ]),
+    's-clusters': dict(symbol='s → t → r', demos=[['s', 't'], ['p', 'l']], words=[
+        ('Consonant clusters', ['street', 'strong', 'spring']),
+        ('Consonant clusters', ['splash', 'smile', 'spoon']),
+        ('Consonant clusters', ['flower', 'fly', 'clean']),
+        ('Consonant clusters', ['clock', 'price', 'pray']),
+    ]),
 }
+# frames per example-word card
+WORD_N = 108
 
 def drill_frames(lesson):
     lid = lesson['id']
@@ -769,6 +810,8 @@ def drill_frames(lesson):
     yield from repeat_img(title_card_drill(cfg['symbol'], lesson['title'], lesson['title_my']), 48)
     for demo in cfg['demos']:
         yield from demo_slot_frames(demo, move_n=22, hold_n=30)
+    for header, lines in cfg.get('words', []):
+        yield from repeat_img(word_card(header, lines), WORD_N)
     pairs = [p['en'] for p in lesson.get('phrases', [])[:2]]
     yield from repeat_img(tip_card(lesson.get('tip_my', ''), pairs), 84)
 

@@ -53,6 +53,8 @@ def drill_map(lesson):
     for i, demo in enumerate(cfg['demos']):
         n = slot_n(demo, 22, 30)
         segs.append((f'demo{i}', f, n, demo)); f += n
+    for i, (header, lines) in enumerate(cfg.get('words', [])):
+        segs.append((f'word{i}', f, m.WORD_N, lines)); f += m.WORD_N
     segs.append(('tip', f, 84)); f += 84
     return segs
 
@@ -122,12 +124,17 @@ def en_tip(slot):
 
 def drill_scripts(lid, lesson, segs):
     pairs = [p['en'].replace(' — ', ', ') for p in lesson.get('phrases', [])[:2]]
+    cfg = m.DRILLS[lid]
     scr = {}
     for label, f, n, *rest in segs:
         if label == 'title':
             scr[label] = (DRILL_TITLES_EN[lid], 1.0)
         elif label.startswith('demo'):
             scr[label] = (en_tip(rest[0]), 1.0)
+        elif label.startswith('word'):
+            wi = int(label[4:])
+            flat = [w.replace(' — ', ', ') for w in cfg['words'][wi][1]]
+            scr[label] = ("Say: " + ". ".join(flat) + ".", 0.9)
         elif label == 'tip':
             scr[label] = ("Your turn. Say: " + ". ".join(pairs) + ".", 1.0)
     return scr
