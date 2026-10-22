@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+{% if not logged_in %}
+<div class="card" style="text-align:center; padding:28px 18px;">
+  <div style="font-size:52px;">🗣️</div>
+  <h1>{{ app_name }}</h1>
+  <p class="muted">Speak English clearly and confidently. Bite-sized lessons train the exact sounds Myanmar speakers find hardest — <b>th</b>, <b>v/w</b>, <b>r/l</b>, final consonants — with instant feedback on <b>every sound you make</b>.</p>
+  <p class="small muted">🎧 Listen &nbsp;·&nbsp; 🎤 Repeat &nbsp;·&nbsp; 📝 Get per-sound tips in English + မြန်မာ</p>
+</div>
+<div class="card">
+  <h3>Have an invite code?</h3>
+  <p class="small muted">Invite links are the way in — ask your teacher for one. No sign-ups, no surprise charges, ever.</p>
+  <div class="err {% if error %}show{% endif %}" id="err">{% if error %}{{ error }}{% endif %}</div>
+  <input type="text" id="code" placeholder="ENTER CODE" autocapitalize="characters" style="text-transform:uppercase; letter-spacing:2px; text-align:center; font-weight:800;">
+  <button class="btn" id="go">Start practicing →</button>
+</div>
+{% else %}
+<div class="card" style="display:flex; align-items:center; gap:14px;">
+  <div style="font-size:40px;">🎯</div>
+  <div>
+    <div style="font-weight:800; font-size:17px;">Train your sounds daily</div>
+    <div class="small muted">🔥 {{ stats.streak }} day streak &nbsp;·&nbsp; ⭐ {{ stats.xp }} XP</div>
+  </div>
+</div>
+
+<a href="/freetalk" class="card lessoncard" style="border:2px solid var(--accent);">
+  <h3 style="margin:0;">💬 Free Talk <span style="float:right;">→</span></h3>
+  <p class="small muted" style="margin:6px 0 0;">Chat out loud with your AI tutor — it notes your clearest pronunciation issues each turn.</p>
+</a>
+
+<h2>📚 Lessons</h2>
+<div class="leveltabs" id="tabs">
+  {% for lv in levels %}<button data-lv="{{ lv }}" class="{% if loop.first %}active{% endif %}">{{ lv }}</button>{% endfor %}
+</div>
+<div id="cards">
+{% for c in cards %}
+<a href="/lesson/{{ c.id }}" class="card lessoncard" data-lv="{{ c.level }}">
+  <span class="lvl">{{ c.level }}</span>
+  {% if c.completed %}<span class="donebadge" style="float:right;">✓ done</span>{% endif %}
+  <h3 style="margin:6px 0 2px;">{{ c.title }}</h3>
+  <div class="small muted">{{ c.title_my }} · {{ c.topic }}</div>
+  <div class="pbar"><div style="width:{{ (100*c.done//c.n) if c.n else 0 }}%"></div></div>
+  <div class="small muted" style="margin-top:4px;">{{ c.done }}/{{ c.n }} phrases</div>
+</a>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+{% if not logged_in %}
+const err = document.getElementById("err");
+document.getElementById("go").addEventListener("click", async () => {
+  const code = document.getElementById("code").value.trim();
+  if (!code) return;
+  err.classList.remove("show");
+  try {
+    const r = await fetch("/api/redeem", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({code})});
+    const j = await r.json();
+    if (j.ok) location.href = "/";
+    else { err.textContent = j.error || "That didn't work."; err.classList.add("show"); }
+  } catch(e){ err.textContent = "Connection problem — try again."; err.classList.add("show"); }
+});
+{% else %}
+document.getElementById("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  const lv = b.dataset.lv;
+  document.querySelectorAll("#cards .lessoncard").forEach(c => {
+    c.style.display = c.dataset.lv === lv ? "" : "none";
+  });
+});
+// show only first level's cards initially
+(function(){
+  const first = document.querySelector("#tabs button");
+  if (first) first.click();
+})();
+{% endif %}
+</script>
+{% endblock %}

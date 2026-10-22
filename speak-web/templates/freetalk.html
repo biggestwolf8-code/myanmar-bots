@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>💬 Free Talk</h1>
+<p class="muted small">Chat out loud with your AI tutor. After each turn it notes the 1–2 clearest <b>sound</b> issues to work on.</p>
+
+<div id="thread">
+{% for m in thread %}
+<div class="msg you">🎤 “{{ m.said }}”</div>
+<div class="msg tutor"><div>{{ m.reply_en }}</div><div class="my">{{ m.reply_my }}</div></div>
+{% endfor %}
+</div>
+
+<div class="card" style="text-align:center;">
+  <button class="micbig" id="mic">🎤</button>
+  <div class="status" id="status">Tap the mic and speak</div>
+  <label class="small muted"><input type="checkbox" id="speak" checked style="width:auto;"> 🔊 Speak the tutor's reply aloud</label>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const mic = document.getElementById("mic");
+const status = document.getElementById("status");
+const thread = document.getElementById("thread");
+const speakBox = document.getElementById("speak");
+let rec = null, stream = null, chunks = [];
+
+function esc(s){ const d=document.createElement("div"); d.textContent=s||""; return d.innerHTML; }
+function speak(text){
+  if (!speakBox.checked || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US"; u.rate = 0.95;
+  speechSynthesis.speak(u);
+}
+function addPair(j){
+  const you = document.createElement("div");
+  you.className = "msg you"; you.innerHTML = "🎤 “" + esc(j.said) + "”";
+  thread.appendChild(you);
+  const t = document.createElement("div");
+  t.className = "msg tutor";
+  let h = "<div>" + esc(j.reply_en) + "</div>";
+  if (j.reply_my) h += '<div class="my">' + esc(j.reply_my) + "</div>";
+  (j.pronunciation || []).forEach(n => {
+    h += '<div class="fb-label">🔊 Sound to fix</div><div style="font-size:14px;">' + esc(n.issue_en) + '</div>';
+    h += '<div style="font-size:14px;">👄 ' + esc(n.fix_en) + '</div>';
+    if (n.fix_my) h += '<div class="my">' + esc(n.fix_my) + '</div>';
+  });
+  t.innerHTML = h;
+  thread.appendChild(t);
+  window.scrollTo(0, document.body.scrollHeight);
+  speak(j.reply_en);
+}
+mic.addEventListener("click", async () => {
+  if (rec && rec.state === "recording") {
+    rec.stop(); // onstop handler below sends the audio
+    return;
+  }
+  try { stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ status.textContent = "⚠ Microphone permission denied."; return; }
+  chunks = [];
+  rec = new MediaRecorder(stream, {mimeType:"audio/webm"});
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = async () => {
+    mic.classList.remove("rec");
+    stream.getTracks().forEach(t=>t.stop());
+    const blob = new Blob(chunks, {type:"audio/webm"});
+    if (blob.size < 800) { status.textContent = "Tap the mic and speak"; return; }
+    status.textContent = "🔄 Thinking…";
+    const fd = new FormData();
+    fd.append("audio", blob, "freetalk.webm");
+    try {
+      const r = await fetch("/api/freetalk", {method:"POST", body:fd});
+      const j = await r.json();
+      if (!j.ok) { status.textContent = "⚠ " + (j.error || "Error"); return; }
+      status.textContent = "Tap the mic and speak";
+      if (j.said) addPair(j);
+      else status.textContent = "😶 I didn't catch that — try again.";
+    } catch(e){ status.textContent = "⚠ Connection problem — try again."; }
+  };
+  rec.start();
+  mic.classList.add("rec");
+  status.textContent = "🎤 Listening… tap again to send";
+});
+</script>
+{% endblock %}

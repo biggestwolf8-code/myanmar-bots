@@ -1,0 +1,1200 @@
+{
+  "lessons": [
+    {
+      "id": "a1-greetings",
+      "level": "A1",
+      "phrases": [
+        {
+          "en": "Hi, my name is Arkar. What's yours?",
+          "my": "ဟဲလို၊ ကျွန်တော် နာမည်က အာကာ။ ခင်ဗျားက ဘယ်သူလဲ?",
+          "focus": "w in 'what', 'what's yours'"
+        },
+        {
+          "en": "Nice to meet you.",
+          "my": "တွေ့ရတာ ဝမ်းသာပါတယ်။",
+          "focus": "long ee /i:/ in 'meet'"
+        },
+        {
+          "en": "How are you today?",
+          "my": "ဒီနေ့ နေကောင်းလား?",
+          "focus": "h at word start"
+        },
+        {
+          "en": "I'm from Myanmar.",
+          "my": "ကျွန်တော်က မြန်မာပြည်က လာတာ။",
+          "focus": "fr cluster in 'from'"
+        },
+        {
+          "en": "Where are you from?",
+          "my": "ခင်ဗျား ဘယ်နိုင်ငံကလဲ?",
+          "focus": "w in 'where'"
+        },
+        {
+          "en": "See you later!",
+          "my": "နောက်မှ တွေ့မယ်!",
+          "focus": "l vs r in 'later'"
+        },
+        {
+          "en": "Have a nice day!",
+          "my": "ဒီနေ့ ပျော်ပျော်နေပါ!",
+          "focus": "final /v/ in 'have'"
+        }
+      ],
+      "title": "Greetings & Introductions",
+      "title_my": "နှုတ်ဆက်ခြင်းနှင့် မိမိကိုယ်ကို မိတ်ဆက်ခြင်း",
+      "topic": "Everyday",
+      "target_sounds": [
+        "w as in 'what' and 'where'",
+        "r as in 'your', 'later', 'from'",
+        "long ee /i:/ as in 'meet', 'see'"
+      ],
+      "tip_en": "For 'r', curl your tongue tip up without touching the roof of your mouth and let the air flow — don't tap it like a Myanmar 'ရ'.",
+      "tip_my": "'r' အသံအတွက် လျှာဖျားကို အပေါ်အာခေါင်နဲ့ မထိစေဘဲ ကွေးထားပြီး လေကို ပတ်ပြီး ထွက်စေပါ။ မြန်မာလို 'ရ' လို တံခွန်နဲ့ မရိုက်ပါနဲ့။"
+    },
+    {
+      "id": "a1-food",
+      "level": "A1",
+      "phrases": [
+        {
+          "en": "Can I see the menu, please?",
+          "my": "မီနူးကြည့်လို့ ရမလား?",
+          "focus": "th /ð/ in 'the'"
+        },
+        {
+          "en": "I'd like fried rice and a cola.",
+          "my": "ကျွန်တော် ထမင်းကြော်နဲ့ ကိုလာတစ်ဗူး မှာချင်တယ်။",
+          "focus": "l vs r in 'like', 'fried'"
+        },
+        {
+          "en": "No ice, please.",
+          "my": "ရေခဲ မထည့်ပါနဲ့။",
+          "focus": "final -s in 'ice'"
+        },
+        {
+          "en": "Is it spicy?",
+          "my": "ဒါဟာ အစပ်လား?",
+          "focus": "s in 'is', 'spicy'"
+        },
+        {
+          "en": "The bill, please.",
+          "my": "ဘီလီ ရှင်းချင်လို့။",
+          "focus": "th /ð/ in 'the'"
+        },
+        {
+          "en": "Can I get the bill?",
+          "my": "ဘီလီ ပေးပါ။",
+          "focus": "th /ð/ in 'the'"
+        },
+        {
+          "en": "That was delicious. Thank you!",
+          "my": "အရမ်းစားကောင်းတယ်။ ကျေးဇူးတင်ပါတယ်!",
+          "focus": "th /ð/ in 'that'"
+        }
+      ],
+      "title": "Ordering Food & Drinks",
+      "title_my": "အစားအသောက်နှင့် အဖျော်ယမကာ မှာယူခြင်း",
+      "topic": "Everyday",
+      "target_sounds": [
+        "th /ð/ as in 'the' and 'that'",
+        "final 's' in 'rice', 'ice', 'spicy'",
+        "l vs r in 'like', 'fried', 'cola'"
+      ],
+      "tip_en": "For the 'th' in 'the' and 'that', put your tongue tip lightly between your teeth and hum — it should buzz. Don't replace it with 'd' or 'z'.",
+      "tip_my": "'the', 'that' တို့လို 'th' အသံအတွက် လျှာဖျားကို သွားကြားမှာ ထားပြီး အသံကို ညည်းညူသံလိုထွက်စေပါ။ 'd' နဲ့ 'z' နဲ့ အစားမထိုးပါနဲ့။"
+    },
+    {
+      "id": "a1-shopping",
+      "level": "A1",
+      "phrases": [
+        {
+          "en": "How much is this?",
+          "my": "ဒါဟာ ဘယ်လောက်လဲ?",
+          "focus": "th /ð/ in 'this'"
+        },
+        {
+          "en": "Do you have a bigger size?",
+          "my": "ဒီထက် ပိုကြီးတဲ့ ဆိုက်ဇ် ရှိလား?",
+          "focus": "z vs s in 'size'"
+        },
+        {
+          "en": "Can I try it on?",
+          "my": "ဝတ်ကြည့်လို့ ရမလား?",
+          "focus": "tr cluster in 'try'"
+        },
+        {
+          "en": "That's too expensive for me.",
+          "my": "ဒါဟာ ကျွန်တော့်အတွက် ဈေးကြီးလွန်းတယ်။",
+          "focus": "th /ð/ in 'that's'"
+        },
+        {
+          "en": "Can you give me a discount?",
+          "my": "ဈေးနည်းနည်း လျှော့ပေးလို့ ရမလား?",
+          "focus": "v in 'give'"
+        },
+        {
+          "en": "I'll take it.",
+          "my": "ဒါကို ယူမယ်။",
+          "focus": "final -k in 'take'"
+        },
+        {
+          "en": "Do you take card?",
+          "my": "ကတ်နဲ့ ရှင်းလို့ ရလား?",
+          "focus": "final rd in 'card'"
+        }
+      ],
+      "title": "Shopping & Prices",
+      "title_my": "ဈေးဝယ်ခြင်းနှင့် ဈေးနှုန်းများ",
+      "topic": "Everyday",
+      "target_sounds": [
+        "th /ð/ as in 'this' and 'that's'",
+        "z vs s in 'have', 'size', 'expensive'",
+        "final rd in 'card'"
+      ],
+      "tip_en": "'This' and 'that's' start with a buzzing th — tongue between teeth, voice on. It's /ðis/, not /zis/ or /dis/.",
+      "tip_my": "'this', 'that's' ရဲ့ အစ 'th' က အသံပါတဲ့ အသံဖြစ်ရမယ် — လျှာဖျားကို သွားကြားမှာထားပြီး ညည်းသံနဲ့ထွက်ပါ။ 'zis' ဒါမှမဟုတ် 'dis' လို့ မပြောနဲ့။"
+    },
+    {
+      "id": "a1-directions",
+      "level": "A1",
+      "phrases": [
+        {
+          "en": "Excuse me, where is the station?",
+          "my": "ခွင့်လွှတ်ပါ၊ ရထားဘူတာရုံက ဘယ်နားလဲ?",
+          "focus": "sh /ʃ/ in 'station'"
+        },
+        {
+          "en": "How do I get to the airport?",
+          "my": "လေဆိပ်ကို ဘယ်လို သွားရမလဲ?",
+          "focus": "w in 'how', 'airport'"
+        },
+        {
+          "en": "Is it far from here?",
+          "my": "ဒီကနေ ဝေးလား?",
+          "focus": "r in 'far', 'here'"
+        },
+        {
+          "en": "Can you show me on the map?",
+          "my": "မြေပုံမှာ ပြပေးလို့ ရမလား?",
+          "focus": "sh /ʃ/ in 'show'"
+        },
+        {
+          "en": "Turn left at the corner.",
+          "my": "လမ်းထောင့်မှာ ဘယ်ဘက် လှည့်ပါ။",
+          "focus": "r vs l in 'left', 'corner'"
+        },
+        {
+          "en": "Go straight, it's on your right.",
+          "my": "တည့်တည့် သွားပါ၊ ညာဘက်မှာ ရှိတယ်။",
+          "focus": "str cluster in 'straight'"
+        }
+      ],
+      "title": "Asking for Directions",
+      "title_my": "လမ်းညွှန်ချက် တောင်းခြင်း",
+      "topic": "Travel",
+      "target_sounds": [
+        "sh /ʃ/ as in 'station' and 'show'",
+        "w in 'where' and 'how'",
+        "r vs l in 'corner' and 'right'"
+      ],
+      "tip_en": "'Station' starts with /ʃ/ — round your lips and push air through, like hushing someone. Don't say 's-tation'.",
+      "tip_my": "'station' ရဲ့ အစ 'sh' အသံအတွက် နှုတ်ခမ်းဝိုင်းပြီး လေကို တွန်းထုတ်ပါ — 'ရှူး' လို့ ငြိမ်သက်ခိုင်းသလိုပဲ။ 's' နဲ့ မပြောနဲ့။"
+    },
+    {
+      "id": "a1-smalltalk",
+      "level": "A1",
+      "phrases": [
+        {
+          "en": "Beautiful day, isn't it?",
+          "my": "နေ့လှလှလေးနော်၊ မဟုတ်ဘူးလား?",
+          "focus": "b in 'beautiful'"
+        },
+        {
+          "en": "It's so hot today.",
+          "my": "ဒီနေ့ အရမ်းပူတယ်။",
+          "focus": "h in 'hot'"
+        },
+        {
+          "en": "I think it's going to rain.",
+          "my": "မိုးရွာတော့မယ် ထင်တယ်။",
+          "focus": "th /θ/ in 'think'"
+        },
+        {
+          "en": "What do you do in your free time?",
+          "my": "အားလပ်ချိန်မှာ ဘာလုပ်လဲ?",
+          "focus": "w vs v"
+        },
+        {
+          "en": "I love listening to music.",
+          "my": "ကျွန်တော် သီချင်းနားထောင်ရတာ ကြိုက်တယ်။",
+          "focus": "v in 'love'"
+        },
+        {
+          "en": "How was your weekend?",
+          "my": "စနေတနင်္ဂနွေ ဘယ်လိုနေလဲ?",
+          "focus": "w in 'weekend'"
+        }
+      ],
+      "title": "Small Talk & Weather",
+      "title_my": "စကားစမြည်ပြောခြင်းနှင့် ရာသီဥတု",
+      "topic": "Social",
+      "target_sounds": [
+        "th /θ/ as in 'think'",
+        "v in 'love'",
+        "w in 'what' and 'weekend'",
+        "final -nd in 'weekend'"
+      ],
+      "tip_en": "'Think' uses the quiet th — blow air between your teeth with no voice. Don't say 'sink'.",
+      "tip_my": "'think' ရဲ့ 'th' က အသံမပါတဲ့ အသံပါ — သွားကြားကနေ လေကို မှုတ်ထုတ်ရုံပဲ။ 'sink' လို့ မပြောနဲ့။"
+    },
+    {
+      "id": "a2-hotel",
+      "level": "A2",
+      "phrases": [
+        {
+          "en": "I have a reservation under the name Aung.",
+          "my": "အောင် နာမည်နဲ့ အခန်း ကြိုမှာထားတယ်။",
+          "focus": "v in 'have', r in 'reservation'"
+        },
+        {
+          "en": "What time is check-out?",
+          "my": "ချက်ခ်အောက် ဘယ်အချိန်လဲ?",
+          "focus": "ch /tʃ/ in 'check-out'"
+        },
+        {
+          "en": "Is breakfast included?",
+          "my": "မနက်စာ ပါလား?",
+          "focus": "r vs l in 'breakfast'"
+        },
+        {
+          "en": "The aircon in my room isn't working.",
+          "my": "ကျွန်တော့် အခန်းက အဲကွန်းက အလုပ်မလုပ်ဘူး။",
+          "focus": "th /ð/ in 'the'"
+        },
+        {
+          "en": "Could I get an extra towel, please?",
+          "my": "တဘက် တစ်ထည်လောက် ထပ်ပေးလို့ ရမလား?",
+          "focus": "r vs l in 'extra'"
+        },
+        {
+          "en": "What time does the pool open?",
+          "my": "ရေကူးကန် ဘယ်အချိန် ဖွင့်လဲ?",
+          "focus": "long oo /u:/ in 'pool'"
+        },
+        {
+          "en": "Can you call a taxi for me?",
+          "my": "တက္ကစီ တစ်စီး ခေါ်ပေးလို့ ရမလား?",
+          "focus": "ks in 'taxi'"
+        }
+      ],
+      "title": "At the Hotel",
+      "title_my": "ဟိုတယ်မှာ",
+      "topic": "Travel",
+      "target_sounds": [
+        "th /ð/ in 'the'",
+        "r vs l in 'reservation', 'breakfast', 'extra'",
+        "ks in 'taxi'"
+      ],
+      "tip_en": "'Reservation' and 'breakfast' drill the r-vs-l contrast — keep the tongue curled for 'r' and flat behind the teeth for 'l'.",
+      "tip_my": "'reservation', 'breakfast' တို့မှာ 'r' နဲ့ 'l' ကို ခွဲခြားပြောပါ — 'r' မှာ လျှာကွေးထား၊ 'l' မှာ လျှာဖျားကို သွားအနောက်မှာ ကပ်ထားပါ။"
+    },
+    {
+      "id": "a2-phone",
+      "level": "A2",
+      "phrases": [
+        {
+          "en": "Hello, this is Arkar speaking.",
+          "my": "ဟဲလို၊ ကျွန်တော်က အာကာ ဖြစ်ပါတယ်။",
+          "focus": "th /ð/ in 'this'"
+        },
+        {
+          "en": "Can I speak to Ms. Su, please?",
+          "my": "မစ္စစူဲနဲ့ စကားပြောလို့ ရမလား?",
+          "focus": "sp cluster in 'speak'"
+        },
+        {
+          "en": "Sorry, I can't hear you well.",
+          "my": "စိတ်မကောင်းပါဘူး၊ ခင်ဗျားအသံ ကောင်းကောင်း မကြားရဘူး။",
+          "focus": "r in 'sorry', 'hear'"
+        },
+        {
+          "en": "Could you speak a bit slower, please?",
+          "my": "နည်းနည်း နှေးနှေး ပြောပေးလို့ ရမလား?",
+          "focus": "sl cluster in 'slower'"
+        },
+        {
+          "en": "Can I take a message?",
+          "my": "မက်ဆေ့ချ် ထားခဲ့လို့ ရမလား?",
+          "focus": "j /dʒ/ in 'message'"
+        },
+        {
+          "en": "I'll call you back in ten minutes.",
+          "my": "ဆယ်မိနစ်နေရင် ပြန်ခေါ်မယ်။",
+          "focus": "l in 'call'"
+        },
+        {
+          "en": "Thanks for calling. Bye!",
+          "my": "ဖုန်းဆက်ပေးတာ ကျေးဇူးပါ။ တာ့တာ!",
+          "focus": "th /θ/ in 'thanks'"
+        }
+      ],
+      "title": "Phone Calls",
+      "title_my": "ဖုန်းခေါ်ဆိုခြင်း",
+      "topic": "Everyday",
+      "target_sounds": [
+        "th /ð/ in 'this'",
+        "sp cluster in 'speak'",
+        "sl cluster in 'slower'"
+      ],
+      "tip_en": "'This is' needs the buzzing th, then a smooth /s/ in 'is' — tongue between teeth with voice on, then pull back for 's'. Don't merge them into 'zis'.",
+      "tip_my": "'this is' မှာ အသံပါတဲ့ 'th' ပြီးရင် 's' ကို ဆက်ပြောရမယ် — လျှာကို သွားကြားမှာထားပြီး ညည်းသံနဲ့ထွက်၊ ပြီးရင် နောက်ဆုတ်ပြီး 's' ထုတ်ပါ။ 'zis' လို့ ရောမပြောနဲ့။"
+    },
+    {
+      "id": "a2-doctor",
+      "level": "A2",
+      "phrases": [
+        {
+          "en": "I'd like to make an appointment.",
+          "my": "ရက်ချိန်း ယူချင်လို့။",
+          "focus": "word stress in 'appointment'"
+        },
+        {
+          "en": "I have a headache and a fever.",
+          "my": "ကျွန်တော် ခေါင်းကိုက်ပြီး ဖျားနေတယ်။",
+          "focus": "h in 'headache', 'have'"
+        },
+        {
+          "en": "It started two days ago.",
+          "my": "နှစ်ရက်လောက် ရှိပြီ၊ အဲဒီလို ဖြစ်နေတာ။",
+          "focus": "final -ed /t/ in 'started'"
+        },
+        {
+          "en": "It hurts right here.",
+          "my": "ဒီနေရာမှာ နာတယ်။",
+          "focus": "r vs l in 'hurts right'"
+        },
+        {
+          "en": "Do I need to take any medicine?",
+          "my": "ဆေး သောက်ဖို့ လိုလား?",
+          "focus": "d in 'do', 'need'"
+        },
+        {
+          "en": "How many times a day should I take it?",
+          "my": "တစ်နေ့ ဘယ်နှစ်ကြိမ် သောက်ရမလဲ?",
+          "focus": "sh /ʃ/ in 'should'"
+        },
+        {
+          "en": "Thank you, doctor. Goodbye.",
+          "my": "ကျေးဇူးတင်ပါတယ် ဆရာဝန်။ သွားတော့မယ်။",
+          "focus": "th /θ/ in 'thank'"
+        }
+      ],
+      "title": "At the Doctor",
+      "title_my": "ဆေးခန်းမှာ",
+      "topic": "Health",
+      "target_sounds": [
+        "r vs l in 'hurts right here'",
+        "h in 'headache' and 'have'",
+        "final -ed /t/ in 'started'"
+      ],
+      "tip_en": "'Hurts right here' packs three r's — curl the tongue each time, don't drop them or swap them with 'l'.",
+      "tip_my": "'hurts right here' မှာ 'r' သုံးခါပါတယ် — တစ်ခါချင်းစီ လျှာကွေးပြီး ပြောပါ။ 'r' ကို ဖြုတ်တာ၊ 'l' နဲ့ လဲတာ မလုပ်ပါနဲ့။"
+    },
+    {
+      "id": "a2-plans",
+      "level": "A2",
+      "phrases": [
+        {
+          "en": "Are you free this Saturday?",
+          "my": "ဒီစနေနေ့ အားလား?",
+          "focus": "th /ð/ in 'this'"
+        },
+        {
+          "en": "Want to grab coffee together?",
+          "my": "အတူတူ ကော်ဖီ သောက်ကြမလား?",
+          "focus": "w in 'want'"
+        },
+        {
+          "en": "What time works for you?",
+          "my": "မင်းအတွက် ဘယ်အချိန် အဆင်ပြေလဲ?",
+          "focus": "w in 'what', 'works'"
+        },
+        {
+          "en": "Let's meet at six at the mall.",
+          "my": "ခြောက်နာရီ ကုန်တိုက်မှာ တွေ့ကြမယ်။",
+          "focus": "s in 'six', 'let's'"
+        },
+        {
+          "en": "Sorry, I can't make it that day.",
+          "my": "စိတ်မကောင်းပါဘူး၊ အဲဒီနေ့ မလာနိုင်ဘူး။",
+          "focus": "th /ð/ in 'that'"
+        },
+        {
+          "en": "How about Sunday instead?",
+          "my": "တနင်္ဂနွေနေ့ကျရင် ဘယ်လိုလဲ?",
+          "focus": "s in 'Sunday', 'instead'"
+        },
+        {
+          "en": "Sounds good. See you then!",
+          "my": "ကောင်းတယ်။ အဲဒီကျ တွေ့မယ်!",
+          "focus": "th /ð/ in 'then'"
+        }
+      ],
+      "title": "Making Plans with Friends",
+      "title_my": "သူငယ်ချင်းတွေနဲ့ အစီအစဉ် ဆွဲခြင်း",
+      "topic": "Social",
+      "target_sounds": [
+        "th /ð/ in 'this', 'that', 'then', 'together'",
+        "w in 'what', 'want', 'works'",
+        "s vs z in 'sounds', 'Saturday'"
+      ],
+      "tip_en": "This lesson is full of /ð/: this, that, then, together. Tongue between teeth and buzz every single time.",
+      "tip_my": "ဒီသင်ခန်းစာမှာ 'this', 'that', 'then', 'together' တို့လို 'th' အသံပါတာတွေ များပါတယ် — လျှာကို သွားကြားမှာထားပြီး တစ်ခါချင်းစီ ညည်းသံထွက်ပြောပါ။"
+    },
+    {
+      "id": "a2-job",
+      "level": "A2",
+      "phrases": [
+        {
+          "en": "I work as an English teacher.",
+          "my": "ကျွန်တော်က အင်္ဂလိပ်စာ ဆရာ လုပ်တယ်။",
+          "focus": "w in 'work'"
+        },
+        {
+          "en": "I've been doing this for three years.",
+          "my": "ဒီအလုပ်ကို သုံးနှစ်လောက် လုပ်နေပြီ။",
+          "focus": "v in 'I've', th in 'this'"
+        },
+        {
+          "en": "I work from nine to five.",
+          "my": "ကျွန်တော် မနက်ကိုးနာရီကနေ ညနေငါးနာရီထိ အလုပ်လုပ်တယ်။",
+          "focus": "v in 'five'"
+        },
+        {
+          "en": "My office is in downtown Yangon.",
+          "my": "ကျွန်တော့် ရုံးက ရန်ကုန်မြို့လယ်မှာ။",
+          "focus": "f in 'office'"
+        },
+        {
+          "en": "I really enjoy my work.",
+          "my": "ကျွန်တော် ကိုယ့်အလုပ်ကို တကယ် ကြိုက်တယ်။",
+          "focus": "r vs l in 'really'"
+        },
+        {
+          "en": "Sometimes it's stressful, but it's worth it.",
+          "my": "တစ်ခါတစ်လေ စိတ်ဖိစီးတယ်၊ ဒါပေမယ့် တန်ပါတယ်။",
+          "focus": "str cluster in 'stressful'"
+        },
+        {
+          "en": "What do you do for a living?",
+          "my": "ခင်ဗျား ဘာအလုပ်လုပ်လဲ?",
+          "focus": "v in 'living'"
+        }
+      ],
+      "title": "Talking about Your Job",
+      "title_my": "ကိုယ့်အလုပ်အကြောင်း ပြောခြင်း",
+      "topic": "Work",
+      "target_sounds": [
+        "w in 'work' and 'what'",
+        "v in 'five', 'I've', 'living'",
+        "r vs l in 'really'"
+      ],
+      "tip_en": "'Work' starts with a rounded /w/ — no teeth touch your lips. Myanmar speakers often say 'verk' — keep lips round and pushed forward.",
+      "tip_my": "'work' ရဲ့ အစ 'w' မှာ နှုတ်ခမ်းဝိုင်းပြီး သွားနဲ့ နှုတ်ခမ်း မထိစေနဲ့။ 'verk' လို့ မပြောနဲ့ — နှုတ်ခမ်းကို ရှေ့တိုးပြီး ဝိုင်းထားပါ။"
+    },
+    {
+      "id": "b1-interview",
+      "level": "B1",
+      "phrases": [
+        {
+          "en": "Thank you for giving me this opportunity.",
+          "my": "ဒီအခွင့်အရေး ပေးတဲ့အတွက် ကျေးဇူးတင်ပါတယ်။",
+          "focus": "th /θ/ in 'thank'"
+        },
+        {
+          "en": "Tell me a little about yourself.",
+          "my": "ခင်ဗျားအကြောင်း နည်းနည်း ပြောပြပါ။",
+          "focus": "l in 'tell', 'little'"
+        },
+        {
+          "en": "My biggest strength is my communication skills.",
+          "my": "ကျွန်တော့် အကြီးမားဆုံး အားသာချက်က ဆက်သွယ်ပြောဆိုနိုင်စွမ်းပါ။",
+          "focus": "str cluster in 'strength'"
+        },
+        {
+          "en": "I handle pressure pretty well.",
+          "my": "ဖိအားကို ကျွန်တော် တော်တော်လေး ကိုင်တွယ်နိုင်တယ်။",
+          "focus": "pr cluster in 'pressure'"
+        },
+        {
+          "en": "Why do you want to work here?",
+          "my": "ဒီမှာ ဘာလို့ အလုပ်လုပ်ချင်တာလဲ?",
+          "focus": "w in 'why', 'work'"
+        },
+        {
+          "en": "Where do you see yourself in five years?",
+          "my": "နောက်ငါးနှစ်မှာ ကိုယ့်ကိုယ်ကို ဘယ်လို မြင်လဲ?",
+          "focus": "w in 'where'"
+        },
+        {
+          "en": "Do you have any questions for me?",
+          "my": "ကျွန်တော့်ကို မေးချင်တာ ရှိလား?",
+          "focus": "kw in 'questions'"
+        }
+      ],
+      "title": "Job Interview Basics",
+      "title_my": "အလုပ်အင်တာဗျူး အခြေခံများ",
+      "topic": "Work",
+      "target_sounds": [
+        "th /θ/ in 'thank'",
+        "r vs l in 'little' and 'yourself'",
+        "str cluster in 'strength'",
+        "pr cluster in 'pressure', 'pretty'"
+      ],
+      "tip_en": "Interviews demand crisp consonants: punch the 'th' in 'thank', and don't let 'little' and 'yourself' blur — keep 'l' flat and 'r' curled.",
+      "tip_my": "အင်တာဗျူးမှာ ဗျည်းအသံတွေ ပြတ်ပြတ်သားသား ထွက်ရမယ် — 'thank' ရဲ့ 'th' ကို ပြတ်သားစွာထွက်ပြီး 'little' နဲ့ 'yourself' ကို မရောထွေးစေနဲ့။"
+    },
+    {
+      "id": "b1-opinions",
+      "level": "B1",
+      "phrases": [
+        {
+          "en": "In my opinion, that's a great idea.",
+          "my": "ကျွန်တော့် အမြင်အရတော့ ဒါဟာ အရမ်းကောင်းတဲ့ အကြံပဲ။",
+          "focus": "th /ð/ in 'that's'"
+        },
+        {
+          "en": "I see your point, but I disagree.",
+          "my": "ခင်ဗျားပြောတာ နားလည်ပါတယ်၊ ဒါပေမယ့် ကျွန်တော် သဘောမတူဘူး။",
+          "focus": "gr in 'disagree'"
+        },
+        {
+          "en": "That's an interesting way to look at it.",
+          "my": "အဲဒါက စိတ်ဝင်စားစရာကောင်းတဲ့ ရှုထောင့်ပဲ။",
+          "focus": "th /ð/ in 'that's'"
+        },
+        {
+          "en": "I'm not so sure about that.",
+          "my": "အဲဒါနဲ့ ပတ်သက်ပြီး ကျွန်တော် သေချာ မသိဘူး။",
+          "focus": "sh /ʃ/ in 'sure'"
+        },
+        {
+          "en": "Let's agree to disagree on this one.",
+          "my": "ဒီတစ်ခုတော့ သဘောမတူတာကို သဘောတူလိုက်ကြစို့။",
+          "focus": "gr cluster"
+        },
+        {
+          "en": "What do you think about it?",
+          "my": "ခင်ဗျား ဒါကို ဘယ်လို ထင်လဲ?",
+          "focus": "th /θ/ in 'think'"
+        }
+      ],
+      "title": "Giving Opinions Politely",
+      "title_my": "ယဉ်ယဉ်ကျေးကျေး အမြင်ထုတ်ဖော်ခြင်း",
+      "topic": "Social",
+      "target_sounds": [
+        "th /ð/ in 'that's', 'that', 'this'",
+        "gr cluster in 'great', 'agree', 'disagree'",
+        "sh /ʃ/ in 'sure'"
+      ],
+      "tip_en": "Buzz every 'th': that's, that, this. And 'agree' / 'disagree' need a real /g/ — don't soften it away.",
+      "tip_my": "'that's', 'that', 'this' တို့ရဲ့ 'th' တိုင်းကို ညည်းသံထွက်ပေးပါ။ 'agree', 'disagree' မှာ 'g' အသံ ပြတ်ပြတ်သားသား ထွက်ရမယ်။"
+    },
+    {
+      "id": "b1-travel-problems",
+      "level": "B1",
+      "phrases": [
+        {
+          "en": "My flight has been delayed by two hours.",
+          "my": "ကျွန်တော့် လေယာဉ် နှစ်နာရီလောက် နောက်ကျသွားတယ်။",
+          "focus": "fl cluster in 'flight'"
+        },
+        {
+          "en": "I've lost my luggage. What should I do?",
+          "my": "ကျွန်တော့် အိတ်ပျောက်သွားတယ်။ ဘာလုပ်ရမလဲ?",
+          "focus": "j in 'luggage'"
+        },
+        {
+          "en": "Is there another flight I can take?",
+          "my": "စီးလို့ရတဲ့ နောက်ထပ် လေယာဉ်တစ်စီး ရှိလား?",
+          "focus": "th /ð/ in 'there'"
+        },
+        {
+          "en": "I need to change my booking.",
+          "my": "ကျွန်တော့် ဘွတ်ကင်ကို ပြောင်းချင်တယ်။",
+          "focus": "ch /tʃ/ in 'change'"
+        },
+        {
+          "en": "The hotel gave my room to someone else.",
+          "my": "ဟိုတယ်က ကျွန်တော့် အခန်းကို တခြားသူကို ပေးလိုက်တယ်။",
+          "focus": "th /ð/ in 'the'"
+        },
+        {
+          "en": "Can you help me sort this out?",
+          "my": "ဒါကို ရှင်းပေးလို့ ရမလား?",
+          "focus": "th /ð/ in 'this'"
+        },
+        {
+          "en": "I'd like to speak to your manager.",
+          "my": "ခင်ဗျားတို့ရဲ့ မန်နေဂျာနဲ့ စကားပြောချင်တယ်။",
+          "focus": "sp cluster in 'speak'"
+        }
+      ],
+      "title": "Travel Problems",
+      "title_my": "ခရီးသွားရင်း ကြုံရတဲ့ ပြဿနာများ",
+      "topic": "Travel",
+      "target_sounds": [
+        "fl cluster in 'flight'",
+        "th /ð/ in 'the', 'this', 'there'",
+        "ch /tʃ/ in 'change'"
+      ],
+      "tip_en": "'Flight' needs the fl-cluster: top teeth on lower lip for /f/, then tongue flat for /l/ — don't drop either one.",
+      "tip_my": "'flight' မှာ 'fl' အသံစုလိုတယ် — အပေါ်သွားနဲ့ အောက်နှုတ်ခမ်းထိပြီး 'f' ထွက်၊ ပြီးရင် လျှာဖျားပြားပြီး 'l' ထွက်။ တစ်ခုမှ မဖြုတ်နဲ့။"
+    },
+    {
+      "id": "b1-past",
+      "level": "B1",
+      "phrases": [
+        {
+          "en": "Last year I traveled to Thailand.",
+          "my": "မနှစ်က ကျွန်တော် ထိုင်းကို ခရီးသွားခဲ့တယ်။",
+          "focus": "tr cluster in 'traveled'"
+        },
+        {
+          "en": "It was the best trip of my life.",
+          "my": "အဲဒါဟာ ကျွန်တော့် ဘဝရဲ့ အကောင်းဆုံး ခရီးပဲ။",
+          "focus": "th /ð/ in 'the'"
+        },
+        {
+          "en": "The food there was amazing.",
+          "my": "အဲဒီက အစားအသောက်တွေ အရမ်းကောင်းတယ်။",
+          "focus": "th /ð/ in 'the', 'there'"
+        },
+        {
+          "en": "I met so many friendly people.",
+          "my": "ဖော်ရွေတဲ့ လူတွေ အများကြီး တွေ့ခဲ့တယ်။",
+          "focus": "fr cluster in 'friendly'"
+        },
+        {
+          "en": "One thing I'll never forget is the sunset.",
+          "my": "ကျွန်တော် ဘယ်တော့မှ မမေ့မယ့် တစ်ခုက နေဝင်ချိန်ပဲ။",
+          "focus": "th /θ/ in 'thing'"
+        },
+        {
+          "en": "Have you ever been abroad?",
+          "my": "ခင်ဗျား နိုင်ငံခြား ရောက်ဖူးလား?",
+          "focus": "v in 'have'"
+        }
+      ],
+      "title": "Describing Past Experiences",
+      "title_my": "အတိတ်က အတွေ့အကြုံများ ဖော်ပြခြင်း",
+      "topic": "Social",
+      "target_sounds": [
+        "tr cluster in 'traveled' and 'trip'",
+        "th /ð/ in 'the' and 'there'",
+        "v in 'have' and 'never'"
+      ],
+      "tip_en": "'Traveled' and 'trip' start with tr: tongue tip behind the teeth for /t/, then curl back for /r/ — one smooth motion.",
+      "tip_my": "'traveled', 'trip' တို့ရဲ့ 'tr' — လျှာဖျားကို သွားအနောက်မှာထားပြီး 't' ထွက်၊ ပြီးရင် နောက်ကွေးပြီး 'r' ထွက်ပါ။ တစ်ဆက်တည်း ချောချောမွေ့မွေ့ ပြောပါ။"
+    },
+    {
+      "id": "b1-complaint",
+      "level": "B1",
+      "phrases": [
+        {
+          "en": "Excuse me, there's a problem with my order.",
+          "my": "ခွင့်လွှတ်ပါ၊ ကျွန်တော့် မှာယူမှုမှာ ပြဿနာ တစ်ခုရှိတယ်။",
+          "focus": "th /ð/ in 'there's'"
+        },
+        {
+          "en": "This isn't what I asked for.",
+          "my": "ဒါဟာ ကျွန်တော် တောင်းတာနဲ့ မတူဘူး။",
+          "focus": "th /ð/ in 'this', skt in 'asked'"
+        },
+        {
+          "en": "I understand, but I'm not happy with this.",
+          "my": "နားလည်ပါတယ်၊ ဒါပေမယ့် ဒါကို ကျွန်တော် မကျေနပ်ဘူး။",
+          "focus": "th /ð/ in 'this'"
+        },
+        {
+          "en": "Could you please fix this for me?",
+          "my": "ဒါကို ပြင်ပေးလို့ ရမလား?",
+          "focus": "f in 'fix'"
+        },
+        {
+          "en": "I'd like a refund, please.",
+          "my": "ငွေပြန်အမ်းပေးစေချင်တယ်။",
+          "focus": "f in 'refund'"
+        },
+        {
+          "en": "Thank you for handling it so quickly.",
+          "my": "မြန်မြန် ကိုင်တွယ်ပေးတဲ့အတွက် ကျေးဇူးတင်ပါတယ်။",
+          "focus": "th /θ/ in 'thank'"
+        },
+        {
+          "en": "I hope this doesn't happen again.",
+          "my": "ဒီလို နောက်ထပ် မဖြစ်ဖို့ မျှော်လင့်ပါတယ်။",
+          "focus": "th /ð/ in 'this'"
+        }
+      ],
+      "title": "Making a Polite Complaint",
+      "title_my": "ယဉ်ယဉ်ကျေးကျေး တိုင်ကြားခြင်း",
+      "topic": "Everyday",
+      "target_sounds": [
+        "th /ð/ in 'this' and 'there's'",
+        "final -skt in 'asked'",
+        "f in 'fix', 'for', 'refund'"
+      ],
+      "tip_en": "'Asked' ends with three consonants: /skt/ — s, then k, then t. Don't swallow the /t/ — 'asked for' is not 'ask for'.",
+      "tip_my": "'asked' ရဲ့ အဆုံး 'skt' — 's'၊ 'k'၊ 't' သုံးခုလုံး ထွက်ရမယ်။ 't' ကို မမျိုနဲ့ — 'asked for' က 'ask for' မဟုတ်ဘူး။"
+    },
+    {
+      "id": "s-th",
+      "level": "Sounds",
+      "title": "The 'th' Sounds",
+      "title_my": "'th' အသံများ",
+      "topic": "Pronunciation",
+      "target_sounds": [
+        "voiceless th /θ/ as in 'think'",
+        "voiced th /ð/ as in 'this'",
+        "th vs t/s/d minimal pairs"
+      ],
+      "tip_en": "For /θ/ (think), rest your tongue tip lightly between your teeth and blow air out with no voice. For /ð/ (this), keep the same tongue position but turn your voice on — you should feel it buzz. Never bite down: the tongue just peeks out.",
+      "tip_my": "'think' လို 'th' အသံမပါတာအတွက် လျှာဖျားကို သွားနှစ်ချောင်းကြားမှာ ပေါ့ပေါ့ပါးပါးထားပြီး လေကို မှုတ်ထုတ်ပါ။ 'this' လို အသံပါတာအတွက်က လျှာနေရာတူတူပဲ၊ ဒါပေမဲ့ အသံထည့်ပေးပါ — ညည်းသံခံစားရမယ်။ လျှာကို မကိုက်နဲ့၊ သွားကြားက နည်းနည်းလေးပဲ ထွက်နေရမယ်။",
+      "phrases": [
+        {
+          "en": "thin — tin",
+          "my": "ပါးလွှာသော — သံဖြူ",
+          "focus": "th /θ/ vs t"
+        },
+        {
+          "en": "think — sink",
+          "my": "စဉ်းစားသည် — နစ်မြုပ်သည်",
+          "focus": "th /θ/ vs s"
+        },
+        {
+          "en": "thank — tank",
+          "my": "ကျေးဇူးတင်သည် — တိုင်ကီ",
+          "focus": "th /θ/ vs t"
+        },
+        {
+          "en": "those — doze",
+          "my": "ဟိုဟာတွေ — ငိုက်မျဉ်းသည်",
+          "focus": "th /ð/ vs d"
+        },
+        {
+          "en": "I think this is thin.",
+          "my": "ဒါက ပါးလွှာတယ်လို့ ငါထင်တယ်။",
+          "focus": "th /θ/ and /ð/"
+        },
+        {
+          "en": "Thank you for those things.",
+          "my": "အဲဒီပစ္စည်းတွေအတွက် ကျေးဇူးတင်ပါတယ်။",
+          "focus": "th /θ/ and /ð/ shadowing",
+          "slow_ok": true
+        },
+        {
+          "en": "They think they're thirsty.",
+          "my": "သူတို့က ရေဆာတယ်လို့ ထင်နေကြတယ်။",
+          "focus": "th /θ/ and /ð/ shadowing"
+        },
+        {
+          "en": "This Thursday, the weather is smooth.",
+          "my": "ဒီကြာသပတေးနေ့မှာ ရာသီဥတုက သာယာတယ်။",
+          "focus": "th /θ/ and /ð/ shadowing",
+          "slow_ok": true
+        }
+      ]
+    },
+    {
+      "id": "s-vw",
+      "level": "Sounds",
+      "title": "V vs W",
+      "title_my": "'v' နဲ့ 'w' အသံများ",
+      "topic": "Pronunciation",
+      "target_sounds": [
+        "/v/ as in 'very'",
+        "/w/ as in 'wet'",
+        "v vs w minimal pairs"
+      ],
+      "tip_en": "For /v/, bite your lower lip gently with your top teeth and buzz — feel the vibration on your lip. For /w/, round your lips like blowing out a candle; no teeth touch anything. Say 'very' with teeth, 'wary' with round lips.",
+      "tip_my": "'v' အသံအတွက် အပေါ်သွားနဲ့ အောက်နှုတ်ခမ်းကို ပေါ့ပေါ့ပါးပါး ကိုက်ထားပြီး ညည်းသံထွက်ပါ — နှုတ်ခမ်းမှာ တုန်ခါမှုခံစားရမယ်။ 'w' အသံအတွက် ဖယောင်းတိုင်မှုတ်သလို နှုတ်ခမ်းဝိုင်းပါ၊ သွားနဲ့ ဘာမှ မထိစေနဲ့။ 'very' ကို သွားနဲ့ပြော၊ 'wary' ကို နှုတ်ခမ်းဝိုင်းပြော။",
+      "phrases": [
+        {
+          "en": "very — wary",
+          "my": "အလွန်ပဲ — သတိထားသော",
+          "focus": "v vs w"
+        },
+        {
+          "en": "vine — wine",
+          "my": "စပျစ်နွယ် — ဝိုင်",
+          "focus": "v vs w"
+        },
+        {
+          "en": "vest — west",
+          "my": "အင်္ကျီအတွင်းခံ — အနောက်",
+          "focus": "v vs w"
+        },
+        {
+          "en": "very well — wary walk",
+          "my": "အလွန်ကောင်းတယ် — သတိထားတဲ့ လမ်းလျှောက်ခြင်း",
+          "focus": "v vs w pairs"
+        },
+        {
+          "en": "We viewed the vast valley.",
+          "my": "ကျွန်တော်တို့ ကျယ်ပြန့်တဲ့ ချိုင့်ဝှမ်းကို ကြည့်ခဲ့ကြတယ်။",
+          "focus": "v vs w shadowing"
+        },
+        {
+          "en": "Vera will visit Wendy on Wednesday.",
+          "my": "Vera က ဗုဒ္ဓဟူးနေ့မှာ Wendy ကို သွားလည်မယ်။",
+          "focus": "v vs w shadowing",
+          "slow_ok": true
+        },
+        {
+          "en": "The vet drove west in the van.",
+          "my": "တိရစ္ဆာန်ဆရာဝန်က အနောက်ဘက်ကို ဗန်ကားနဲ့ မောင်းသွားတယ်။",
+          "focus": "v vs w shadowing",
+          "slow_ok": true
+        }
+      ]
+    },
+    {
+      "id": "s-zs",
+      "level": "Sounds",
+      "title": "Z vs S",
+      "title_my": "'z' နဲ့ 's' အသံများ",
+      "topic": "Pronunciation",
+      "target_sounds": [
+        "/z/ as in 'zip'",
+        "/s/ as in 'sip'",
+        "z vs s minimal pairs"
+      ],
+      "tip_en": "Keep your tongue in exactly the same place for both — tip just behind your teeth. For /s/ (sip), only air comes out. For /z/ (zip), turn your voice on and feel the buzz on your tongue tip. Hold 'zzzz' like a bee before you start.",
+      "tip_my": "နှစ်ခုလုံးအတွက် လျှာနေရာ အတူတူပဲထားပါ — လျှာဖျားကို သွားအနောက်မှာ။ 's' အသံမှာ လေပဲ ထွက်တယ်။ 'z' အသံမှာ အသံထည့်ပြီး လျှာဖျားမှာ ညည်းသံခံစားရမယ်။ မစခင် ပျားလို 'zzzz' လို့ ညည်းကြည့်ပါ။",
+      "phrases": [
+        {
+          "en": "zip — sip",
+          "my": "ဇစ် — နည်းနည်းသောက်",
+          "focus": "z vs s"
+        },
+        {
+          "en": "buzz — bus",
+          "my": "ညည်းသံ — ဘတ်စ်ကား",
+          "focus": "z vs s"
+        },
+        {
+          "en": "eyes — ice",
+          "my": "မျက်လုံးများ — ရေခဲ",
+          "focus": "z vs s"
+        },
+        {
+          "en": "zoo — Sue",
+          "my": "တိရစ္ဆာန်ရုံ — Sue (အမည်)",
+          "focus": "z vs s"
+        },
+        {
+          "en": "Please close those doors.",
+          "my": "အဲဒီတံခါးတွေကို ပိတ်ပေးပါ။",
+          "focus": "final z in 'close', 'doors'",
+          "slow_ok": true
+        },
+        {
+          "en": "The lazy zebra snoozes in the zoo.",
+          "my": "ပျင်းရိတဲ့ မြင်းကျားက တိရစ္ဆာန်ရုံမှာ အိပ်ငိုက်နေတယ်။",
+          "focus": "z shadowing"
+        },
+        {
+          "en": "He has six pens and two razors.",
+          "my": "သူ့မှာ ဘောပင် ခြောက်ချောင်းနဲ့ မုတ်ဆိတ်ရိတ်ဓား နှစ်ချောင်း ရှိတယ်။",
+          "focus": "s vs z shadowing",
+          "slow_ok": true
+        }
+      ]
+    },
+    {
+      "id": "s-rl",
+      "level": "Sounds",
+      "title": "R vs L",
+      "title_my": "'r' နဲ့ 'l' အသံများ",
+      "topic": "Pronunciation",
+      "target_sounds": [
+        "/r/ as in 'red'",
+        "/l/ as in 'led'",
+        "r vs l minimal pairs"
+      ],
+      "tip_en": "For /l/, press your tongue tip flat against the ridge behind your top teeth — air flows around the sides. For /r/, curl the tongue tip back without touching anything. If 'right' sounds like 'light', your tongue is touching when it shouldn't.",
+      "tip_my": "'l' အသံအတွက် လျှာဖျားကို အပေါ်သွားအနောက် အဖုအထစ်မှာ ကပ်ထားပါ — လေက ဘေးနှစ်ဖက်က ထွက်တယ်။ 'r' အသံအတွက် လျှာဖျားကို ဘာနဲ့မှ မထိစေဘဲ နောက်ကွေးထားပါ။ 'right' က 'light' လို ထွက်နေရင် လျှာက မထိသင့်တဲ့နေရာ ထိနေလို့ပဲ။",
+      "phrases": [
+        {
+          "en": "right — light",
+          "my": "မှန်ကန်သော — အလင်း",
+          "focus": "r vs l"
+        },
+        {
+          "en": "red — led",
+          "my": "အနီရောင် — ဦးဆောင်ခဲ့သည်",
+          "focus": "r vs l"
+        },
+        {
+          "en": "grass — glass",
+          "my": "မြက် — ဖန်",
+          "focus": "r vs l"
+        },
+        {
+          "en": "pray — play",
+          "my": "ဆုတောင်းသည် — ကစားသည်",
+          "focus": "r vs l"
+        },
+        {
+          "en": "The red lorry rolled along the road.",
+          "my": "အနီရောင် လော်ရီကားက လမ်းပေါ် လိမ့်သွားတယ်။",
+          "focus": "r vs l shadowing"
+        },
+        {
+          "en": "Really? That's really wrong!",
+          "my": "တကယ်လား? အဲဒါ တကယ်ကို မှားနေတာပဲ!",
+          "focus": "r vs l shadowing",
+          "slow_ok": true
+        },
+        {
+          "en": "Please collect the red plates.",
+          "my": "အနီရောင် ပန်းကန်တွေကို စုပေးပါ။",
+          "focus": "r vs l shadowing",
+          "slow_ok": true
+        },
+        {
+          "en": "Larry rarely laughs loudly.",
+          "my": "Larry က ကျယ်ကျယ်လောလော ရယ်ခဲတယ်။",
+          "focus": "r vs l shadowing"
+        }
+      ]
+    },
+    {
+      "id": "s-final",
+      "level": "Sounds",
+      "title": "Final Consonants",
+      "title_my": "စကားလုံးအဆုံး ဗျည်းအသံများ",
+      "topic": "Pronunciation",
+      "target_sounds": [
+        "final -t and -d (worked, helped)",
+        "final clusters -st, -sk (next, asked)",
+        "final -ks and -sts (six, texts)"
+      ],
+      "tip_en": "Myanmar syllables rarely end in hard consonants, so don't swallow them. For 'worked', say work, then tap a crisp /t/ at the very end. For 'texts', build it up: tex, then add /ts/. Every final consonant is a tiny tap — never skip it.",
+      "tip_my": "မြန်မာစကားမှာ စကားလုံးအဆုံးမှာ ဗျည်းအသံ ပြတ်ပြတ်သားသား သိပ်မရှိတတ်တော့ အဆုံးသံတွေကို မမျိုမိစေနဲ့။ 'worked' အတွက် 'work' ပြောပြီး အဆုံးမှာ 't' ကို ပြတ်ပြတ်သားသား ထည့်ပါ။ 'texts' အတွက် 'tex' ကို အရင်ပြောပြီး 'ts' ထပ်ထည့်ပါ။ အဆုံးဗျည်းတိုင်းက သေးသေးလေး ထိချက်တစ်ခုပဲ — တစ်ခုမှ မကျော်နဲ့။",
+      "phrases": [
+        {
+          "en": "worked",
+          "my": "အလုပ်လုပ်ခဲ့သည်",
+          "focus": "final -kt"
+        },
+        {
+          "en": "helped",
+          "my": "ကူညီခဲ့သည်",
+          "focus": "final -pt"
+        },
+        {
+          "en": "next",
+          "my": "နောက်တစ်ခု",
+          "focus": "final -kst"
+        },
+        {
+          "en": "asked",
+          "my": "မေးခဲ့သည်",
+          "focus": "final -skt"
+        },
+        {
+          "en": "I helped him.",
+          "my": "ငါ သူ့ကို ကူညီခဲ့တယ်။",
+          "focus": "final -pt in 'helped'",
+          "slow_ok": true
+        },
+        {
+          "en": "She sent six texts.",
+          "my": "သူက စာတို ခြောက်စောင် ပို့ခဲ့တယ်။",
+          "focus": "final -sts in 'texts'",
+          "slow_ok": true
+        },
+        {
+          "en": "We watched the match.",
+          "my": "ကျွန်တော်တို့ ပွဲကို ကြည့်ခဲ့ကြတယ်။",
+          "focus": "final -tcht in 'watched'"
+        },
+        {
+          "en": "He fixed the desk.",
+          "my": "သူ စားပွဲကို ပြင်ခဲ့တယ်။",
+          "focus": "final -kst in 'fixed'"
+        }
+      ]
+    },
+    {
+      "id": "s-clusters",
+      "level": "Sounds",
+      "title": "Consonant Clusters",
+      "title_my": "ဗျည်းအသံစုများ",
+      "topic": "Pronunciation",
+      "target_sounds": [
+        "initial clusters str-, spr-, spl-",
+        "final clusters -sps, -sts (crisps)",
+        "clusters linked across words"
+      ],
+      "tip_en": "Don't insert a vowel between the consonants — 'street' is not 'suh-treet'. Say the whole cluster in one breath: for 'splash', hiss /s/, then pop /p/, then flow into /l/ without stopping. Practice slowly, then speed up.",
+      "tip_my": "ဗျည်းနှစ်ခုကြားမှာ သရသံ ထည့်မပြောနဲ့ — 'street' က 'suh-treet' မဟုတ်ဘူး။ အသံစုတစ်ခုလုံးကို တစ်ရှိုက်တည်း ပြောပါ။ 'splash' အတွက် 's' ကို ရှူးရှဲထွက်၊ ပြီးရင် 'p' ကို ပေါက်ထွက်၊ ပြီးရင် ရပ်မနေဘဲ 'l' ထဲ ဝင်သွားပါ။ နှေးနှေးနဲ့ လေ့ကျင့်၊ ပြီးရင် မြန်မြန်ပြောပါ။",
+      "phrases": [
+        {
+          "en": "street",
+          "my": "လမ်း",
+          "focus": "str cluster"
+        },
+        {
+          "en": "splash",
+          "my": "ရေစင်",
+          "focus": "spl cluster"
+        },
+        {
+          "en": "crisps",
+          "my": "အာလူးကြော်",
+          "focus": "final -sps"
+        },
+        {
+          "en": "spring",
+          "my": "နွေဦး",
+          "focus": "spr cluster"
+        },
+        {
+          "en": "strong street",
+          "my": "ခိုင်ခံ့တဲ့ လမ်း",
+          "focus": "str + str linking"
+        },
+        {
+          "en": "split screen",
+          "my": "မျက်နှာပြင် ခွဲခြားခြင်း",
+          "focus": "spl + scr linking",
+          "slow_ok": true
+        },
+        {
+          "en": "The spring splash sparkled on the street.",
+          "my": "နွေဦးရေစင်က လမ်းပေါ်မှာ တောက်ပနေတယ်။",
+          "focus": "cluster shadowing",
+          "slow_ok": true
+        }
+      ]
+    },
+    {
+      "id": "s-stress",
+      "level": "Sounds",
+      "title": "Word Stress",
+      "title_my": "စကားလုံး အလေးပေးသံ",
+      "topic": "Pronunciation",
+      "target_sounds": [
+        "noun vs verb stress (REcord vs reCORD)",
+        "stress shift in long words (PHOtograph vs phoTOgraphy)",
+        "compound vs phrase stress (GREENHOUSE vs green HOUSE)"
+      ],
+      "tip_en": "Stress the wrong syllable and the word changes meaning. Make the stressed syllable louder, longer, and higher in pitch — the others shrink to a quick 'uh' sound. Say RE-cord (the thing) with a punch on RE; say re-CORD (the action) with the punch on CORD.",
+      "tip_my": "အလေးပေးသံ မှားရင် စကားလုံးအဓိပ္ပာယ် ပြောင်းသွားတယ်။ အလေးပေးတဲ့ အသံလုံးကို အသံကျယ်ကျယ်၊ ကြာကြာ၊ အသံမြင့်မြင့် ပြောပါ — ကျန်တာတွေကို 'uh' လို မြန်မြန်သေးသေးပြောပါ။ 'RE-cord' (ပစ္စည်း) မှာ 'RE' ကို ထိထိမိမိပြော၊ 're-CORD' (လုပ်ဆောင်ချက်) မှာ 'CORD' ကို ထိထိမိမိပြောပါ။",
+      "phrases": [
+        {
+          "en": "REcord (noun) — reCORD (verb)",
+          "my": "မှတ်တမ်း — မှတ်တမ်းတင်သည်",
+          "focus": "noun vs verb stress"
+        },
+        {
+          "en": "PREsent (noun) — preSENT (verb)",
+          "my": "လက်ဆောင် — တင်ပြသည်",
+          "focus": "noun vs verb stress"
+        },
+        {
+          "en": "PHOtograph — phoTOgraphy",
+          "my": "ဓာတ်ပုံ — ဓာတ်ပုံပညာ",
+          "focus": "stress shift in long words"
+        },
+        {
+          "en": "a GREEN HOUSE — a green HOUSE",
+          "my": "ဖန်လုံအိမ် — အစိမ်းရောင် အိမ်",
+          "focus": "compound vs phrase stress"
+        },
+        {
+          "en": "I need to reCORD the REcord.",
+          "my": "ငါ အဲဒီမှတ်တမ်းကို မှတ်တမ်းတင်ဖို့ လိုတယ်။",
+          "focus": "noun vs verb stress",
+          "slow_ok": true
+        },
+        {
+          "en": "She gave a PREsent and will preSENT it tomorrow.",
+          "my": "သူ လက်ဆောင်ပေးပြီး မနက်ဖြန် တင်ပြမယ်။",
+          "focus": "noun vs verb stress"
+        },
+        {
+          "en": "PHOtography is her hobby.",
+          "my": "ဓာတ်ပုံရိုက်ခြင်းက သူ့ဝါသနာပဲ။",
+          "focus": "stress in long words",
+          "slow_ok": true
+        },
+        {
+          "en": "They live in a GREENHOUSE, not a green HOUSE.",
+          "my": "သူတို့က ဖန်လုံအိမ်မှာ နေတာ၊ အစိမ်းရောင်အိမ်မှာ မဟုတ်ဘူး။",
+          "focus": "compound vs phrase stress"
+        }
+      ]
+    },
+    {
+      "id": "s-intonation",
+      "level": "Sounds",
+      "title": "Sentence Intonation",
+      "title_my": "ဝါကျအသံ အတက်အကျ",
+      "topic": "Pronunciation",
+      "target_sounds": [
+        "rising intonation in yes/no questions",
+        "falling intonation in wh-questions and statements",
+        "list intonation"
+      ],
+      "tip_en": "Yes/no questions rise at the end — let your voice go up like you're unsure: 'Are you coming? ↗'. Wh-questions and statements fall — your voice lands down firmly: 'Where are you going? ↘'. For lists, rise on each item and fall on the last one.",
+      "tip_my": "Yes/no မေးခွန်းတွေမှာ အဆုံးမှာ အသံတက်ပါ — မသေချာသလို အသံကို အပေါ်တင်ပါ။ 'Are you coming? ↗'။ Wh- မေးခွန်းနဲ့ ကြေညာဝါကျတွေမှာ အသံကျပါ — 'Where are you going? ↘' လို ခိုင်ခိုင်မာမာ ချပါ။ စာရင်းပြောရင် တစ်ခုချင်းစီမှာ အသံတက်၊ နောက်ဆုံးတစ်ခုမှာ အသံကျပါ။",
+      "phrases": [
+        {
+          "en": "Are you coming? ↗",
+          "my": "မင်း လာမှာလား?",
+          "focus": "rising yes/no question"
+        },
+        {
+          "en": "Is it ready? ↗",
+          "my": "အဆင်သင့်ပြီလား?",
+          "focus": "rising yes/no question"
+        },
+        {
+          "en": "Where are you going? ↘",
+          "my": "မင်း ဘယ်သွားမှာလဲ?",
+          "focus": "falling wh-question"
+        },
+        {
+          "en": "What time is it? ↘",
+          "my": "ဘယ်အချိန်ရှိပြီလဲ?",
+          "focus": "falling wh-question"
+        },
+        {
+          "en": "I'm fine, thanks. ↘",
+          "my": "ငါ အဆင်ပြေပါတယ်၊ ကျေးဇူးတင်ပါတယ်။",
+          "focus": "falling statement"
+        },
+        {
+          "en": "I bought apples ↗, bananas ↗, and oranges ↘.",
+          "my": "ငါ ပန်းသီး၊ ငှက်ပျောသီး၊ လိမ္မော်သီး ဝယ်ခဲ့တယ်။",
+          "focus": "list intonation",
+          "slow_ok": true
+        },
+        {
+          "en": "Do you want tea ↗ or coffee ↘?",
+          "my": "လက်ဖက်ရည် သောက်မလား၊ ကော်ဖီ သောက်မလား?",
+          "focus": "choice question intonation",
+          "slow_ok": true
+        },
+        {
+          "en": "She's leaving tomorrow ↘, but she'll call tonight ↗... maybe ↘.",
+          "my": "သူ မနက်ဖြန် ထွက်မယ်၊ ဒါပေမဲ့ ဒီည ဖုန်းခေါ်မယ်... ဖြစ်နိုင်တယ်။",
+          "focus": "mixed intonation shadowing"
+        }
+      ]
+    }
+  ]
+}

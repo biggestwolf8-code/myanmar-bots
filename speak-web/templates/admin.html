@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>🔧 Admin</h1>
+{% if not logged_in %}
+<div class="card">
+  {% if not configured %}<p class="err show">ADMIN_PASSWORD is not set on the server.</p>{% endif %}
+  <h3>Sign in</h3>
+  <div class="err" id="err"></div>
+  <input type="password" id="pw" placeholder="Admin password">
+  <button class="btn" id="login">Sign in</button>
+</div>
+{% else %}
+<div class="admintabs" id="tabs">
+  <button data-t="codes" class="active">🎟 Codes</button>
+  <button data-t="lessons">📚 Lessons</button>
+  <button data-t="stats">📊 Stats</button>
+</div>
+
+<div id="tab-codes">
+  <div class="card">
+    <h3>New invite codes</h3>
+    <div class="row">
+      <input type="text" id="n" value="10" style="max-width:90px;">
+      <input type="text" id="label" placeholder="Label (optional)" style="flex:1;">
+      <button class="btn" id="newcodes" style="width:auto;">Generate</button>
+    </div>
+    <div id="fresh"></div>
+  </div>
+  <div class="card"><h3>All codes</h3><div id="codelist"><p class="muted">Loading…</p></div></div>
+</div>
+
+<div id="tab-lessons" style="display:none;">
+  <div class="card"><h3>Lessons</h3><div id="lessonlist"><p class="muted">Loading…</p></div></div>
+  <div class="card" id="editor" style="display:none;">
+    <h3 id="edtitle">Edit lesson</h3>
+    <p class="small muted">Edit as JSON. Every phrase needs <b>en</b>, <b>my</b>, <b>focus</b>. Every lesson needs <b>target_sounds</b>, <b>tip_en</b>, <b>tip_my</b>. Saved as an override — Reset restores the built-in version.</p>
+    <div class="err" id="ederr"></div>
+    <textarea id="edjson" rows="18" style="font-family:monospace; font-size:13px;"></textarea>
+    <div class="row">
+      <button class="btn" id="edsave">💾 Save</button>
+      <button class="btn secondary" id="edreset">↩ Reset to built-in</button>
+    </div>
+  </div>
+</div>
+
+<div id="tab-stats" style="display:none;">
+  <div class="card"><h3>Usage totals</h3><div id="totals"><p class="muted">Loading…</p></div></div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+{% if not logged_in %}
+document.getElementById("login").addEventListener("click", async () => {
+  const pw = document.getElementById("pw").value;
+  const err = document.getElementById("err");
+  try {
+    const r = await fetch("/api/admin/login", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({password:pw})});
+    const j = await r.json();
+    if (j.ok) location.reload();
+    else { err.textContent = j.error || "Wrong password."; err.classList.add("show"); }
+  } catch(e){ err.textContent = "Connection problem."; err.classList.add("show"); }
+});
+{% else %}
+function esc(s){ const d=document.createElement("div"); d.textContent=s==null?"":s; return d.innerHTML; }
+let DATA = null;
+async function load(){
+  const r = await fetch("/api/admin/data"); DATA = await r.json();
+  if (!DATA.ok) return;
+  // codes
+  let h = '<table><tr><th>Code</th><th>Status</th><th>Today</th><th>Phrases</th><th>Streak</th><th>Cost</th><th></th></tr>';
+  DATA.codes.forEach(c => {
+    h += "<tr><td><b>"+esc(c.code)+"</b><br><span class='small muted'>"+esc(c.label||"")+"</span></td>"
+      + "<td>"+(c.used?"✅ used":"🆕 fresh")+"</td><td>"+c.today+"</td><td>"+c.phrases_done+"</td>"
+      + "<td>"+c.streak+"</td><td>$"+c.cost+"</td>"
+      + "<td><button class='btn danger' style='padding:6px 10px; font-size:13px; width:auto;' data-revoke='"+esc(c.code)+"'>Revoke</button></td></tr>";
+  });
+  document.getElementById("codelist").innerHTML = h + "</table>";
+  // lessons
+  let lh = '<table><tr><th>ID</th><th>Title</th><th>Phrases</th><th></th></tr>';
+  DATA.lessons.forEach(l => {
+    lh += "<tr><td><b>"+esc(l.id)+"</b> <span class='small muted'>"+esc(l.level)+"</span>"+
+      (l.overridden?" ✏️":"")+"</td><td>"+esc(l.title)+"</td><td>"+l.n_phrases+"</td>"
+      + "<td><button class='btn secondary' style='padding:6px 10px; font-size:13px; width:auto;' data-edit='"+esc(l.id)+"'>Edit</button></td></tr>";
+  });
+  document.getElementById("lessonlist").innerHTML = lh + "</table>";
+  // totals
+  const t = DATA.totals;
+  document.getElementById("totals").innerHTML =
+    "<p>💰 Total API cost: <b>$"+t.cost+"</b> · 📥 "+t.in+" in / "+t.out+" out tokens · 🎟 "+t.n_codes+" codes</p>"
+    + "<p class='small muted'>Daily caps: "+DATA.daily_limit+" voice turns / $"+DATA.daily_cost_limit+" per code.</p>";
+}
+document.getElementById("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  document.querySelectorAll("#tabs button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  ["codes","lessons","stats"].forEach(t => {
+    document.getElementById("tab-"+t).style.display = t===b.dataset.t ? "" : "none";
+  });
+});
+document.getElementById("newcodes").addEventListener("click", async () => {
+  const n = parseInt(document.getElementById("n").value)||10;
+  const label = document.getElementById("label").value;
+  const r = await fetch("/api/admin/newcodes", {method:"POST",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify({n, label})});
+  const j = await r.json();
+  if (j.ok) {
+    document.getElementById("fresh").innerHTML =
+      "<pre class='code'>"+j.codes.map(c=>esc(c.link)).join("\n")+"</pre>";
+    load();
+  }
+});
+document.addEventListener("click", async e => {
+  const rv = e.target.closest("[data-revoke]");
+  if (rv && confirm("Revoke code "+rv.dataset.revoke+"? The student loses access immediately.")) {
+    await fetch("/api/admin/revoke", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({code:rv.dataset.revoke})});
+    load(); return;
+  }
+  const ed = e.target.closest("[data-edit]");
+  if (ed) {
+    const r = await fetch("/api/admin/lesson/"+ed.dataset.edit);
+    const j = await r.json();
+    if (j.ok) {
+      document.getElementById("edtitle").textContent = "Edit: "+j.lesson.id;
+      document.getElementById("edjson").value = JSON.stringify(j.lesson, null, 2);
+      document.getElementById("edjson").dataset.id = j.lesson.id;
+      document.getElementById("editor").style.display = "";
+      document.getElementById("editor").scrollIntoView();
+    }
+  }
+});
+document.getElementById("edsave").addEventListener("click", async () => {
+  const ta = document.getElementById("edjson");
+  const err = document.getElementById("ederr");
+  err.classList.remove("show");
+  let lesson;
+  try { lesson = JSON.parse(ta.value); }
+  catch(e){ err.textContent = "Invalid JSON: "+e.message; err.classList.add("show"); return; }
+  const r = await fetch("/api/admin/lesson", {method:"POST",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify({lesson})});
+  const j = await r.json();
+  if (j.ok) { alert("Saved."); load(); }
+  else { err.textContent = j.error || "Save failed."; err.classList.add("show"); }
+});
+document.getElementById("edreset").addEventListener("click", async () => {
+  const id = document.getElementById("edjson").dataset.id;
+  if (!id || !confirm("Reset "+id+" to the built-in version?")) return;
+  await fetch("/api/admin/lesson_reset", {method:"POST",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify({id})});
+  document.getElementById("editor").style.display = "none";
+  load();
+});
+load();
+{% endif %}
+</script>
+{% endblock %}

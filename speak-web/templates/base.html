@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{ app_name }}</title>
+<style>
+:root{
+  --accent:#5b5bd6; --accent-dark:#4646b8; --bg:#f4f5fb; --card:#ffffff;
+  --ink:#1c1e2a; --muted:#6b7280; --line:#e5e7f0; --gold:#f59e0b; --fire:#ef4444;
+  --green:#16a34a; --radius:14px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Myanmar",sans-serif;
+  background:var(--bg); color:var(--ink); padding-bottom:84px;}
+header.top{position:sticky; top:0; z-index:10; background:var(--accent); color:#fff;
+  padding:12px 16px; display:flex; align-items:center; justify-content:space-between;}
+header.top .brand{font-weight:800; font-size:19px; letter-spacing:.2px;}
+header.top .stats{display:flex; gap:12px; font-size:15px; font-weight:700;}
+main{max-width:600px; margin:0 auto; padding:14px 14px 30px;}
+.card{background:var(--card); border-radius:var(--radius); padding:16px; margin:12px 0;
+  box-shadow:0 1px 4px rgba(20,20,60,.07); border:1px solid var(--line);}
+h1{font-size:24px; margin:6px 0 4px;} h2{font-size:19px; margin:4px 0 8px;} h3{font-size:16px; margin:2px 0 6px;}
+p{line-height:1.55;} .muted{color:var(--muted);} .small{font-size:13px;}
+.btn{display:inline-block; border:0; border-radius:12px; padding:13px 20px; font-size:16px;
+  font-weight:700; background:var(--accent); color:#fff; cursor:pointer; width:100%; text-align:center;}
+.btn:active{background:var(--accent-dark); transform:scale(.99);}
+.btn.secondary{background:#eef0fa; color:var(--accent);}
+.btn.ghost{background:transparent; color:var(--accent); border:2px solid var(--accent);}
+.btn.danger{background:#fee2e2; color:#b91c1c;}
+.btn:disabled{opacity:.55;}
+.row{display:flex; gap:10px;} .row .btn{width:auto; flex:1;}
+input[type=text],input[type=password],textarea,select{width:100%; padding:12px 14px; font-size:16px;
+  border:2px solid var(--line); border-radius:12px; margin:6px 0; font-family:inherit;}
+input:focus,textarea:focus{outline:none; border-color:var(--accent);}
+nav.bottom{position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line);
+  display:flex; z-index:10; padding-bottom:env(safe-area-inset-bottom);}
+nav.bottom a{flex:1; text-align:center; padding:10px 4px 8px; text-decoration:none; color:var(--muted);
+  font-size:12px; font-weight:600;}
+nav.bottom a .ico{font-size:23px; display:block;}
+nav.bottom a.active{color:var(--accent);}
+footer.attrib{text-align:center; color:var(--muted); font-size:12px; padding:18px 0 6px;}
+.leveltabs{display:flex; gap:8px; margin:10px 0;}
+.leveltabs button{flex:1; padding:10px; border-radius:10px; border:2px solid var(--line);
+  background:#fff; font-weight:800; font-size:15px; cursor:pointer;}
+.leveltabs button.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+.lessoncard{display:block; text-decoration:none; color:inherit;}
+.lessoncard .lvl{display:inline-block; font-size:12px; font-weight:800; background:#eef0fa;
+  color:var(--accent); border-radius:8px; padding:3px 10px; margin-bottom:6px;}
+.pbar{height:8px; background:var(--line); border-radius:6px; margin-top:10px; overflow:hidden;}
+.pbar > div{height:100%; background:var(--green); border-radius:6px;}
+.donebadge{color:var(--green); font-weight:800;}
+.phrase{border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin:12px 0; background:#fff;}
+.phrase .en{font-size:19px; font-weight:700; line-height:1.45;}
+.phrase .my{font-size:15px; color:var(--muted); margin-top:6px; line-height:1.6;}
+.phrase .actions{display:flex; gap:10px; margin-top:12px;}
+.phrase .actions button{flex:1; padding:13px 6px; font-size:16px; font-weight:700; border-radius:12px;
+  border:2px solid var(--line); background:#fff; cursor:pointer;}
+.phrase .actions button.listen{border-color:var(--accent); color:var(--accent);}
+.phrase .actions button.mic{background:var(--accent); color:#fff; border-color:var(--accent);}
+.phrase .actions button.mic.rec{background:var(--fire); border-color:var(--fire); animation:pulse 1.2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.72}}
+.phrase.done{border-color:var(--green);}
+.phrase.done .en::after{content:" ✓"; color:var(--green);}
+.feedback{margin-top:12px; padding:12px; border-radius:10px; background:#f8faff; border:1px solid var(--line); display:none;}
+.feedback.show{display:block;}
+.stars{font-size:22px; letter-spacing:2px; margin:2px 0 8px;}
+.stars .on{color:var(--gold);} .stars .off{color:#d4d7e3;}
+.fb-label{font-size:12px; font-weight:800; text-transform:uppercase; color:var(--muted); margin-top:8px;}
+.micbig{width:96px; height:96px; border-radius:50%; border:0; background:var(--accent); color:#fff;
+  font-size:40px; cursor:pointer; display:block; margin:18px auto; box-shadow:0 6px 18px rgba(91,91,214,.35);}
+.micbig.rec{background:var(--fire); animation:pulse 1.2s infinite;}
+.msg{padding:12px 14px; border-radius:12px; margin:10px 0; max-width:92%;}
+.msg.you{background:#eef0fa; margin-left:auto;}
+.msg.tutor{background:#fff; border:1px solid var(--line);}
+.msg .my{color:var(--muted); font-size:14px; margin-top:6px; line-height:1.6;}
+.status{min-height:24px; text-align:center; color:var(--muted); font-size:14px; margin:6px 0;}
+table{width:100%; border-collapse:collapse; font-size:14px;}
+th,td{text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top;}
+th{color:var(--muted); font-size:12px; text-transform:uppercase;}
+.admintabs{display:flex; gap:8px; margin:10px 0;}
+.admintabs button{flex:1; padding:10px; border-radius:10px; border:2px solid var(--line); background:#fff; font-weight:700; cursor:pointer;}
+.admintabs button.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+pre.code{background:#101a30; color:#dbe4ff; padding:12px; border-radius:10px; overflow-x:auto; font-size:13px;}
+.err{background:#fee2e2; color:#b91c1c; padding:10px 12px; border-radius:10px; margin:8px 0; font-size:14px; display:none;}
+.err.show{display:block;}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">🎙️ {{ app_name }}</div>
+  {% if logged_in and stats is defined %}
+  <div class="stats"><span title="day streak">🔥 {{ stats.streak }}</span><span title="experience">⭐ {{ stats.xp }}</span></div>
+  {% endif %}
+</header>
+<main>
+{% block content %}{% endblock %}
+<footer class="attrib">Powered by OpenAI · Made for MasterClass English learners</footer>
+</main>
+{% if logged_in and not admin %}
+<nav class="bottom">
+  <a href="/" class="{% if nav=='home' %}active{% endif %}"><span class="ico">🏠</span>Lessons</a>
+  <a href="/freetalk" class="{% if nav=='talk' %}active{% endif %}"><span class="ico">💬</span>Free Talk</a>
+</nav>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>
