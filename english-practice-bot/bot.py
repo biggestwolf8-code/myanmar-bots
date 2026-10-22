@@ -162,30 +162,36 @@ def send_text(chat_id, text, reply_to=None, keyboard=None):
         return None
 
 
-def send_protected_video(chat_id, file_id, caption=""):
+def send_protected_video(chat_id, file_id, caption="", keyboard=None):
     """Send a course video so it can't be saved or forwarded (protect_content)."""
+    params = {
+        "chat_id": chat_id,
+        "video": file_id,
+        "caption": caption[:1024],
+        "protect_content": "true",
+        "supports_streaming": "true",
+    }
+    if keyboard:
+        params["reply_markup"] = keyboard
     try:
-        return tg("sendVideo", {
-            "chat_id": chat_id,
-            "video": file_id,
-            "caption": caption[:1024],
-            "protect_content": "true",
-            "supports_streaming": "true",
-        }, timeout=90)
+        return tg("sendVideo", params, timeout=90)
     except Exception as e:
         print("sendVideo failed:", e)
         return None
 
 
-def send_protected_document(chat_id, file_id, caption=""):
+def send_protected_document(chat_id, file_id, caption="", keyboard=None):
     """Send a course worksheet so it can't be saved or forwarded."""
+    params = {
+        "chat_id": chat_id,
+        "document": file_id,
+        "caption": caption[:1024],
+        "protect_content": "true",
+    }
+    if keyboard:
+        params["reply_markup"] = keyboard
     try:
-        return tg("sendDocument", {
-            "chat_id": chat_id,
-            "document": file_id,
-            "caption": caption[:1024],
-            "protect_content": "true",
-        }, timeout=90)
+        return tg("sendDocument", params, timeout=90)
     except Exception as e:
         print("sendDocument failed:", e)
         return None
@@ -204,7 +210,7 @@ def send_course_list(chat_id, page=0, thread=None):
 
 
 def send_course_set(chat_id, n, thread=None):
-    """Deliver one course set: protected video + protected worksheet."""
+    """Deliver one course set: protected video + worksheet, with a Back button."""
     n = int(n)
     title = dict(video_course.SETS).get(n, f"Set {n}")
     video_id, pdf_id = video_course.media_for(n)
@@ -213,10 +219,17 @@ def send_course_set(chat_id, n, thread=None):
                   f"⏳ Set {n} ({title}) is being uploaded — try again in a little while!",
                   thread)
         return
+    page = (n - 1) // video_course.PAGE_SIZE
+    back_kb = json.dumps({"inline_keyboard": [
+        [{"text": "⬅️ Back to topics",
+          "callback_data": f"course:back:{page}"}]]})
     caption = f"🎬 Set {n}: {title}\n{video_course.COURSE_NAME}"
-    send_protected_video(chat_id, video_id, caption)
     if pdf_id:
-        send_protected_document(chat_id, pdf_id, f"📄 Worksheet — Set {n}: {title}")
+        send_protected_video(chat_id, video_id, caption)
+        send_protected_document(chat_id, pdf_id, f"📄 Worksheet — Set {n}: {title}",
+                                keyboard=back_kb)
+    else:
+        send_protected_video(chat_id, video_id, caption, keyboard=back_kb)
 
 
 def send_typing(chat_id):
@@ -1339,6 +1352,17 @@ def handle_callback(cq):
                 return
             answer(f"Sending Set {set_n}…")
             send_course_set(chat_id, set_n)
+            return
+        if parts[1] == "back":
+            # "Back to topics" on a delivered set: the button sits on a
+            # video/document message, which can't be edited into a text list,
+            # so send a fresh topic list (on the page the set came from).
+            try:
+                page = int(parts[2])
+            except (ValueError, IndexError):
+                page = 0
+            answer()
+            send_course_list(chat_id, page)
             return
         answer("Unknown action.")
         return
