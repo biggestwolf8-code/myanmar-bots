@@ -1303,7 +1303,7 @@ def handle_callback(cq):
     chat_id = msg.get("chat", {}).get("id")
     msg_id = msg.get("message_id")
 
-    def answer(text, alert=False):
+    def answer(text="", alert=False):
         try:
             tg("answerCallbackQuery", {"callback_query_id": cq_id, "text": text,
                                       "show_alert": alert})
