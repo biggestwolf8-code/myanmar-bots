@@ -834,7 +834,8 @@ def api_admin_narrate():
     """Admin-only: synthesize narration audio with a chosen OpenAI TTS voice.
 
     Used to build the demo-video voiceovers. JSON body: {"text": str (<=2000
-    chars), "voice": one of alloy/echo/fable/onyx/nova/shimmer (default onyx)}.
+    chars), "voice": one of alloy/echo/fable/onyx/nova/shimmer (default onyx),
+    "speed": 0.25-4.0 (default 1.0)}.
     Returns audio/mpeg.
     """
     if not is_admin():
@@ -846,6 +847,12 @@ def api_admin_narrate():
     voice = (data.get("voice") or "onyx").strip().lower()
     if voice not in ("alloy", "echo", "fable", "onyx", "nova", "shimmer"):
         return jsonify({"ok": False, "error": "Bad voice."}), 400
+    try:
+        speed = float(data.get("speed", 1.0))
+    except (TypeError, ValueError):
+        speed = 1.0
+    if not (0.25 <= speed <= 4.0):
+        return jsonify({"ok": False, "error": "Bad speed."}), 400
     if not text or len(text) > 2000:
         return jsonify({"ok": False, "error": "Text must be 1-2000 chars."}), 400
     try:
@@ -853,7 +860,8 @@ def api_admin_narrate():
             f"{brain.OPENAI_BASE}/audio/speech",
             headers={"Authorization": f"Bearer {brain.OPENAI_API_KEY}",
                      "Content-Type": "application/json"},
-            json={"model": brain.TTS_MODEL, "voice": voice, "input": text},
+            json={"model": brain.TTS_MODEL, "voice": voice, "input": text,
+                   "speed": speed},
             timeout=90)
         r.raise_for_status()
     except Exception as e:
