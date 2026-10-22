@@ -4,6 +4,15 @@
 <h1 style="margin-top:8px;">{{ lesson.title }}</h1>
 <div class="muted">{{ lesson.title_my }} · {{ lesson.level }} · {{ lesson.topic }}</div>
 
+{% if demo_video %}
+<div class="card" style="padding:12px;">
+  <div class="fb-label">🎬 Practice Session · အသံထွက် လေ့ကျင့်ခန်း</div>
+  <div class="muted small" style="margin:4px 0 8px;">Watch how the mouth and tongue move for each sound, then practice speaking below.</div>
+  <video src="{{ demo_video }}"{% if demo_poster %} poster="{{ demo_poster }}"{% endif %} controls playsinline preload="metadata"
+         style="width:100%; border-radius:12px; background:#000; display:block;"></video>
+</div>
+{% endif %}
+
 {% if lesson.target_sounds %}
 <div class="card" style="border-left:4px solid var(--accent);">
   <div class="fb-label">🎯 Target sounds</div>
@@ -15,7 +24,7 @@
 
 <div class="card" style="background:#f8faff;">
   <b>How to practice:</b>
-  <div class="small muted" style="margin-top:4px;">1️⃣ <b>Listen</b> (try 🐢 0.5x to hear each sound) → 2️⃣ <b>Tap 🎤</b> and repeat → 3️⃣ Read your <b>per-sound feedback</b> → 4️⃣ Repeat until the sounds are clear.</div>
+  <div class="small muted" style="margin-top:4px;">1️⃣ <b>Watch</b> the Practice Session video above → 2️⃣ <b>Listen</b> (try 🐢 0.5x to hear each sound) → 3️⃣ <b>Tap 🎤</b> and repeat → 4️⃣ Read your <b>per-sound feedback</b> → 5️⃣ Repeat until the sounds are clear.</div>
 </div>
 
 <div id="phrases">

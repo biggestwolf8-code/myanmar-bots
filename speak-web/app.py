@@ -398,8 +398,20 @@ def lesson_page(lesson_id):
         return "Not found", 404
     code = code_for_sid(sid)
     done = lesson_progress(code, lesson)
+    # Practice Session demo video (tap-to-play; has lecturer voiceover).
+    # s-stress / s-intonation are prosody lessons -> neutral mouth loop.
+    demo_video, demo_poster = None, None
+    vid_name = ("rest-loop.mp4" if lesson_id in ("s-stress", "s-intonation")
+                else f"lesson-{lesson_id}.mp4")
+    vid_path = os.path.join(BASE_DIR, "static", "demos", vid_name)
+    if os.path.exists(vid_path):
+        demo_video = f"/static/demos/{vid_name}"
+        poster_path = os.path.splitext(vid_path)[0] + ".jpg"
+        if os.path.exists(poster_path):
+            demo_poster = f"/static/demos/{os.path.basename(poster_path)}"
     return render_template("lesson.html", app_name=APP_NAME, nav="home", lesson=lesson,
-                           done=sorted(done), stats=get_stats(code))
+                           done=sorted(done), stats=get_stats(code),
+                           demo_video=demo_video, demo_poster=demo_poster)
 
 
 @app.route("/freetalk")
