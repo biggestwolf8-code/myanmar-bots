@@ -828,6 +828,39 @@ def api_admin_lesson_reset():
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/narrate", methods=["POST"])
+def api_admin_narrate():
+    """Admin-only: synthesize narration audio with a chosen OpenAI TTS voice.
+
+    Used to build the demo-video voiceovers. JSON body: {"text": str (<=2000
+    chars), "voice": one of alloy/echo/fable/onyx/nova/shimmer (default onyx)}.
+    Returns audio/mpeg.
+    """
+    if not is_admin():
+        return jsonify({"ok": False}), 403
+    if not brain.OPENAI_API_KEY:
+        return jsonify({"ok": False, "error": "Voice not configured."}), 503
+    data = request.get_json(force=True, silent=True) or {}
+    text = (data.get("text") or "").strip()
+    voice = (data.get("voice") or "onyx").strip().lower()
+    if voice not in ("alloy", "echo", "fable", "onyx", "nova", "shimmer"):
+        return jsonify({"ok": False, "error": "Bad voice."}), 400
+    if not text or len(text) > 2000:
+        return jsonify({"ok": False, "error": "Text must be 1-2000 chars."}), 400
+    try:
+        r = requests.post(
+            f"{brain.OPENAI_BASE}/audio/speech",
+            headers={"Authorization": f"Bearer {brain.OPENAI_API_KEY}",
+                     "Content-Type": "application/json"},
+            json={"model": brain.TTS_MODEL, "voice": voice, "input": text},
+            timeout=90)
+        r.raise_for_status()
+    except Exception as e:
+        print("Narrate failed:", type(e).__name__)
+        return jsonify({"ok": False, "error": "TTS failed."}), 502
+    return app.response_class(r.content, mimetype="audio/mpeg")
+
+
 if __name__ == "__main__":
     if not brain.OPENAI_API_KEY:
         print("Set the OPENAI_API_KEY env var (voice features will 503 without it).")
