@@ -14,10 +14,13 @@ Text rendering: English = DejaVu Sans(+Bold); Myanmar = Padauk + RAQM layout
 (AGENTS.md: Noto Sans Myanmar renders U+1031 as tofu under RAQM; Padauk+RAQM verified).
 Never mix scripts on one line — EN and MY always on separate lines.
 
-NARRATION (v1: none — no OpenAI key in sandbox). Timestamps for future voiceover mux:
-  - drill videos : title 0.0-2.0s | demo A 2.0-6.5s | demo B 6.5-11.0s | tip card 11.0-14.5s
-  - topic videos : title 0.0-3.0s | per phrase: phrase card 2.2s, each sound demo ~2.8s,
-                   your-turn card 2.2s | outro 2.0s
+NARRATION (English-only lecturer voice, onyx @ 0.8x ≈ 13 chars/sec, calibrated
+2026-10-23). Segment durations (T_* constants) are sized from the narration
+scripts with margin — the lecturer is never rushed; audio is NEVER sped up.
+  - drill videos : title ~2.3s | tongue demos (slow glide + long hold while the
+                   lecturer explains) | word cards 4.5s | tip card 4.0s (~45-70s total)
+  - topic videos : title 3.0s | per phrase: phrase card 4.5s, slow sound demos,
+                   your-turn card 3.0s | outro 2.0s
   A narration MP3 can be muxed later with: ffmpeg -i video.mp4 -i narration.mp3 -c:v copy -c:a aac -shortest out.mp4
 
 Usage:
@@ -718,7 +721,7 @@ def repeat_img(img, n):
     for _ in range(n):
         yield img
 
-def demo_slot_frames(slot, move_n=19, hold_n=24):
+def demo_slot_frames(slot, move_n=24, hold_n=64):
     """One demo slot (art key or chain list) -> frames: rest/move/hold/[burst]/relax."""
     keys = slot if isinstance(slot, list) else [slot]
     R, X = 12, 12
@@ -801,28 +804,43 @@ DRILLS = {
         ('Consonant clusters', ['clock', 'price', 'pray']),
     ]),
 }
+# ---- narration-paced timings (frames @24fps) -------------------------------
+# Sized for English onyx narration at 0.8x (~13 chars/sec, calibrated
+# 2026-10-23) plus margin — the lecturer is never rushed. Arkar 2026-10-23:
+# "we're not in a speaking fast competition, this is pronunciation class."
+# NEVER speed up audio to fit video; extend video instead.
+T_DRILL_TITLE = 56
+T_DRILL_TIP   = 96
+T_TOPIC_TITLE = 72
+T_TOPIC_CARD  = 108
+T_TOPIC_TURN  = 72
+T_TOPIC_OUTRO = 48
 # frames per example-word card
 WORD_N = 108
+# demo-slot animation pacing (move = tongue glide, hold = tongue held in
+# position while the lecturer explains — the core teaching beat)
+DEMO_MOVE_DRILL, DEMO_HOLD_DRILL = 28, 72
+DEMO_MOVE_TOPIC, DEMO_HOLD_TOPIC = 24, 64
 
 def drill_frames(lesson):
     lid = lesson['id']
     cfg = DRILLS[lid]
-    yield from repeat_img(title_card_drill(cfg['symbol'], lesson['title'], lesson['title_my']), 48)
+    yield from repeat_img(title_card_drill(cfg['symbol'], lesson['title'], lesson['title_my']), T_DRILL_TITLE)
     for demo in cfg['demos']:
-        yield from demo_slot_frames(demo, move_n=22, hold_n=30)
+        yield from demo_slot_frames(demo, move_n=DEMO_MOVE_DRILL, hold_n=DEMO_HOLD_DRILL)
     for header, lines in cfg.get('words', []):
         yield from repeat_img(word_card(header, lines), WORD_N)
     pairs = [p['en'] for p in lesson.get('phrases', [])[:2]]
-    yield from repeat_img(tip_card(lesson.get('tip_my', ''), pairs), 84)
+    yield from repeat_img(tip_card(lesson.get('tip_my', ''), pairs), T_DRILL_TIP)
 
 def topic_frames(lesson):
-    yield from repeat_img(title_card_topic(lesson), 72)
+    yield from repeat_img(title_card_topic(lesson), T_TOPIC_TITLE)
     for p in lesson.get('phrases', []):
-        yield from repeat_img(phrase_card(p['en'], p['my']), 53)
+        yield from repeat_img(phrase_card(p['en'], p['my']), T_TOPIC_CARD)
         for slot in parse_focus(p.get('focus')):
-            yield from demo_slot_frames(slot)
-        yield from repeat_img(your_turn_card(), 53)
-    yield from repeat_img(outro_card(), 48)
+            yield from demo_slot_frames(slot, move_n=DEMO_MOVE_TOPIC, hold_n=DEMO_HOLD_TOPIC)
+        yield from repeat_img(your_turn_card(), T_TOPIC_TURN)
+    yield from repeat_img(outro_card(), T_TOPIC_OUTRO)
 
 def rest_loop_frames():
     for i in range(60):

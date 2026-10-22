@@ -49,24 +49,24 @@ def slot_n(slot, move_n, hold_n):
 def drill_map(lesson):
     cfg = m.DRILLS[lesson['id']]
     segs, f = [], 0
-    segs.append(('title', f, 48)); f += 48
+    segs.append(('title', f, m.T_DRILL_TITLE)); f += m.T_DRILL_TITLE
     for i, demo in enumerate(cfg['demos']):
-        n = slot_n(demo, 22, 30)
+        n = slot_n(demo, m.DEMO_MOVE_DRILL, m.DEMO_HOLD_DRILL)
         segs.append((f'demo{i}', f, n, demo)); f += n
     for i, (header, lines) in enumerate(cfg.get('words', [])):
         segs.append((f'word{i}', f, m.WORD_N, lines)); f += m.WORD_N
-    segs.append(('tip', f, 84)); f += 84
+    segs.append(('tip', f, m.T_DRILL_TIP)); f += m.T_DRILL_TIP
     return segs
 
 def topic_map(lesson):
-    segs, f = [('title', 0, 72)], 72
+    segs, f = [('title', 0, m.T_TOPIC_TITLE)], m.T_TOPIC_TITLE
     for pi, p in enumerate(lesson.get('phrases', [])):
-        segs.append((f'p{pi}_card', f, 53)); f += 53
+        segs.append((f'p{pi}_card', f, m.T_TOPIC_CARD)); f += m.T_TOPIC_CARD
         for si, slot in enumerate(m.parse_focus(p.get('focus'))):
-            n = slot_n(slot, 19, 24)
+            n = slot_n(slot, m.DEMO_MOVE_TOPIC, m.DEMO_HOLD_TOPIC)
             segs.append((f'p{pi}_demo{si}', f, n, slot)); f += n
-        segs.append((f'p{pi}_turn', f, 53)); f += 53
-    segs.append(('outro', f, 48))
+        segs.append((f'p{pi}_turn', f, m.T_TOPIC_TURN)); f += m.T_TOPIC_TURN
+    segs.append(('outro', f, m.T_TOPIC_OUTRO))
     return segs
 
 def all_maps():
@@ -128,31 +128,31 @@ def drill_scripts(lid, lesson, segs):
     scr = {}
     for label, f, n, *rest in segs:
         if label == 'title':
-            scr[label] = (DRILL_TITLES_EN[lid], 1.0)
+            scr[label] = (DRILL_TITLES_EN[lid], 0.8)
         elif label.startswith('demo'):
-            scr[label] = (en_tip(rest[0]), 1.0)
+            scr[label] = (en_tip(rest[0]), 0.8)
         elif label.startswith('word'):
             wi = int(label[4:])
             flat = [w.replace(' — ', ', ') for w in cfg['words'][wi][1]]
-            scr[label] = ("Say: " + ". ".join(flat) + ".", 0.9)
+            scr[label] = ("Say: " + ". ".join(flat) + ".", 0.8)
         elif label == 'tip':
-            scr[label] = ("Your turn. Say: " + ". ".join(pairs) + ".", 1.0)
+            scr[label] = ("Your turn. Say: " + ". ".join(pairs) + ".", 0.8)
     return scr
 
 def topic_scripts(lid, lesson, segs):
     scr = {}
     for label, f, n, *rest in segs:
         if label == 'title':
-            scr[label] = (lesson['title'], 1.0)
+            scr[label] = (lesson['title'], 0.8)
         elif label.endswith('_card'):
             pi = int(label[1:].split('_')[0])
-            scr[label] = (lesson['phrases'][pi]['en'], 1.0)
+            scr[label] = (lesson['phrases'][pi]['en'], 0.8)
         elif '_demo' in label:
-            scr[label] = (en_tip(rest[0]), 1.0)
+            scr[label] = (en_tip(rest[0]), 0.8)
         elif label.endswith('_turn'):
-            scr[label] = (TURN_EN, 1.0)
+            scr[label] = (TURN_EN, 0.8)
         elif label == 'outro':
-            scr[label] = (OUTRO_EN, 1.0)
+            scr[label] = (OUTRO_EN, 0.8)
     return scr
 
 def build_scripts():
@@ -161,6 +161,12 @@ def build_scripts():
         lid = lesson['id']
         scr = drill_scripts(lid, lesson, segs) if kind == 'drill' else topic_scripts(lid, lesson, segs)
         out[vid] = (segs, scr)
+    # HARD RULE (Arkar 2026-10-23): pronunciation class is never rushed.
+    # No narration segment may run faster than 1.0x — fail loudly instead.
+    for vid, (segs, scr) in out.items():
+        for label, (txt, sp) in scr.items():
+            if sp > 1.0:
+                raise ValueError(f"NARRATION SPEEDUP FORBIDDEN: {vid}/{label} speed={sp} > 1.0")
     return out
 
 # ------------------------------------------------------- TTS
@@ -176,6 +182,8 @@ def sess():
     return _sess
 
 def tts_mp3(text, voice='onyx', speed=1.0):
+    if speed > 1.0:
+        raise ValueError(f"NARRATION SPEEDUP FORBIDDEN: speed={speed} > 1.0")
     r = sess().post(f"{BASE}/api/admin/narrate",
                     json={"text": text, "voice": voice, "speed": speed},
                     timeout=120)
