@@ -865,8 +865,8 @@ def api_admin_narrate():
             timeout=90)
         r.raise_for_status()
     except Exception as e:
-        print("Narrate failed:", type(e).__name__)
-        return jsonify({"ok": False, "error": "TTS failed."}), 502
+        print("Narrate failed:", type(e).__name__, str(e)[:200])
+        return jsonify({"ok": False, "error": f"TTS failed: {type(e).__name__}: {str(e)[:200]}"}), 502
     return app.response_class(r.content, mimetype="audio/mpeg")
 
 
