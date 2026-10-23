@@ -1,10 +1,17 @@
-"""MasterClass Articulation — Bitesy-style English ARTICULATION practice for Myanmar learners.
+"""MasterClass Articulation — conversation FLUENCY training for Myanmar learners.
 
-Bite-sized lessons (A1/A2/B1 + Sounds drills) with tap-to-speak practice:
-browser-recorded audio -> Whisper -> gpt-4o-mini articulation feedback
-(per-SOUND notes with mouth/tongue/lip placement tips, bilingual EN+MM),
-plus a Free Talk voice conversation mode. Invite-code access only; progress,
-streaks and XP per invite code; per-code daily voice-turn caps.
+Articulation here means being ARTICULATE: speaking naturally without
+hesitating, never being lost for words, expressing yourself with
+interesting phrases (NOT pronunciation/phonetics).
+
+Situation lessons (A1/A2/B1): brilliant openers + natural native-speaker
+phrases + rescue phrases for freeze moments, all with Myanmar translations.
+Tap-to-speak practice: browser-recorded audio -> Whisper -> gpt-4o-mini
+fluency/expression feedback (bilingual EN+MM). Voice conversation modes:
+roleplay (AI plays a character from the lesson scenario), freeze drill
+(AI deliberately creates stuck moments to train recovery), and free talk.
+Invite-code access only; progress, streaks and XP per invite code;
+per-code daily voice-turn caps.
 
 Env vars:
   OPENAI_API_KEY   OpenAI API key (required for voice features)
@@ -94,6 +101,9 @@ def init_db():
     CREATE TABLE IF NOT EXISTS freetalk(
       id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, created TEXT,
       said TEXT, reply_en TEXT, reply_my TEXT);
+    CREATE TABLE IF NOT EXISTS convos(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, mode TEXT, lesson_id TEXT,
+      created TEXT, said TEXT, reply_en TEXT, reply_my TEXT, coaching TEXT);
     CREATE TABLE IF NOT EXISTS lesson_overrides(
       id TEXT PRIMARY KEY, data TEXT);
     CREATE TABLE IF NOT EXISTS usage(
@@ -147,6 +157,25 @@ def get_lesson(lesson_id):
         if l.get("id") == lesson_id:
             return l
     return None
+
+
+SECTIONS = (("openers", "💡 Openers"), ("phrases", "🗣️ Natural phrases"),
+            ("rescue", "🛟 Rescue phrases"))
+
+
+def lesson_items(lesson):
+    """Flatten openers+phrases+rescue into practice items.
+
+    Each item: {"section", "section_label", "en", "my"}.
+    Index positions are stable and used for audio, practice, and progress.
+    """
+    items = []
+    for key, label in SECTIONS:
+        for p in lesson.get(key) or []:
+            if p.get("en") and p.get("my"):
+                items.append({"section": key, "section_label": label,
+                              "en": p["en"], "my": p["my"]})
+    return items
 
 
 # ------------------------------------------------------------------ auth ---
@@ -362,11 +391,12 @@ def index():
     cards = []
     for l in lessons:
         done = lesson_progress(code, l)
+        n = len(lesson_items(l))
         cards.append({"id": l["id"], "level": l.get("level", ""),
                       "title": l.get("title", ""), "title_my": l.get("title_my", ""),
                       "topic": l.get("topic", ""),
-                      "n": len(l["phrases"]), "done": len(done),
-                      "completed": len(done) >= len(l["phrases"])})
+                      "n": n, "done": len(done),
+                      "completed": n > 0 and len(done) >= n})
     cards.sort(key=lambda c: (c["level"], c["title"]))
     levels = sorted({c["level"] for c in cards})
     return render_template("index.html", logged_in=True, app_name=APP_NAME, nav="home",
@@ -398,40 +428,71 @@ def lesson_page(lesson_id):
         return "Not found", 404
     code = code_for_sid(sid)
     done = lesson_progress(code, lesson)
-    # Practice Session demo video (tap-to-play; has lecturer voiceover).
-    # s-stress / s-intonation are prosody lessons -> neutral mouth loop.
-    demo_video, demo_poster = None, None
-    vid_name = ("rest-loop.mp4" if lesson_id in ("s-stress", "s-intonation")
-                else f"lesson-{lesson_id}.mp4")
-    vid_path = os.path.join(BASE_DIR, "static", "demos", vid_name)
-    if os.path.exists(vid_path):
-        demo_video = f"/static/demos/{vid_name}"
-        poster_path = os.path.splitext(vid_path)[0] + ".jpg"
-        if os.path.exists(poster_path):
-            demo_poster = f"/static/demos/{os.path.basename(poster_path)}"
     return render_template("lesson.html", app_name=APP_NAME, nav="home", lesson=lesson,
-                           done=sorted(done), stats=get_stats(code),
-                           demo_video=demo_video, demo_poster=demo_poster)
+                           items=lesson_items(lesson), sections=SECTIONS,
+                           done=sorted(done), stats=get_stats(code))
 
 
 @app.route("/freetalk")
 def freetalk_page():
+    return converse_page("free", None)
+
+
+@app.route("/roleplay/<lesson_id>")
+def roleplay_page(lesson_id):
+    return converse_page("roleplay", lesson_id)
+
+
+@app.route("/freeze/<lesson_id>")
+def freeze_page(lesson_id):
+    return converse_page("freeze", lesson_id)
+
+
+MODE_TITLES = {"free": "💬 Free Talk",
+               "roleplay": "🎭 Roleplay",
+               "freeze": "🥶 Freeze Drill"}
+
+
+def converse_page(mode, lesson_id):
     from flask import render_template
     sid = current_sid()
     if not sid:
         return redirect(url_for("index"))
+    if mode in ("roleplay", "freeze"):
+        if not LESSON_ID_RE.match(lesson_id or ""):
+            return "Not found", 404
+        lesson = get_lesson(lesson_id)
+        if not lesson:
+            return "Not found", 404
+    else:
+        lesson = None
     code = code_for_sid(sid)
     con = db()
     try:
-        rows = con.execute(
-            "SELECT said, reply_en, reply_my FROM freetalk WHERE code=? "
-            "ORDER BY id DESC LIMIT 10", (code,)).fetchall()
+        if lesson:
+            rows = con.execute(
+                "SELECT said, reply_en, reply_my, coaching FROM convos "
+                "WHERE code=? AND mode=? AND lesson_id=? "
+                "ORDER BY id DESC LIMIT 10",
+                (code, mode, lesson["id"])).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT said, reply_en, reply_my, coaching FROM convos "
+                "WHERE code=? AND mode='free' "
+                "ORDER BY id DESC LIMIT 10", (code,)).fetchall()
     finally:
         con.close()
-    thread = [{"said": r["said"], "reply_en": r["reply_en"],
-               "reply_my": r["reply_my"]} for r in reversed(rows)]
-    return render_template("freetalk.html", app_name=APP_NAME, nav="talk", thread=thread,
-                           stats=get_stats(code))
+    thread = []
+    for r in reversed(rows):
+        try:
+            coaching = json.loads(r["coaching"]) if r["coaching"] else {}
+        except (ValueError, TypeError):
+            coaching = {}
+        thread.append({"said": r["said"], "reply_en": r["reply_en"],
+                       "reply_my": r["reply_my"], "coaching": coaching})
+    return render_template("converse.html", app_name=APP_NAME, nav="talk",
+                           thread=thread, stats=get_stats(code), mode=mode,
+                           lesson=lesson, mode_title=MODE_TITLES[mode])
 
 
 @app.route("/admin")
@@ -473,11 +534,12 @@ def api_lessons():
     out = []
     for l in load_lessons():
         done = lesson_progress(code, l)
+        n = len(lesson_items(l))
         out.append({"id": l["id"], "level": l.get("level", ""),
                     "title": l.get("title", ""), "title_my": l.get("title_my", ""),
-                    "topic": l.get("topic", ""), "n_phrases": len(l["phrases"]),
+                    "topic": l.get("topic", ""), "n_items": n,
                     "done": len(done),
-                    "completed": len(done) >= len(l["phrases"])})
+                    "completed": n > 0 and len(done) >= n})
     return jsonify({"ok": True, "lessons": out})
 
 
@@ -510,7 +572,8 @@ def api_audio(lesson_id, idx):
     if not LESSON_ID_RE.match(lesson_id or ""):
         return jsonify({"ok": False, "error": "Not found."}), 404
     lesson = get_lesson(lesson_id)
-    if not lesson or idx < 0 or idx >= len(lesson["phrases"]):
+    items = lesson_items(lesson) if lesson else []
+    if not lesson or idx < 0 or idx >= len(items):
         return jsonify({"ok": False, "error": "Not found."}), 404
     path = _audio_path(lesson_id, idx)
     if not os.path.exists(path):
@@ -518,7 +581,7 @@ def api_audio(lesson_id, idx):
             return jsonify({"ok": False,
                             "error": "Voice not configured on server."}), 503
         try:
-            mp3 = brain.tts(lesson["phrases"][idx]["en"])
+            mp3 = brain.tts(items[idx]["en"])
         except Exception as e:
             print("TTS failed:", type(e).__name__)
             return jsonify({"ok": False,
@@ -526,7 +589,7 @@ def api_audio(lesson_id, idx):
         with open(path, "wb") as f:
             f.write(mp3)
         code = code_for_sid(sid)
-        record_cost(code, tts=brain.tts_cost(len(lesson["phrases"][idx]["en"])))
+        record_cost(code, tts=brain.tts_cost(len(items[idx]["en"])))
     return send_file(path, mimetype="audio/mpeg")
 
 
@@ -569,13 +632,13 @@ def api_practice():
     except (TypeError, ValueError):
         idx = -1
     lesson = get_lesson(lesson_id) if LESSON_ID_RE.match(lesson_id or "") else None
-    if not lesson or idx < 0 or idx >= len(lesson["phrases"]):
-        return jsonify({"ok": False, "error": "Unknown lesson or phrase."}), 400
+    items = lesson_items(lesson) if lesson else []
+    if not lesson or idx < 0 or idx >= len(items):
+        return jsonify({"ok": False, "error": "Unknown lesson or item."}), 400
     audio, aerr = _read_audio()
     if aerr:
         return jsonify({"ok": False, "error": aerr}), 400
-    target = lesson["phrases"][idx]["en"]
-    phrase = lesson["phrases"][idx]
+    item = items[idx]
     try:
         said = brain.transcribe(audio, "practice.webm")
     except Exception as e:
@@ -584,18 +647,16 @@ def api_practice():
                         "error": "Couldn't understand the audio — try again."}), 502
     record_cost(code, whisper=brain.whisper_cost(len(audio) / 16000))
     if not said:
-        return jsonify({"ok": True, "said": "", "score": 1, "sound_notes": [],
-                        "feedback_en": "I couldn't hear anything — check your mic and try again.",
-                        "feedback_my": "အသံကိုမကြားရပါ — မိုက်ကိုစစ်ပြီး ထပ်ကြိုးစားကြည့်ပါ။",
+        return jsonify({"ok": True, "said": "", "score": 1, "alternatives": [],
+                        "flow_en": "I couldn't hear anything — check your mic and try again.",
+                        "flow_my": "အသံကိုမကြားရပါ — မိုက်ကိုစစ်ပြီး ထပ်ကြိုးစားကြည့်ပါ။",
                         "tip_en": "Hold the phone a little closer and speak a bit louder.",
                         "tip_my": "ဖုန်းကိုအနည်းငယ်နီးကပ်ထားပြီး အသံကျယ်ကျယ်ပြောကြည့်ပါ။",
                         "xp": 0, "total_xp": get_stats(code)["xp"],
                         "streak": touch_streak(code)})
     try:
-        fb, usage = brain.phrase_feedback(
-            target, said,
-            target_sounds=lesson.get("target_sounds"),
-            phrase_focus=phrase.get("focus", ""))
+        fb, usage = brain.expression_feedback(
+            item["en"], item["my"], item["section"], said)
     except Exception as e:
         print("Feedback failed:", type(e).__name__)
         return jsonify({"ok": False,
@@ -609,18 +670,23 @@ def api_practice():
     streak = touch_streak(code)
     mark_phrase_done(code, lesson_id, idx, score)
     done = lesson_progress(code, lesson)
+    n = len(items)
     return jsonify({"ok": True, "said": fb["said"], "score": score,
-                    "sound_notes": fb["sound_notes"],
-                    "feedback_en": fb["corrections_en"],
-                    "feedback_my": fb["corrections_my"],
+                    "alternatives": fb["alternatives"],
+                    "flow_en": fb["flow_en"], "flow_my": fb["flow_my"],
                     "tip_en": fb["tip_en"], "tip_my": fb["tip_my"],
                     "xp": gained, "total_xp": total_xp, "streak": streak,
                     "done": sorted(done),
-                    "lesson_completed": len(done) >= len(lesson["phrases"])})
+                    "lesson_completed": n > 0 and len(done) >= n})
 
 
-@app.route("/api/freetalk", methods=["POST"])
-def api_freetalk():
+@app.route("/api/converse", methods=["POST"])
+def api_converse():
+    """Voice conversation turn. Modes: free | roleplay | freeze.
+
+    Form fields: audio (required), mode (required),
+    lesson_id (required for roleplay/freeze).
+    """
     sid = current_sid()
     if not sid:
         return jsonify({"ok": False, "error": "Not signed in."}), 401
@@ -628,11 +694,20 @@ def api_freetalk():
     err = _guard_voice(code)
     if err:
         return err
+    mode = (request.form.get("mode") or "free").strip()
+    if mode not in ("free", "roleplay", "freeze"):
+        return jsonify({"ok": False, "error": "Bad mode."}), 400
+    lesson = None
+    if mode in ("roleplay", "freeze"):
+        lesson_id = (request.form.get("lesson_id") or "").strip()
+        lesson = get_lesson(lesson_id) if LESSON_ID_RE.match(lesson_id or "") else None
+        if not lesson:
+            return jsonify({"ok": False, "error": "Unknown lesson."}), 400
     audio, aerr = _read_audio()
     if aerr:
         return jsonify({"ok": False, "error": aerr}), 400
     try:
-        said = brain.transcribe(audio, "freetalk.webm")
+        said = brain.transcribe(audio, "converse.webm")
     except Exception as e:
         print("Whisper failed:", type(e).__name__)
         return jsonify({"ok": False,
@@ -641,19 +716,27 @@ def api_freetalk():
     if not said:
         return jsonify({"ok": True, "said": "",
                         "reply_en": "Sorry, I didn't catch that — could you say it again?",
-                        "reply_my": "စိတ်မကောင်းပါဘူး၊ မကြားလိုက်ရဘူး — ထပ်ပြောပေးနိုင်မလား?"})
+                        "reply_my": "စိတ်မကောင်းပါဘူး၊ မကြားလိုက်ရဘူး — ထပ်ပြောပေးနိုင်မလား?",
+                        "coaching": {}})
+    scenario = (lesson or {}).get("roleplay", {}) if lesson else {}
     con = db()
     try:
-        rows = con.execute(
-            "SELECT said, reply_en FROM freetalk WHERE code=? ORDER BY id DESC LIMIT 8",
-            (code,)).fetchall()
+        if lesson:
+            rows = con.execute(
+                "SELECT said, reply_en FROM convos WHERE code=? AND mode=? "
+                "AND lesson_id=? ORDER BY id DESC LIMIT 8",
+                (code, mode, lesson["id"])).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT said, reply_en FROM convos WHERE code=? AND mode='free' "
+                "ORDER BY id DESC LIMIT 8", (code,)).fetchall()
         history = [(r["said"], r["reply_en"]) for r in reversed(rows)]
     finally:
         con.close()
     try:
-        rep, usage = brain.freetalk_reply(history, said)
+        rep, usage = brain.converse_reply(mode, scenario, history, said)
     except Exception as e:
-        print("Free talk failed:", type(e).__name__)
+        print("Converse failed:", type(e).__name__)
         return jsonify({"ok": False,
                         "error": "The tutor didn't respond — try again."}), 502
     record_cost(code, in_tok=usage["input_tokens"], out_tok=usage["output_tokens"],
@@ -662,11 +745,13 @@ def api_freetalk():
     con = db()
     try:
         now = datetime.datetime.now().isoformat(timespec="seconds")
-        con.execute("INSERT INTO freetalk(code, created, said, reply_en, reply_my)"
-                    " VALUES(?,?,?,?,?)",
-                    (code, now, said, rep["reply_en"], rep["reply_my"]))
-        con.execute("DELETE FROM freetalk WHERE code=? AND id NOT IN "
-                    "(SELECT id FROM freetalk WHERE code=? ORDER BY id DESC LIMIT 30)",
+        con.execute("INSERT INTO convos(code, mode, lesson_id, created, said,"
+                    " reply_en, reply_my, coaching) VALUES(?,?,?,?,?,?,?,?)",
+                    (code, mode, lesson["id"] if lesson else "",
+                     now, said, rep["reply_en"], rep["reply_my"],
+                     json.dumps(rep["coaching"], ensure_ascii=False)))
+        con.execute("DELETE FROM convos WHERE code=? AND id NOT IN "
+                    "(SELECT id FROM convos WHERE code=? ORDER BY id DESC LIMIT 60)",
                     (code, code))
         con.commit()
     finally:
@@ -674,8 +759,7 @@ def api_freetalk():
     add_xp(code, 5)
     streak = touch_streak(code)
     return jsonify({"ok": True, "said": said, "reply_en": rep["reply_en"],
-                    "reply_my": rep["reply_my"],
-                    "pronunciation": rep["pronunciation"],
+                    "reply_my": rep["reply_my"], "coaching": rep["coaching"],
                     "streak": streak,
                     "total_xp": get_stats(code)["xp"]})
 
@@ -723,7 +807,7 @@ def api_admin_data():
             "COALESCE(SUM(in_tok),0) AS i, COALESCE(SUM(out_tok),0) AS o FROM usage"
         ).fetchone()
         lessons = [{"id": l["id"], "level": l.get("level", ""),
-                    "title": l.get("title", ""), "n_phrases": len(l["phrases"]),
+                    "title": l.get("title", ""), "n_items": len(lesson_items(l)),
                     "overridden": bool(con.execute(
                         "SELECT 1 FROM lesson_overrides WHERE id=?",
                         (l["id"],)).fetchone())}
@@ -804,17 +888,32 @@ def api_admin_lesson_save():
     lid = lesson.get("id", "")
     if not LESSON_ID_RE.match(lid):
         return jsonify({"ok": False, "error": "Bad lesson id."}), 400
-    phrases = lesson.get("phrases") or []
-    if not (1 <= len(phrases) <= 20) or not all(
-            p.get("en") and p.get("my") for p in phrases):
-        return jsonify({"ok": False,
-                        "error": "Give 1–20 phrases, each with English and Myanmar."}), 400
+
+    def clean_items(items, lo, hi):
+        items = items or []
+        if not (lo <= len(items) <= hi) or not all(
+                i.get("en") and i.get("my") for i in items):
+            return None
+        return [{"en": i["en"][:200], "my": i["my"][:200]} for i in items]
+
+    openers = clean_items(lesson.get("openers"), 1, 10)
+    phrases = clean_items(lesson.get("phrases"), 1, 12)
+    rescue = clean_items(lesson.get("rescue"), 1, 10)
+    if openers is None or phrases is None or rescue is None:
+        return jsonify({"ok": False, "error":
+                        "Need openers (1-10), phrases (1-12), rescue (1-10), "
+                        "each with English and Myanmar."}), 400
+    rp = lesson.get("roleplay") or {}
+    roleplay = {k: (rp.get(k) or "")[:400] for k in
+                ("scene_en", "scene_my", "tutor_en", "goal_en", "goal_my")}
     clean = {"id": lid, "level": (lesson.get("level") or "A1")[:3],
              "title": (lesson.get("title") or "")[:80],
              "title_my": (lesson.get("title_my") or "")[:80],
              "topic": (lesson.get("topic") or "")[:40],
-             "phrases": [{"en": p["en"][:200], "my": p["my"][:200]}
-                         for p in phrases]}
+             "situation_en": (lesson.get("situation_en") or "")[:300],
+             "situation_my": (lesson.get("situation_my") or "")[:300],
+             "openers": openers, "phrases": phrases, "rescue": rescue,
+             "roleplay": roleplay}
     con = db()
     try:
         con.execute("INSERT INTO lesson_overrides(id, data) VALUES(?,?) "

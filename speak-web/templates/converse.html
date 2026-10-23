@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ mode_title }}</h1>
+{% if lesson %}
+<p class="muted small">{{ lesson.title }} · {{ lesson.level }}</p>
+<div class="card" style="border-left:4px solid var(--accent);">
+  <div class="fb-label">🎬 Scene</div>
+  <div style="font-size:15px;">{{ lesson.roleplay.scene_en }}</div>
+  {% if lesson.roleplay.scene_my %}<div class="muted" style="font-size:14px; margin-top:4px;">{{ lesson.roleplay.scene_my }}</div>{% endif %}
+  <div class="fb-label" style="margin-top:8px;">🎯 Your goal</div>
+  <div style="font-size:15px;">{{ lesson.roleplay.goal_en }}</div>
+  {% if lesson.roleplay.goal_my %}<div class="muted" style="font-size:14px; margin-top:4px;">{{ lesson.roleplay.goal_my }}</div>{% endif %}
+</div>
+{% else %}
+<p class="muted small">Chat out loud with your AI tutor. After each turn you get coaching on your flow — and smarter ways to say what you said.</p>
+{% endif %}
+{% if mode == "freeze" %}
+<div class="card" style="background:#fff7ed; border:1px solid #fed7aa;">
+  <b>🥶 Freeze drill:</b> <span class="small">your partner will put you on the spot — unexpected questions, topic changes, awkward silences. Your job: <b>never freeze</b>. Use a rescue phrase when you're stuck.</span>
+  <div class="small muted" id="drill-stats" style="margin-top:6px;">Turns: 0 · 🥶 Freezes: 0 · 💪 Recoveries: 0</div>
+</div>
+{% endif %}
+
+<div id="thread">
+{% for m in thread %}
+<div class="msg you">🎤 “{{ m.said }}”</div>
+<div class="msg tutor"><div>{{ m.reply_en }}</div>{% if m.reply_my %}<div class="my">{{ m.reply_my }}</div>{% endif %}{% if m.coaching %}<div class="coach" data-coach='{{ m.coaching|tojson }}'></div>{% endif %}</div>
+{% endfor %}
+</div>
+
+<div class="card" style="text-align:center;">
+  <button class="micbig" id="mic">🎤</button>
+  <div class="status" id="status">Tap the mic and speak</div>
+  <label class="small muted"><input type="checkbox" id="speak" checked style="width:auto;"> 🔊 Speak the tutor's reply aloud</label>
+  {% if mode == "freeze" %}<div style="margin-top:10px;"><button class="btn" id="enddrill">🏁 End drill & see how you did</button></div>{% endif %}
+  {% if lesson %}<div style="margin-top:10px;"><a href="/lesson/{{ lesson.id }}" style="color:var(--accent); font-weight:700; text-decoration:none;">← Back to lesson</a></div>{% endif %}
+</div>
+<div id="debrief"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const MODE = {{ mode|tojson }};
+const LESSON_ID = {{ (lesson.id if lesson else "")|tojson }};
+const mic = document.getElementById("mic");
+const status = document.getElementById("status");
+const thread = document.getElementById("thread");
+const speakBox = document.getElementById("speak");
+let rec = null, stream = null, chunks = [];
+let turns = 0, freezes = 0, recoveries = 0;
+
+function esc(s){ const d=document.createElement("div"); d.textContent=s||""; return d.innerHTML; }
+function speak(text){
+  if (!speakBox.checked || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US"; u.rate = 0.95;
+  speechSynthesis.speak(u);
+}
+function coachHTML(c){
+  if (!c || typeof c !== "object") return "";
+  let h = "";
+  if (c.freeze) {
+    h += '<div class="fb-label">🥶 Freeze spotted!</div>';
+    if (c.freeze_note_en) h += '<div style="font-size:14px;">' + esc(c.freeze_note_en) + '</div>';
+    if (c.freeze_note_my) h += '<div class="my">' + esc(c.freeze_note_my) + '</div>';
+    if (c.recovered) h += '<div style="font-size:14px;">💪 But you recovered — nice!</div>';
+  }
+  if (c.better_en) {
+    h += '<div class="fb-label">💡 Say it like this</div><div style="font-size:14px; font-weight:700;">“' + esc(c.better_en) + '”</div>';
+    if (c.better_my) h += '<div class="my">' + esc(c.better_my) + '</div>';
+  }
+  if (c.rescue_en) {
+    h += '<div class="fb-label">🛟 Rescue you could use</div><div style="font-size:14px;">“' + esc(c.rescue_en) + '”</div>';
+    if (c.rescue_my) h += '<div class="my">' + esc(c.rescue_my) + '</div>';
+  }
+  if (c.flow_note_en && !c.freeze) {
+    h += '<div class="muted" style="font-size:13px; margin-top:4px;">' + esc(c.flow_note_en) + '</div>';
+  }
+  return h;
+}
+function updateDrillStats(){
+  const el = document.getElementById("drill-stats");
+  if (el) el.textContent = "Turns: " + turns + " · 🥶 Freezes: " + freezes + " · 💪 Recoveries: " + recoveries;
+}
+function trackCoaching(c){
+  if (!c) return;
+  turns++;
+  if (c.freeze) freezes++;
+  if (c.recovered) recoveries++;
+  updateDrillStats();
+}
+function addPair(j){
+  const you = document.createElement("div");
+  you.className = "msg you"; you.innerHTML = "🎤 “" + esc(j.said) + "”";
+  thread.appendChild(you);
+  const t = document.createElement("div");
+  t.className = "msg tutor";
+  let h = "<div>" + esc(j.reply_en) + "</div>";
+  if (j.reply_my) h += '<div class="my">' + esc(j.reply_my) + "</div>";
+  h += coachHTML(j.coaching);
+  t.innerHTML = h;
+  thread.appendChild(t);
+  trackCoaching(j.coaching);
+  window.scrollTo(0, document.body.scrollHeight);
+  speak(j.reply_en);
+}
+// render coaching for history loaded from the server
+document.querySelectorAll(".coach").forEach(el => {
+  try {
+    const c = JSON.parse(el.dataset.coach);
+    const d = document.createElement("div");
+    d.innerHTML = coachHTML(c);
+    el.replaceWith(d);
+    trackCoaching(c);
+  } catch(e){ el.remove(); }
+});
+mic.addEventListener("click", async () => {
+  if (rec && rec.state === "recording") {
+    rec.stop();
+    return;
+  }
+  try { stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ status.textContent = "⚠ Microphone permission denied."; return; }
+  chunks = [];
+  rec = new MediaRecorder(stream, {mimeType:"audio/webm"});
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = async () => {
+    mic.classList.remove("rec");
+    stream.getTracks().forEach(t=>t.stop());
+    const blob = new Blob(chunks, {type:"audio/webm"});
+    if (blob.size < 800) { status.textContent = "Tap the mic and speak"; return; }
+    status.textContent = "🔄 Thinking…";
+    const fd = new FormData();
+    fd.append("audio", blob, "converse.webm");
+    fd.append("mode", MODE);
+    if (LESSON_ID) fd.append("lesson_id", LESSON_ID);
+    try {
+      const r = await fetch("/api/converse", {method:"POST", body:fd});
+      const j = await r.json();
+      if (!j.ok) { status.textContent = "⚠ " + (j.error || "Error"); return; }
+      status.textContent = "Tap the mic and speak";
+      if (j.said) addPair(j);
+      else status.textContent = "😶 I didn't catch that — try again.";
+    } catch(e){ status.textContent = "⚠ Connection problem — try again."; }
+  };
+  rec.start();
+  mic.classList.add("rec");
+  status.textContent = "🎤 Listening… tap again to send";
+});
+const endBtn = document.getElementById("enddrill");
+if (endBtn) endBtn.addEventListener("click", () => {
+  const d = document.getElementById("debrief");
+  let verdict, emoji;
+  if (turns === 0) { verdict = "No turns yet — have a go first!"; emoji = "🎤"; }
+  else if (freezes === 0) { verdict = "Flawless — you never froze, not even once. You're ready for real conversations!"; emoji = "🏆"; }
+  else if (recoveries >= freezes) { verdict = "Every freeze, recovered. That's exactly the skill — freezing is fine, staying frozen isn't."; emoji = "💪"; }
+  else { verdict = "Good reps. Next time, reach for a rescue phrase the moment you feel stuck — that's the muscle we're building."; emoji = "🥶"; }
+  d.innerHTML = '<div class="card" style="border-left:4px solid var(--accent); margin-top:12px;">'
+    + '<div class="fb-label">🏁 Drill debrief</div>'
+    + '<div style="font-size:16px; font-weight:800; margin:6px 0;">' + emoji + ' ' + esc(verdict) + '</div>'
+    + '<div class="muted">Turns: ' + turns + ' · 🥶 Freezes spotted: ' + freezes + ' · 💪 Recoveries: ' + recoveries + '</div>'
+    + '<div style="margin-top:10px;"><a href="/lesson/' + esc(LESSON_ID) + '" style="color:var(--accent); font-weight:700; text-decoration:none;">← Review the rescue phrases</a></div></div>';
+  window.scrollTo(0, document.body.scrollHeight);
+});
+</script>
+{% endblock %}

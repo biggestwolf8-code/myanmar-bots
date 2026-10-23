@@ -4,53 +4,58 @@
 <h1 style="margin-top:8px;">{{ lesson.title }}</h1>
 <div class="muted">{{ lesson.title_my }} · {{ lesson.level }} · {{ lesson.topic }}</div>
 
-{% if demo_video %}
-<div class="card" style="padding:12px;">
-  <div class="fb-label">🎬 Practice Session · အသံထွက် လေ့ကျင့်ခန်း</div>
-  <div class="muted small" style="margin:4px 0 8px;">Watch how the mouth and tongue move for each sound, then practice speaking below.</div>
-  <video src="{{ demo_video }}"{% if demo_poster %} poster="{{ demo_poster }}"{% endif %} controls playsinline preload="metadata"
-         style="width:100%; border-radius:12px; background:#000; display:block;"></video>
-</div>
-{% endif %}
-
-{% if lesson.target_sounds %}
 <div class="card" style="border-left:4px solid var(--accent);">
-  <div class="fb-label">🎯 Target sounds</div>
-  <div style="margin:6px 0;">{% for s in lesson.target_sounds %}<span class="lvl" style="display:inline-block; font-size:13px; font-weight:700; background:#eef0fa; color:var(--accent); border-radius:8px; padding:4px 10px; margin:2px 4px 2px 0;">{{ s }}</span>{% endfor %}</div>
-  {% if lesson.tip_en %}<div style="font-size:15px; margin-top:6px;">👄 {{ lesson.tip_en }}</div>{% endif %}
-  {% if lesson.tip_my %}<div class="muted" style="font-size:14px; margin-top:4px; line-height:1.6;">{{ lesson.tip_my }}</div>{% endif %}
+  <div class="fb-label">🎯 The situation</div>
+  <div style="font-size:15px; margin-top:4px;">{{ lesson.situation_en }}</div>
+  {% if lesson.situation_my %}<div class="muted" style="font-size:14px; margin-top:4px; line-height:1.6;">{{ lesson.situation_my }}</div>{% endif %}
 </div>
-{% endif %}
 
 <div class="card" style="background:#f8faff;">
-  <b>How to practice:</b>
-  <div class="small muted" style="margin-top:4px;">1️⃣ <b>Watch</b> the Practice Session video above → 2️⃣ <b>Listen</b> (try 🐢 0.5x to hear each sound) → 3️⃣ <b>Tap 🎤</b> and repeat → 4️⃣ Read your <b>per-sound feedback</b> → 5️⃣ Repeat until the sounds are clear.</div>
+  <b>How this works:</b>
+  <div class="small muted" style="margin-top:4px;">1️⃣ <b>Learn</b> the openers & phrases below (🔊 to hear them) → 2️⃣ <b>🎤 Say them</b> your way and get fluency feedback → 3️⃣ <b>🎭 Roleplay</b> the scene with your AI partner → 4️⃣ <b>🥶 Freeze drill</b> trains you to recover when you get stuck.</div>
 </div>
 
-<div id="phrases">
-{% for p in lesson.phrases %}
+<div id="all-items">
+{% set ns = namespace(last="") %}
+{% for it in items %}
+{% if it.section != ns.last %}
+{% if not loop.first %}</div>{% endif %}
+<h2 style="margin:18px 0 4px;">{{ it.section_label }}</h2>
+{% if it.section == "openers" %}<div class="muted small" style="margin-bottom:8px;">Open brilliant — never just "hello".</div>{% endif %}
+{% if it.section == "phrases" %}<div class="muted small" style="margin-bottom:8px;">Phrases native speakers actually use.</div>{% endif %}
+{% if it.section == "rescue" %}<div class="muted small" style="margin-bottom:8px;">For the moment you freeze — these save you.</div>{% endif %}
+<div class="itemlist">
+{% set ns.last = it.section %}
+{% endif %}
 <div class="phrase {% if loop.index0 in done %}done{% endif %}" data-idx="{{ loop.index0 }}">
-  <div class="en">{{ p.en }}</div>
-  <div class="my">{{ p.my }}</div>
-  {% if p.focus %}<div style="margin-top:6px;"><span style="font-size:12px; font-weight:800; color:var(--accent); background:#eef0fa; border-radius:8px; padding:3px 10px;">🔊 {{ p.focus }}</span></div>{% endif %}
+  <div class="en">{{ it.en }}</div>
+  <div class="my">{{ it.my }}</div>
   <div class="actions">
     <button class="listen" data-act="listen">🔊 Listen</button>
-    <button class="speed" data-act="speed" title="Playback speed">1x</button>
-    <button class="mic" data-act="mic">🎤 Speak</button>
+    <button class="mic" data-act="mic">🎤 Say it</button>
   </div>
   <div class="status"></div>
   <div class="feedback"></div>
 </div>
 {% endfor %}
 </div>
+
+<div class="card" style="text-align:center; margin-top:20px;">
+  <div class="fb-label">🎭 Put it into action</div>
+  <div style="display:flex; gap:10px; margin-top:10px;">
+    <a href="/roleplay/{{ lesson.id }}" class="btn" style="flex:1; text-decoration:none; text-align:center; padding:14px;">🎭 Start roleplay</a>
+    <a href="/freeze/{{ lesson.id }}" class="btn" style="flex:1; text-decoration:none; text-align:center; padding:14px;">🥶 Freeze drill</a>
+  </div>
+  <div class="muted small" style="margin-top:8px;">{{ lesson.roleplay.goal_en }}</div>
+  {% if lesson.roleplay.goal_my %}<div class="muted small">{{ lesson.roleplay.goal_my }}</div>{% endif %}
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
 const LESSON_ID = {{ lesson.id|tojson }};
-const SPEEDS = [1, 0.75, 0.5];
 const SCORE_LABEL = {
-  5: "Excellent! 🌟", 4: "Great articulation! 👏", 3: "Good — keep shaping those sounds! 💪",
-  2: "Nice try — listen slowly and repeat 🔁", 1: "Let's try again, slowly 🐢"
+  5: "Brilliant — natural and confident! 🌟", 4: "Great flow! 👏", 3: "Good — keep it lively! 💪",
+  2: "Nice try — say it like you mean it 🔁", 1: "Let's try that again 🐢"
 };
 const audios = {};
 function audioFor(idx){
@@ -79,77 +84,71 @@ async function recordOnce(){
   rec.start();
   return {rec, done};
 }
-document.getElementById("phrases").addEventListener("click", async e => {
-  const btn = e.target.closest("button"); if (!btn) return;
-  const card = btn.closest(".phrase");
+document.querySelectorAll(".itemlist .phrase").forEach(card => {
   const idx = +card.dataset.idx;
   const status = card.querySelector(".status");
   const fb = card.querySelector(".feedback");
-  const act = btn.dataset.act;
-  if (act === "speed") {
-    const a = audioFor(idx);
-    const i = (SPEEDS.indexOf(a.playbackRate) + 1) % SPEEDS.length;
-    a.playbackRate = SPEEDS[i];
-    btn.textContent = (SPEEDS[i] === 1 ? "1x" : "🐢 " + SPEEDS[i] + "x");
-    return;
-  }
-  if (act === "listen") {
-    const a = audioFor(idx);
-    status.textContent = "🔊 Playing" + (a.playbackRate !== 1 ? " at " + a.playbackRate + "x" : "") + "…";
-    a.onended = () => status.textContent = "";
-    a.onerror = () => status.textContent = "⚠ Audio not ready — try again.";
-    try { await a.play(); } catch(err){ status.textContent = "⚠ Tap again to play."; }
-    return;
-  }
-  if (act === "mic") {
-    if (btn.dataset.busy) return; // a recording is in progress; the stop click is handled below
-    let r;
-    try { r = await recordOnce(); }
-    catch(err){ status.textContent = "⚠ Microphone permission denied."; return; }
-    btn.dataset.busy = "1";
-    btn.classList.add("rec"); btn.textContent = "⏹ Stop";
-    status.textContent = "🎤 Recording… tap ⏹ when done";
-    const finish = async (ev) => {
-      ev.stopPropagation(); // keep this click from re-entering the delegated handler
-      btn.removeEventListener("click", finish);
-      if (r.rec.state === "recording") r.rec.stop();
-      btn.classList.remove("rec"); btn.textContent = "🎤 Speak";
-      delete btn.dataset.busy;
-      status.textContent = "🔄 Checking your sounds…";
-      const blob = await r.done;
-      const fd = new FormData();
-      fd.append("audio", blob, "practice.webm");
-      fd.append("lesson_id", LESSON_ID);
-      fd.append("phrase_idx", idx);
-      try {
-        const resp = await fetch("/api/practice", {method:"POST", body:fd});
-        const j = await resp.json();
-        if (!j.ok) { status.textContent = "⚠ " + (j.error || "Error"); return; }
-        status.textContent = "";
-        let h = stars(j.score) + '<div style="font-weight:800;">' + esc(SCORE_LABEL[j.score]||"") + '</div>';
-        h += '<div class="fb-label">You said</div><div>“' + esc(j.said) + '”</div>';
-        (j.sound_notes || []).forEach(n => {
-          h += '<div class="fb-label">🔊 ' + esc(n.sound) +
-               (n.heard_as ? ' — sounded like “' + esc(n.heard_as) + '”' : '') + '</div>';
-          h += '<div>👄 ' + esc(n.fix_en) + '</div>';
-          if (n.fix_my) h += '<div class="muted" style="font-size:14px;">' + esc(n.fix_my) + '</div>';
-        });
-        if (j.feedback_en) {
-          h += '<div class="fb-label">Notes</div><div>' + esc(j.feedback_en) + '</div>';
-          if (j.feedback_my) h += '<div class="muted" style="font-size:14px;">' + esc(j.feedback_my) + '</div>';
-        }
-        if (j.tip_en) {
-          h += '<div class="fb-label">💡 Tip</div><div>' + esc(j.tip_en) + '</div>';
-          if (j.tip_my) h += '<div class="muted" style="font-size:14px;">' + esc(j.tip_my) + '</div>';
-        }
-        h += '<div class="small muted" style="margin-top:8px;">+' + j.xp + ' XP · 🔥 ' + j.streak + ' day streak' +
-             (j.lesson_completed ? ' · <span class="donebadge">🎉 Lesson complete!</span>' : '') + '</div>';
-        fb.innerHTML = h; fb.classList.add("show");
-        if (j.score >= 3) card.classList.add("done");
-      } catch(err){ status.textContent = "⚠ Connection problem — try again."; }
-    };
-    btn.addEventListener("click", finish);
-  }
+  card.addEventListener("click", async e => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    const act = btn.dataset.act;
+    if (act === "listen") {
+      const a = audioFor(idx);
+      status.textContent = "🔊 Playing…";
+      a.onended = () => status.textContent = "";
+      a.onerror = () => status.textContent = "⚠ Audio not ready — try again.";
+      try { await a.play(); } catch(err){ status.textContent = "⚠ Tap again to play."; }
+      return;
+    }
+    if (act === "mic") {
+      if (btn.dataset.busy) return;
+      let r;
+      try { r = await recordOnce(); }
+      catch(err){ status.textContent = "⚠ Microphone permission denied."; return; }
+      btn.dataset.busy = "1";
+      btn.classList.add("rec"); btn.textContent = "⏹ Stop";
+      status.textContent = "🎤 Recording… tap ⏹ when done";
+      const finish = async (ev) => {
+        ev.stopPropagation();
+        btn.removeEventListener("click", finish);
+        if (r.rec.state === "recording") r.rec.stop();
+        btn.classList.remove("rec"); btn.textContent = "🎤 Say it";
+        delete btn.dataset.busy;
+        status.textContent = "🔄 Checking your flow…";
+        const blob = await r.done;
+        const fd = new FormData();
+        fd.append("audio", blob, "practice.webm");
+        fd.append("lesson_id", LESSON_ID);
+        fd.append("phrase_idx", idx);
+        try {
+          const resp = await fetch("/api/practice", {method:"POST", body:fd});
+          const j = await resp.json();
+          if (!j.ok) { status.textContent = "⚠ " + (j.error || "Error"); return; }
+          status.textContent = "";
+          let h = stars(j.score) + '<div style="font-weight:800;">' + esc(SCORE_LABEL[j.score]||"") + '</div>';
+          h += '<div class="fb-label">You said</div><div>“' + esc(j.said) + '”</div>';
+          if (j.flow_en) {
+            h += '<div class="fb-label">Flow</div><div>' + esc(j.flow_en) + '</div>';
+            if (j.flow_my) h += '<div class="muted" style="font-size:14px;">' + esc(j.flow_my) + '</div>';
+          }
+          (j.alternatives || []).forEach(a => {
+            h += '<div class="fb-label">💡 Say it like this</div>';
+            if (a.instead_of) h += '<div class="muted small">instead of “' + esc(a.instead_of) + '”</div>';
+            h += '<div style="font-weight:700;">“' + esc(a.try_this) + '”</div>';
+            if (a.try_this_my) h += '<div class="muted" style="font-size:14px;">' + esc(a.try_this_my) + '</div>';
+          });
+          if (j.tip_en) {
+            h += '<div class="fb-label">🚀 Tip</div><div>' + esc(j.tip_en) + '</div>';
+            if (j.tip_my) h += '<div class="muted" style="font-size:14px;">' + esc(j.tip_my) + '</div>';
+          }
+          h += '<div class="small muted" style="margin-top:8px;">+' + j.xp + ' XP · 🔥 ' + j.streak + ' day streak' +
+               (j.lesson_completed ? ' · <span class="donebadge">🎉 Lesson complete!</span>' : '') + '</div>';
+          fb.innerHTML = h; fb.classList.add("show");
+          if (j.score >= 3) card.classList.add("done");
+        } catch(err){ status.textContent = "⚠ Connection problem — try again."; }
+      };
+      btn.addEventListener("click", finish);
+    }
+  });
 });
 </script>
 {% endblock %}

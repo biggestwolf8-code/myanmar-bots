@@ -1,1200 +1,1408 @@
 {
-  "lessons": [
+ "lessons": [
+  {
+   "id": "meeting-new-people",
+   "level": "A1",
+   "openers": [
     {
-      "id": "a1-greetings",
-      "level": "A1",
-      "phrases": [
-        {
-          "en": "Hi, my name is Arkar. What's yours?",
-          "my": "ဟဲလို၊ ကျွန်တော် နာမည်က အာကာ။ ခင်ဗျားက ဘယ်သူလဲ?",
-          "focus": "w in 'what', 'what's yours'"
-        },
-        {
-          "en": "Nice to meet you.",
-          "my": "တွေ့ရတာ ဝမ်းသာပါတယ်။",
-          "focus": "long ee /i:/ in 'meet'"
-        },
-        {
-          "en": "How are you today?",
-          "my": "ဒီနေ့ နေကောင်းလား?",
-          "focus": "h at word start"
-        },
-        {
-          "en": "I'm from Myanmar.",
-          "my": "ကျွန်တော်က မြန်မာပြည်က လာတာ။",
-          "focus": "fr cluster in 'from'"
-        },
-        {
-          "en": "Where are you from?",
-          "my": "ခင်ဗျား ဘယ်နိုင်ငံကလဲ?",
-          "focus": "w in 'where'"
-        },
-        {
-          "en": "See you later!",
-          "my": "နောက်မှ တွေ့မယ်!",
-          "focus": "l vs r in 'later'"
-        },
-        {
-          "en": "Have a nice day!",
-          "my": "ဒီနေ့ ပျော်ပျော်နေပါ!",
-          "focus": "final /v/ in 'have'"
-        }
-      ],
-      "title": "Greetings & Introductions",
-      "title_my": "နှုတ်ဆက်ခြင်းနှင့် မိမိကိုယ်ကို မိတ်ဆက်ခြင်း",
-      "topic": "Everyday",
-      "target_sounds": [
-        "w as in 'what' and 'where'",
-        "r as in 'your', 'later', 'from'",
-        "long ee /i:/ as in 'meet', 'see'"
-      ],
-      "tip_en": "For 'r', curl your tongue tip up without touching the roof of your mouth and let the air flow — don't tap it like a Myanmar 'ရ'.",
-      "tip_my": "'r' အသံအတွက် လျှာဖျားကို အပေါ်အာခေါင်နဲ့ မထိစေဘဲ ကွေးထားပြီး လေကို ပတ်ပြီး ထွက်စေပါ။ မြန်မာလို 'ရ' လို တံခွန်နဲ့ မရိုက်ပါနဲ့။"
+     "en": "So, what brings you here today?",
+     "my": "ဒီနေ့ ဒီကို ဘာကိစ္စနဲ့ ရောက်လာတာလဲ?"
     },
     {
-      "id": "a1-food",
-      "level": "A1",
-      "phrases": [
-        {
-          "en": "Can I see the menu, please?",
-          "my": "မီနူးကြည့်လို့ ရမလား?",
-          "focus": "th /ð/ in 'the'"
-        },
-        {
-          "en": "I'd like fried rice and a cola.",
-          "my": "ကျွန်တော် ထမင်းကြော်နဲ့ ကိုလာတစ်ဗူး မှာချင်တယ်။",
-          "focus": "l vs r in 'like', 'fried'"
-        },
-        {
-          "en": "No ice, please.",
-          "my": "ရေခဲ မထည့်ပါနဲ့။",
-          "focus": "final -s in 'ice'"
-        },
-        {
-          "en": "Is it spicy?",
-          "my": "ဒါဟာ အစပ်လား?",
-          "focus": "s in 'is', 'spicy'"
-        },
-        {
-          "en": "The bill, please.",
-          "my": "ဘီလီ ရှင်းချင်လို့။",
-          "focus": "th /ð/ in 'the'"
-        },
-        {
-          "en": "Can I get the bill?",
-          "my": "ဘီလီ ပေးပါ။",
-          "focus": "th /ð/ in 'the'"
-        },
-        {
-          "en": "That was delicious. Thank you!",
-          "my": "အရမ်းစားကောင်းတယ်။ ကျေးဇူးတင်ပါတယ်!",
-          "focus": "th /ð/ in 'that'"
-        }
-      ],
-      "title": "Ordering Food & Drinks",
-      "title_my": "အစားအသောက်နှင့် အဖျော်ယမကာ မှာယူခြင်း",
-      "topic": "Everyday",
-      "target_sounds": [
-        "th /ð/ as in 'the' and 'that'",
-        "final 's' in 'rice', 'ice', 'spicy'",
-        "l vs r in 'like', 'fried', 'cola'"
-      ],
-      "tip_en": "For the 'th' in 'the' and 'that', put your tongue tip lightly between your teeth and hum — it should buzz. Don't replace it with 'd' or 'z'.",
-      "tip_my": "'the', 'that' တို့လို 'th' အသံအတွက် လျှာဖျားကို သွားကြားမှာ ထားပြီး အသံကို ညည်းညူသံလိုထွက်စေပါ။ 'd' နဲ့ 'z' နဲ့ အစားမထိုးပါနဲ့။"
+     "en": "I don't think we've met — I'm ___. What about you?",
+     "my": "ကျွန်တော်တို့ မတွေ့ဖူးသေးဘူးထင်တယ် — ကျွန်တော်က ___။ ခင်ဗျားက?"
     },
     {
-      "id": "a1-shopping",
-      "level": "A1",
-      "phrases": [
-        {
-          "en": "How much is this?",
-          "my": "ဒါဟာ ဘယ်လောက်လဲ?",
-          "focus": "th /ð/ in 'this'"
-        },
-        {
-          "en": "Do you have a bigger size?",
-          "my": "ဒီထက် ပိုကြီးတဲ့ ဆိုက်ဇ် ရှိလား?",
-          "focus": "z vs s in 'size'"
-        },
-        {
-          "en": "Can I try it on?",
-          "my": "ဝတ်ကြည့်လို့ ရမလား?",
-          "focus": "tr cluster in 'try'"
-        },
-        {
-          "en": "That's too expensive for me.",
-          "my": "ဒါဟာ ကျွန်တော့်အတွက် ဈေးကြီးလွန်းတယ်။",
-          "focus": "th /ð/ in 'that's'"
-        },
-        {
-          "en": "Can you give me a discount?",
-          "my": "ဈေးနည်းနည်း လျှော့ပေးလို့ ရမလား?",
-          "focus": "v in 'give'"
-        },
-        {
-          "en": "I'll take it.",
-          "my": "ဒါကို ယူမယ်။",
-          "focus": "final -k in 'take'"
-        },
-        {
-          "en": "Do you take card?",
-          "my": "ကတ်နဲ့ ရှင်းလို့ ရလား?",
-          "focus": "final rd in 'card'"
-        }
-      ],
-      "title": "Shopping & Prices",
-      "title_my": "ဈေးဝယ်ခြင်းနှင့် ဈေးနှုန်းများ",
-      "topic": "Everyday",
-      "target_sounds": [
-        "th /ð/ as in 'this' and 'that's'",
-        "z vs s in 'have', 'size', 'expensive'",
-        "final rd in 'card'"
-      ],
-      "tip_en": "'This' and 'that's' start with a buzzing th — tongue between teeth, voice on. It's /ðis/, not /zis/ or /dis/.",
-      "tip_my": "'this', 'that's' ရဲ့ အစ 'th' က အသံပါတဲ့ အသံဖြစ်ရမယ် — လျှာဖျားကို သွားကြားမှာထားပြီး ညည်းသံနဲ့ထွက်ပါ။ 'zis' ဒါမှမဟုတ် 'dis' လို့ မပြောနဲ့။"
+     "en": "Be honest — are you actually enjoying this, or just here for the snacks like me?",
+     "my": "အမှန်ပြော — ဒါကို တကယ်ပျော်နေတာလား၊ ကျွန်တော်လို မုန့်လာစားတာလား?"
     },
     {
-      "id": "a1-directions",
-      "level": "A1",
-      "phrases": [
-        {
-          "en": "Excuse me, where is the station?",
-          "my": "ခွင့်လွှတ်ပါ၊ ရထားဘူတာရုံက ဘယ်နားလဲ?",
-          "focus": "sh /ʃ/ in 'station'"
-        },
-        {
-          "en": "How do I get to the airport?",
-          "my": "လေဆိပ်ကို ဘယ်လို သွားရမလဲ?",
-          "focus": "w in 'how', 'airport'"
-        },
-        {
-          "en": "Is it far from here?",
-          "my": "ဒီကနေ ဝေးလား?",
-          "focus": "r in 'far', 'here'"
-        },
-        {
-          "en": "Can you show me on the map?",
-          "my": "မြေပုံမှာ ပြပေးလို့ ရမလား?",
-          "focus": "sh /ʃ/ in 'show'"
-        },
-        {
-          "en": "Turn left at the corner.",
-          "my": "လမ်းထောင့်မှာ ဘယ်ဘက် လှည့်ပါ။",
-          "focus": "r vs l in 'left', 'corner'"
-        },
-        {
-          "en": "Go straight, it's on your right.",
-          "my": "တည့်တည့် သွားပါ၊ ညာဘက်မှာ ရှိတယ်။",
-          "focus": "str cluster in 'straight'"
-        }
-      ],
-      "title": "Asking for Directions",
-      "title_my": "လမ်းညွှန်ချက် တောင်းခြင်း",
-      "topic": "Travel",
-      "target_sounds": [
-        "sh /ʃ/ as in 'station' and 'show'",
-        "w in 'where' and 'how'",
-        "r vs l in 'corner' and 'right'"
-      ],
-      "tip_en": "'Station' starts with /ʃ/ — round your lips and push air through, like hushing someone. Don't say 's-tation'.",
-      "tip_my": "'station' ရဲ့ အစ 'sh' အသံအတွက် နှုတ်ခမ်းဝိုင်းပြီး လေကို တွန်းထုတ်ပါ — 'ရှူး' လို့ ငြိမ်သက်ခိုင်းသလိုပဲ။ 's' နဲ့ မပြောနဲ့။"
-    },
-    {
-      "id": "a1-smalltalk",
-      "level": "A1",
-      "phrases": [
-        {
-          "en": "Beautiful day, isn't it?",
-          "my": "နေ့လှလှလေးနော်၊ မဟုတ်ဘူးလား?",
-          "focus": "b in 'beautiful'"
-        },
-        {
-          "en": "It's so hot today.",
-          "my": "ဒီနေ့ အရမ်းပူတယ်။",
-          "focus": "h in 'hot'"
-        },
-        {
-          "en": "I think it's going to rain.",
-          "my": "မိုးရွာတော့မယ် ထင်တယ်။",
-          "focus": "th /θ/ in 'think'"
-        },
-        {
-          "en": "What do you do in your free time?",
-          "my": "အားလပ်ချိန်မှာ ဘာလုပ်လဲ?",
-          "focus": "w vs v"
-        },
-        {
-          "en": "I love listening to music.",
-          "my": "ကျွန်တော် သီချင်းနားထောင်ရတာ ကြိုက်တယ်။",
-          "focus": "v in 'love'"
-        },
-        {
-          "en": "How was your weekend?",
-          "my": "စနေတနင်္ဂနွေ ဘယ်လိုနေလဲ?",
-          "focus": "w in 'weekend'"
-        }
-      ],
-      "title": "Small Talk & Weather",
-      "title_my": "စကားစမြည်ပြောခြင်းနှင့် ရာသီဥတု",
-      "topic": "Social",
-      "target_sounds": [
-        "th /θ/ as in 'think'",
-        "v in 'love'",
-        "w in 'what' and 'weekend'",
-        "final -nd in 'weekend'"
-      ],
-      "tip_en": "'Think' uses the quiet th — blow air between your teeth with no voice. Don't say 'sink'.",
-      "tip_my": "'think' ရဲ့ 'th' က အသံမပါတဲ့ အသံပါ — သွားကြားကနေ လေကို မှုတ်ထုတ်ရုံပဲ။ 'sink' လို့ မပြောနဲ့။"
-    },
-    {
-      "id": "a2-hotel",
-      "level": "A2",
-      "phrases": [
-        {
-          "en": "I have a reservation under the name Aung.",
-          "my": "အောင် နာမည်နဲ့ အခန်း ကြိုမှာထားတယ်။",
-          "focus": "v in 'have', r in 'reservation'"
-        },
-        {
-          "en": "What time is check-out?",
-          "my": "ချက်ခ်အောက် ဘယ်အချိန်လဲ?",
-          "focus": "ch /tʃ/ in 'check-out'"
-        },
-        {
-          "en": "Is breakfast included?",
-          "my": "မနက်စာ ပါလား?",
-          "focus": "r vs l in 'breakfast'"
-        },
-        {
-          "en": "The aircon in my room isn't working.",
-          "my": "ကျွန်တော့် အခန်းက အဲကွန်းက အလုပ်မလုပ်ဘူး။",
-          "focus": "th /ð/ in 'the'"
-        },
-        {
-          "en": "Could I get an extra towel, please?",
-          "my": "တဘက် တစ်ထည်လောက် ထပ်ပေးလို့ ရမလား?",
-          "focus": "r vs l in 'extra'"
-        },
-        {
-          "en": "What time does the pool open?",
-          "my": "ရေကူးကန် ဘယ်အချိန် ဖွင့်လဲ?",
-          "focus": "long oo /u:/ in 'pool'"
-        },
-        {
-          "en": "Can you call a taxi for me?",
-          "my": "တက္ကစီ တစ်စီး ခေါ်ပေးလို့ ရမလား?",
-          "focus": "ks in 'taxi'"
-        }
-      ],
-      "title": "At the Hotel",
-      "title_my": "ဟိုတယ်မှာ",
-      "topic": "Travel",
-      "target_sounds": [
-        "th /ð/ in 'the'",
-        "r vs l in 'reservation', 'breakfast', 'extra'",
-        "ks in 'taxi'"
-      ],
-      "tip_en": "'Reservation' and 'breakfast' drill the r-vs-l contrast — keep the tongue curled for 'r' and flat behind the teeth for 'l'.",
-      "tip_my": "'reservation', 'breakfast' တို့မှာ 'r' နဲ့ 'l' ကို ခွဲခြားပြောပါ — 'r' မှာ လျှာကွေးထား၊ 'l' မှာ လျှာဖျားကို သွားအနောက်မှာ ကပ်ထားပါ။"
-    },
-    {
-      "id": "a2-phone",
-      "level": "A2",
-      "phrases": [
-        {
-          "en": "Hello, this is Arkar speaking.",
-          "my": "ဟဲလို၊ ကျွန်တော်က အာကာ ဖြစ်ပါတယ်။",
-          "focus": "th /ð/ in 'this'"
-        },
-        {
-          "en": "Can I speak to Ms. Su, please?",
-          "my": "မစ္စစူဲနဲ့ စကားပြောလို့ ရမလား?",
-          "focus": "sp cluster in 'speak'"
-        },
-        {
-          "en": "Sorry, I can't hear you well.",
-          "my": "စိတ်မကောင်းပါဘူး၊ ခင်ဗျားအသံ ကောင်းကောင်း မကြားရဘူး။",
-          "focus": "r in 'sorry', 'hear'"
-        },
-        {
-          "en": "Could you speak a bit slower, please?",
-          "my": "နည်းနည်း နှေးနှေး ပြောပေးလို့ ရမလား?",
-          "focus": "sl cluster in 'slower'"
-        },
-        {
-          "en": "Can I take a message?",
-          "my": "မက်ဆေ့ချ် ထားခဲ့လို့ ရမလား?",
-          "focus": "j /dʒ/ in 'message'"
-        },
-        {
-          "en": "I'll call you back in ten minutes.",
-          "my": "ဆယ်မိနစ်နေရင် ပြန်ခေါ်မယ်။",
-          "focus": "l in 'call'"
-        },
-        {
-          "en": "Thanks for calling. Bye!",
-          "my": "ဖုန်းဆက်ပေးတာ ကျေးဇူးပါ။ တာ့တာ!",
-          "focus": "th /θ/ in 'thanks'"
-        }
-      ],
-      "title": "Phone Calls",
-      "title_my": "ဖုန်းခေါ်ဆိုခြင်း",
-      "topic": "Everyday",
-      "target_sounds": [
-        "th /ð/ in 'this'",
-        "sp cluster in 'speak'",
-        "sl cluster in 'slower'"
-      ],
-      "tip_en": "'This is' needs the buzzing th, then a smooth /s/ in 'is' — tongue between teeth with voice on, then pull back for 's'. Don't merge them into 'zis'.",
-      "tip_my": "'this is' မှာ အသံပါတဲ့ 'th' ပြီးရင် 's' ကို ဆက်ပြောရမယ် — လျှာကို သွားကြားမှာထားပြီး ညည်းသံနဲ့ထွက်၊ ပြီးရင် နောက်ဆုတ်ပြီး 's' ထုတ်ပါ။ 'zis' လို့ ရောမပြောနဲ့။"
-    },
-    {
-      "id": "a2-doctor",
-      "level": "A2",
-      "phrases": [
-        {
-          "en": "I'd like to make an appointment.",
-          "my": "ရက်ချိန်း ယူချင်လို့။",
-          "focus": "word stress in 'appointment'"
-        },
-        {
-          "en": "I have a headache and a fever.",
-          "my": "ကျွန်တော် ခေါင်းကိုက်ပြီး ဖျားနေတယ်။",
-          "focus": "h in 'headache', 'have'"
-        },
-        {
-          "en": "It started two days ago.",
-          "my": "နှစ်ရက်လောက် ရှိပြီ၊ အဲဒီလို ဖြစ်နေတာ။",
-          "focus": "final -ed /t/ in 'started'"
-        },
-        {
-          "en": "It hurts right here.",
-          "my": "ဒီနေရာမှာ နာတယ်။",
-          "focus": "r vs l in 'hurts right'"
-        },
-        {
-          "en": "Do I need to take any medicine?",
-          "my": "ဆေး သောက်ဖို့ လိုလား?",
-          "focus": "d in 'do', 'need'"
-        },
-        {
-          "en": "How many times a day should I take it?",
-          "my": "တစ်နေ့ ဘယ်နှစ်ကြိမ် သောက်ရမလဲ?",
-          "focus": "sh /ʃ/ in 'should'"
-        },
-        {
-          "en": "Thank you, doctor. Goodbye.",
-          "my": "ကျေးဇူးတင်ပါတယ် ဆရာဝန်။ သွားတော့မယ်။",
-          "focus": "th /θ/ in 'thank'"
-        }
-      ],
-      "title": "At the Doctor",
-      "title_my": "ဆေးခန်းမှာ",
-      "topic": "Health",
-      "target_sounds": [
-        "r vs l in 'hurts right here'",
-        "h in 'headache' and 'have'",
-        "final -ed /t/ in 'started'"
-      ],
-      "tip_en": "'Hurts right here' packs three r's — curl the tongue each time, don't drop them or swap them with 'l'.",
-      "tip_my": "'hurts right here' မှာ 'r' သုံးခါပါတယ် — တစ်ခါချင်းစီ လျှာကွေးပြီး ပြောပါ။ 'r' ကို ဖြုတ်တာ၊ 'l' နဲ့ လဲတာ မလုပ်ပါနဲ့။"
-    },
-    {
-      "id": "a2-plans",
-      "level": "A2",
-      "phrases": [
-        {
-          "en": "Are you free this Saturday?",
-          "my": "ဒီစနေနေ့ အားလား?",
-          "focus": "th /ð/ in 'this'"
-        },
-        {
-          "en": "Want to grab coffee together?",
-          "my": "အတူတူ ကော်ဖီ သောက်ကြမလား?",
-          "focus": "w in 'want'"
-        },
-        {
-          "en": "What time works for you?",
-          "my": "မင်းအတွက် ဘယ်အချိန် အဆင်ပြေလဲ?",
-          "focus": "w in 'what', 'works'"
-        },
-        {
-          "en": "Let's meet at six at the mall.",
-          "my": "ခြောက်နာရီ ကုန်တိုက်မှာ တွေ့ကြမယ်။",
-          "focus": "s in 'six', 'let's'"
-        },
-        {
-          "en": "Sorry, I can't make it that day.",
-          "my": "စိတ်မကောင်းပါဘူး၊ အဲဒီနေ့ မလာနိုင်ဘူး။",
-          "focus": "th /ð/ in 'that'"
-        },
-        {
-          "en": "How about Sunday instead?",
-          "my": "တနင်္ဂနွေနေ့ကျရင် ဘယ်လိုလဲ?",
-          "focus": "s in 'Sunday', 'instead'"
-        },
-        {
-          "en": "Sounds good. See you then!",
-          "my": "ကောင်းတယ်။ အဲဒီကျ တွေ့မယ်!",
-          "focus": "th /ð/ in 'then'"
-        }
-      ],
-      "title": "Making Plans with Friends",
-      "title_my": "သူငယ်ချင်းတွေနဲ့ အစီအစဉ် ဆွဲခြင်း",
-      "topic": "Social",
-      "target_sounds": [
-        "th /ð/ in 'this', 'that', 'then', 'together'",
-        "w in 'what', 'want', 'works'",
-        "s vs z in 'sounds', 'Saturday'"
-      ],
-      "tip_en": "This lesson is full of /ð/: this, that, then, together. Tongue between teeth and buzz every single time.",
-      "tip_my": "ဒီသင်ခန်းစာမှာ 'this', 'that', 'then', 'together' တို့လို 'th' အသံပါတာတွေ များပါတယ် — လျှာကို သွားကြားမှာထားပြီး တစ်ခါချင်းစီ ညည်းသံထွက်ပြောပါ။"
-    },
-    {
-      "id": "a2-job",
-      "level": "A2",
-      "phrases": [
-        {
-          "en": "I work as an English teacher.",
-          "my": "ကျွန်တော်က အင်္ဂလိပ်စာ ဆရာ လုပ်တယ်။",
-          "focus": "w in 'work'"
-        },
-        {
-          "en": "I've been doing this for three years.",
-          "my": "ဒီအလုပ်ကို သုံးနှစ်လောက် လုပ်နေပြီ။",
-          "focus": "v in 'I've', th in 'this'"
-        },
-        {
-          "en": "I work from nine to five.",
-          "my": "ကျွန်တော် မနက်ကိုးနာရီကနေ ညနေငါးနာရီထိ အလုပ်လုပ်တယ်။",
-          "focus": "v in 'five'"
-        },
-        {
-          "en": "My office is in downtown Yangon.",
-          "my": "ကျွန်တော့် ရုံးက ရန်ကုန်မြို့လယ်မှာ။",
-          "focus": "f in 'office'"
-        },
-        {
-          "en": "I really enjoy my work.",
-          "my": "ကျွန်တော် ကိုယ့်အလုပ်ကို တကယ် ကြိုက်တယ်။",
-          "focus": "r vs l in 'really'"
-        },
-        {
-          "en": "Sometimes it's stressful, but it's worth it.",
-          "my": "တစ်ခါတစ်လေ စိတ်ဖိစီးတယ်၊ ဒါပေမယ့် တန်ပါတယ်။",
-          "focus": "str cluster in 'stressful'"
-        },
-        {
-          "en": "What do you do for a living?",
-          "my": "ခင်ဗျား ဘာအလုပ်လုပ်လဲ?",
-          "focus": "v in 'living'"
-        }
-      ],
-      "title": "Talking about Your Job",
-      "title_my": "ကိုယ့်အလုပ်အကြောင်း ပြောခြင်း",
-      "topic": "Work",
-      "target_sounds": [
-        "w in 'work' and 'what'",
-        "v in 'five', 'I've', 'living'",
-        "r vs l in 'really'"
-      ],
-      "tip_en": "'Work' starts with a rounded /w/ — no teeth touch your lips. Myanmar speakers often say 'verk' — keep lips round and pushed forward.",
-      "tip_my": "'work' ရဲ့ အစ 'w' မှာ နှုတ်ခမ်းဝိုင်းပြီး သွားနဲ့ နှုတ်ခမ်း မထိစေနဲ့။ 'verk' လို့ မပြောနဲ့ — နှုတ်ခမ်းကို ရှေ့တိုးပြီး ဝိုင်းထားပါ။"
-    },
-    {
-      "id": "b1-interview",
-      "level": "B1",
-      "phrases": [
-        {
-          "en": "Thank you for giving me this opportunity.",
-          "my": "ဒီအခွင့်အရေး ပေးတဲ့အတွက် ကျေးဇူးတင်ပါတယ်။",
-          "focus": "th /θ/ in 'thank'"
-        },
-        {
-          "en": "Tell me a little about yourself.",
-          "my": "ခင်ဗျားအကြောင်း နည်းနည်း ပြောပြပါ။",
-          "focus": "l in 'tell', 'little'"
-        },
-        {
-          "en": "My biggest strength is my communication skills.",
-          "my": "ကျွန်တော့် အကြီးမားဆုံး အားသာချက်က ဆက်သွယ်ပြောဆိုနိုင်စွမ်းပါ။",
-          "focus": "str cluster in 'strength'"
-        },
-        {
-          "en": "I handle pressure pretty well.",
-          "my": "ဖိအားကို ကျွန်တော် တော်တော်လေး ကိုင်တွယ်နိုင်တယ်။",
-          "focus": "pr cluster in 'pressure'"
-        },
-        {
-          "en": "Why do you want to work here?",
-          "my": "ဒီမှာ ဘာလို့ အလုပ်လုပ်ချင်တာလဲ?",
-          "focus": "w in 'why', 'work'"
-        },
-        {
-          "en": "Where do you see yourself in five years?",
-          "my": "နောက်ငါးနှစ်မှာ ကိုယ့်ကိုယ်ကို ဘယ်လို မြင်လဲ?",
-          "focus": "w in 'where'"
-        },
-        {
-          "en": "Do you have any questions for me?",
-          "my": "ကျွန်တော့်ကို မေးချင်တာ ရှိလား?",
-          "focus": "kw in 'questions'"
-        }
-      ],
-      "title": "Job Interview Basics",
-      "title_my": "အလုပ်အင်တာဗျူး အခြေခံများ",
-      "topic": "Work",
-      "target_sounds": [
-        "th /θ/ in 'thank'",
-        "r vs l in 'little' and 'yourself'",
-        "str cluster in 'strength'",
-        "pr cluster in 'pressure', 'pretty'"
-      ],
-      "tip_en": "Interviews demand crisp consonants: punch the 'th' in 'thank', and don't let 'little' and 'yourself' blur — keep 'l' flat and 'r' curled.",
-      "tip_my": "အင်တာဗျူးမှာ ဗျည်းအသံတွေ ပြတ်ပြတ်သားသား ထွက်ရမယ် — 'thank' ရဲ့ 'th' ကို ပြတ်သားစွာထွက်ပြီး 'little' နဲ့ 'yourself' ကို မရောထွေးစေနဲ့။"
-    },
-    {
-      "id": "b1-opinions",
-      "level": "B1",
-      "phrases": [
-        {
-          "en": "In my opinion, that's a great idea.",
-          "my": "ကျွန်တော့် အမြင်အရတော့ ဒါဟာ အရမ်းကောင်းတဲ့ အကြံပဲ။",
-          "focus": "th /ð/ in 'that's'"
-        },
-        {
-          "en": "I see your point, but I disagree.",
-          "my": "ခင်ဗျားပြောတာ နားလည်ပါတယ်၊ ဒါပေမယ့် ကျွန်တော် သဘောမတူဘူး။",
-          "focus": "gr in 'disagree'"
-        },
-        {
-          "en": "That's an interesting way to look at it.",
-          "my": "အဲဒါက စိတ်ဝင်စားစရာကောင်းတဲ့ ရှုထောင့်ပဲ။",
-          "focus": "th /ð/ in 'that's'"
-        },
-        {
-          "en": "I'm not so sure about that.",
-          "my": "အဲဒါနဲ့ ပတ်သက်ပြီး ကျွန်တော် သေချာ မသိဘူး။",
-          "focus": "sh /ʃ/ in 'sure'"
-        },
-        {
-          "en": "Let's agree to disagree on this one.",
-          "my": "ဒီတစ်ခုတော့ သဘောမတူတာကို သဘောတူလိုက်ကြစို့။",
-          "focus": "gr cluster"
-        },
-        {
-          "en": "What do you think about it?",
-          "my": "ခင်ဗျား ဒါကို ဘယ်လို ထင်လဲ?",
-          "focus": "th /θ/ in 'think'"
-        }
-      ],
-      "title": "Giving Opinions Politely",
-      "title_my": "ယဉ်ယဉ်ကျေးကျေး အမြင်ထုတ်ဖော်ခြင်း",
-      "topic": "Social",
-      "target_sounds": [
-        "th /ð/ in 'that's', 'that', 'this'",
-        "gr cluster in 'great', 'agree', 'disagree'",
-        "sh /ʃ/ in 'sure'"
-      ],
-      "tip_en": "Buzz every 'th': that's, that, this. And 'agree' / 'disagree' need a real /g/ — don't soften it away.",
-      "tip_my": "'that's', 'that', 'this' တို့ရဲ့ 'th' တိုင်းကို ညည်းသံထွက်ပေးပါ။ 'agree', 'disagree' မှာ 'g' အသံ ပြတ်ပြတ်သားသား ထွက်ရမယ်။"
-    },
-    {
-      "id": "b1-travel-problems",
-      "level": "B1",
-      "phrases": [
-        {
-          "en": "My flight has been delayed by two hours.",
-          "my": "ကျွန်တော့် လေယာဉ် နှစ်နာရီလောက် နောက်ကျသွားတယ်။",
-          "focus": "fl cluster in 'flight'"
-        },
-        {
-          "en": "I've lost my luggage. What should I do?",
-          "my": "ကျွန်တော့် အိတ်ပျောက်သွားတယ်။ ဘာလုပ်ရမလဲ?",
-          "focus": "j in 'luggage'"
-        },
-        {
-          "en": "Is there another flight I can take?",
-          "my": "စီးလို့ရတဲ့ နောက်ထပ် လေယာဉ်တစ်စီး ရှိလား?",
-          "focus": "th /ð/ in 'there'"
-        },
-        {
-          "en": "I need to change my booking.",
-          "my": "ကျွန်တော့် ဘွတ်ကင်ကို ပြောင်းချင်တယ်။",
-          "focus": "ch /tʃ/ in 'change'"
-        },
-        {
-          "en": "The hotel gave my room to someone else.",
-          "my": "ဟိုတယ်က ကျွန်တော့် အခန်းကို တခြားသူကို ပေးလိုက်တယ်။",
-          "focus": "th /ð/ in 'the'"
-        },
-        {
-          "en": "Can you help me sort this out?",
-          "my": "ဒါကို ရှင်းပေးလို့ ရမလား?",
-          "focus": "th /ð/ in 'this'"
-        },
-        {
-          "en": "I'd like to speak to your manager.",
-          "my": "ခင်ဗျားတို့ရဲ့ မန်နေဂျာနဲ့ စကားပြောချင်တယ်။",
-          "focus": "sp cluster in 'speak'"
-        }
-      ],
-      "title": "Travel Problems",
-      "title_my": "ခရီးသွားရင်း ကြုံရတဲ့ ပြဿနာများ",
-      "topic": "Travel",
-      "target_sounds": [
-        "fl cluster in 'flight'",
-        "th /ð/ in 'the', 'this', 'there'",
-        "ch /tʃ/ in 'change'"
-      ],
-      "tip_en": "'Flight' needs the fl-cluster: top teeth on lower lip for /f/, then tongue flat for /l/ — don't drop either one.",
-      "tip_my": "'flight' မှာ 'fl' အသံစုလိုတယ် — အပေါ်သွားနဲ့ အောက်နှုတ်ခမ်းထိပြီး 'f' ထွက်၊ ပြီးရင် လျှာဖျားပြားပြီး 'l' ထွက်။ တစ်ခုမှ မဖြုတ်နဲ့။"
-    },
-    {
-      "id": "b1-past",
-      "level": "B1",
-      "phrases": [
-        {
-          "en": "Last year I traveled to Thailand.",
-          "my": "မနှစ်က ကျွန်တော် ထိုင်းကို ခရီးသွားခဲ့တယ်။",
-          "focus": "tr cluster in 'traveled'"
-        },
-        {
-          "en": "It was the best trip of my life.",
-          "my": "အဲဒါဟာ ကျွန်တော့် ဘဝရဲ့ အကောင်းဆုံး ခရီးပဲ။",
-          "focus": "th /ð/ in 'the'"
-        },
-        {
-          "en": "The food there was amazing.",
-          "my": "အဲဒီက အစားအသောက်တွေ အရမ်းကောင်းတယ်။",
-          "focus": "th /ð/ in 'the', 'there'"
-        },
-        {
-          "en": "I met so many friendly people.",
-          "my": "ဖော်ရွေတဲ့ လူတွေ အများကြီး တွေ့ခဲ့တယ်။",
-          "focus": "fr cluster in 'friendly'"
-        },
-        {
-          "en": "One thing I'll never forget is the sunset.",
-          "my": "ကျွန်တော် ဘယ်တော့မှ မမေ့မယ့် တစ်ခုက နေဝင်ချိန်ပဲ။",
-          "focus": "th /θ/ in 'thing'"
-        },
-        {
-          "en": "Have you ever been abroad?",
-          "my": "ခင်ဗျား နိုင်ငံခြား ရောက်ဖူးလား?",
-          "focus": "v in 'have'"
-        }
-      ],
-      "title": "Describing Past Experiences",
-      "title_my": "အတိတ်က အတွေ့အကြုံများ ဖော်ပြခြင်း",
-      "topic": "Social",
-      "target_sounds": [
-        "tr cluster in 'traveled' and 'trip'",
-        "th /ð/ in 'the' and 'there'",
-        "v in 'have' and 'never'"
-      ],
-      "tip_en": "'Traveled' and 'trip' start with tr: tongue tip behind the teeth for /t/, then curl back for /r/ — one smooth motion.",
-      "tip_my": "'traveled', 'trip' တို့ရဲ့ 'tr' — လျှာဖျားကို သွားအနောက်မှာထားပြီး 't' ထွက်၊ ပြီးရင် နောက်ကွေးပြီး 'r' ထွက်ပါ။ တစ်ဆက်တည်း ချောချောမွေ့မွေ့ ပြောပါ။"
-    },
-    {
-      "id": "b1-complaint",
-      "level": "B1",
-      "phrases": [
-        {
-          "en": "Excuse me, there's a problem with my order.",
-          "my": "ခွင့်လွှတ်ပါ၊ ကျွန်တော့် မှာယူမှုမှာ ပြဿနာ တစ်ခုရှိတယ်။",
-          "focus": "th /ð/ in 'there's'"
-        },
-        {
-          "en": "This isn't what I asked for.",
-          "my": "ဒါဟာ ကျွန်တော် တောင်းတာနဲ့ မတူဘူး။",
-          "focus": "th /ð/ in 'this', skt in 'asked'"
-        },
-        {
-          "en": "I understand, but I'm not happy with this.",
-          "my": "နားလည်ပါတယ်၊ ဒါပေမယ့် ဒါကို ကျွန်တော် မကျေနပ်ဘူး။",
-          "focus": "th /ð/ in 'this'"
-        },
-        {
-          "en": "Could you please fix this for me?",
-          "my": "ဒါကို ပြင်ပေးလို့ ရမလား?",
-          "focus": "f in 'fix'"
-        },
-        {
-          "en": "I'd like a refund, please.",
-          "my": "ငွေပြန်အမ်းပေးစေချင်တယ်။",
-          "focus": "f in 'refund'"
-        },
-        {
-          "en": "Thank you for handling it so quickly.",
-          "my": "မြန်မြန် ကိုင်တွယ်ပေးတဲ့အတွက် ကျေးဇူးတင်ပါတယ်။",
-          "focus": "th /θ/ in 'thank'"
-        },
-        {
-          "en": "I hope this doesn't happen again.",
-          "my": "ဒီလို နောက်ထပ် မဖြစ်ဖို့ မျှော်လင့်ပါတယ်။",
-          "focus": "th /ð/ in 'this'"
-        }
-      ],
-      "title": "Making a Polite Complaint",
-      "title_my": "ယဉ်ယဉ်ကျေးကျေး တိုင်ကြားခြင်း",
-      "topic": "Everyday",
-      "target_sounds": [
-        "th /ð/ in 'this' and 'there's'",
-        "final -skt in 'asked'",
-        "f in 'fix', 'for', 'refund'"
-      ],
-      "tip_en": "'Asked' ends with three consonants: /skt/ — s, then k, then t. Don't swallow the /t/ — 'asked for' is not 'ask for'.",
-      "tip_my": "'asked' ရဲ့ အဆုံး 'skt' — 's'၊ 'k'၊ 't' သုံးခုလုံး ထွက်ရမယ်။ 't' ကို မမျိုနဲ့ — 'asked for' က 'ask for' မဟုတ်ဘူး။"
-    },
-    {
-      "id": "s-th",
-      "level": "Sounds",
-      "title": "The 'th' Sounds",
-      "title_my": "'th' အသံများ",
-      "topic": "Pronunciation",
-      "target_sounds": [
-        "voiceless th /θ/ as in 'think'",
-        "voiced th /ð/ as in 'this'",
-        "th vs t/s/d minimal pairs"
-      ],
-      "tip_en": "For /θ/ (think), rest your tongue tip lightly between your teeth and blow air out with no voice. For /ð/ (this), keep the same tongue position but turn your voice on — you should feel it buzz. Never bite down: the tongue just peeks out.",
-      "tip_my": "'think' လို 'th' အသံမပါတာအတွက် လျှာဖျားကို သွားနှစ်ချောင်းကြားမှာ ပေါ့ပေါ့ပါးပါးထားပြီး လေကို မှုတ်ထုတ်ပါ။ 'this' လို အသံပါတာအတွက်က လျှာနေရာတူတူပဲ၊ ဒါပေမဲ့ အသံထည့်ပေးပါ — ညည်းသံခံစားရမယ်။ လျှာကို မကိုက်နဲ့၊ သွားကြားက နည်းနည်းလေးပဲ ထွက်နေရမယ်။",
-      "phrases": [
-        {
-          "en": "thin — tin",
-          "my": "ပါးလွှာသော — သံဖြူ",
-          "focus": "th /θ/ vs t"
-        },
-        {
-          "en": "think — sink",
-          "my": "စဉ်းစားသည် — နစ်မြုပ်သည်",
-          "focus": "th /θ/ vs s"
-        },
-        {
-          "en": "thank — tank",
-          "my": "ကျေးဇူးတင်သည် — တိုင်ကီ",
-          "focus": "th /θ/ vs t"
-        },
-        {
-          "en": "those — doze",
-          "my": "ဟိုဟာတွေ — ငိုက်မျဉ်းသည်",
-          "focus": "th /ð/ vs d"
-        },
-        {
-          "en": "I think this is thin.",
-          "my": "ဒါက ပါးလွှာတယ်လို့ ငါထင်တယ်။",
-          "focus": "th /θ/ and /ð/"
-        },
-        {
-          "en": "Thank you for those things.",
-          "my": "အဲဒီပစ္စည်းတွေအတွက် ကျေးဇူးတင်ပါတယ်။",
-          "focus": "th /θ/ and /ð/ shadowing",
-          "slow_ok": true
-        },
-        {
-          "en": "They think they're thirsty.",
-          "my": "သူတို့က ရေဆာတယ်လို့ ထင်နေကြတယ်။",
-          "focus": "th /θ/ and /ð/ shadowing"
-        },
-        {
-          "en": "This Thursday, the weather is smooth.",
-          "my": "ဒီကြာသပတေးနေ့မှာ ရာသီဥတုက သာယာတယ်။",
-          "focus": "th /θ/ and /ð/ shadowing",
-          "slow_ok": true
-        }
-      ]
-    },
-    {
-      "id": "s-vw",
-      "level": "Sounds",
-      "title": "V vs W",
-      "title_my": "'v' နဲ့ 'w' အသံများ",
-      "topic": "Pronunciation",
-      "target_sounds": [
-        "/v/ as in 'very'",
-        "/w/ as in 'wet'",
-        "v vs w minimal pairs"
-      ],
-      "tip_en": "For /v/, bite your lower lip gently with your top teeth and buzz — feel the vibration on your lip. For /w/, round your lips like blowing out a candle; no teeth touch anything. Say 'very' with teeth, 'wary' with round lips.",
-      "tip_my": "'v' အသံအတွက် အပေါ်သွားနဲ့ အောက်နှုတ်ခမ်းကို ပေါ့ပေါ့ပါးပါး ကိုက်ထားပြီး ညည်းသံထွက်ပါ — နှုတ်ခမ်းမှာ တုန်ခါမှုခံစားရမယ်။ 'w' အသံအတွက် ဖယောင်းတိုင်မှုတ်သလို နှုတ်ခမ်းဝိုင်းပါ၊ သွားနဲ့ ဘာမှ မထိစေနဲ့။ 'very' ကို သွားနဲ့ပြော၊ 'wary' ကို နှုတ်ခမ်းဝိုင်းပြော။",
-      "phrases": [
-        {
-          "en": "very — wary",
-          "my": "အလွန်ပဲ — သတိထားသော",
-          "focus": "v vs w"
-        },
-        {
-          "en": "vine — wine",
-          "my": "စပျစ်နွယ် — ဝိုင်",
-          "focus": "v vs w"
-        },
-        {
-          "en": "vest — west",
-          "my": "အင်္ကျီအတွင်းခံ — အနောက်",
-          "focus": "v vs w"
-        },
-        {
-          "en": "very well — wary walk",
-          "my": "အလွန်ကောင်းတယ် — သတိထားတဲ့ လမ်းလျှောက်ခြင်း",
-          "focus": "v vs w pairs"
-        },
-        {
-          "en": "We viewed the vast valley.",
-          "my": "ကျွန်တော်တို့ ကျယ်ပြန့်တဲ့ ချိုင့်ဝှမ်းကို ကြည့်ခဲ့ကြတယ်။",
-          "focus": "v vs w shadowing"
-        },
-        {
-          "en": "Vera will visit Wendy on Wednesday.",
-          "my": "Vera က ဗုဒ္ဓဟူးနေ့မှာ Wendy ကို သွားလည်မယ်။",
-          "focus": "v vs w shadowing",
-          "slow_ok": true
-        },
-        {
-          "en": "The vet drove west in the van.",
-          "my": "တိရစ္ဆာန်ဆရာဝန်က အနောက်ဘက်ကို ဗန်ကားနဲ့ မောင်းသွားတယ်။",
-          "focus": "v vs w shadowing",
-          "slow_ok": true
-        }
-      ]
-    },
-    {
-      "id": "s-zs",
-      "level": "Sounds",
-      "title": "Z vs S",
-      "title_my": "'z' နဲ့ 's' အသံများ",
-      "topic": "Pronunciation",
-      "target_sounds": [
-        "/z/ as in 'zip'",
-        "/s/ as in 'sip'",
-        "z vs s minimal pairs"
-      ],
-      "tip_en": "Keep your tongue in exactly the same place for both — tip just behind your teeth. For /s/ (sip), only air comes out. For /z/ (zip), turn your voice on and feel the buzz on your tongue tip. Hold 'zzzz' like a bee before you start.",
-      "tip_my": "နှစ်ခုလုံးအတွက် လျှာနေရာ အတူတူပဲထားပါ — လျှာဖျားကို သွားအနောက်မှာ။ 's' အသံမှာ လေပဲ ထွက်တယ်။ 'z' အသံမှာ အသံထည့်ပြီး လျှာဖျားမှာ ညည်းသံခံစားရမယ်။ မစခင် ပျားလို 'zzzz' လို့ ညည်းကြည့်ပါ။",
-      "phrases": [
-        {
-          "en": "zip — sip",
-          "my": "ဇစ် — နည်းနည်းသောက်",
-          "focus": "z vs s"
-        },
-        {
-          "en": "buzz — bus",
-          "my": "ညည်းသံ — ဘတ်စ်ကား",
-          "focus": "z vs s"
-        },
-        {
-          "en": "eyes — ice",
-          "my": "မျက်လုံးများ — ရေခဲ",
-          "focus": "z vs s"
-        },
-        {
-          "en": "zoo — Sue",
-          "my": "တိရစ္ဆာန်ရုံ — Sue (အမည်)",
-          "focus": "z vs s"
-        },
-        {
-          "en": "Please close those doors.",
-          "my": "အဲဒီတံခါးတွေကို ပိတ်ပေးပါ။",
-          "focus": "final z in 'close', 'doors'",
-          "slow_ok": true
-        },
-        {
-          "en": "The lazy zebra snoozes in the zoo.",
-          "my": "ပျင်းရိတဲ့ မြင်းကျားက တိရစ္ဆာန်ရုံမှာ အိပ်ငိုက်နေတယ်။",
-          "focus": "z shadowing"
-        },
-        {
-          "en": "He has six pens and two razors.",
-          "my": "သူ့မှာ ဘောပင် ခြောက်ချောင်းနဲ့ မုတ်ဆိတ်ရိတ်ဓား နှစ်ချောင်း ရှိတယ်။",
-          "focus": "s vs z shadowing",
-          "slow_ok": true
-        }
-      ]
-    },
-    {
-      "id": "s-rl",
-      "level": "Sounds",
-      "title": "R vs L",
-      "title_my": "'r' နဲ့ 'l' အသံများ",
-      "topic": "Pronunciation",
-      "target_sounds": [
-        "/r/ as in 'red'",
-        "/l/ as in 'led'",
-        "r vs l minimal pairs"
-      ],
-      "tip_en": "For /l/, press your tongue tip flat against the ridge behind your top teeth — air flows around the sides. For /r/, curl the tongue tip back without touching anything. If 'right' sounds like 'light', your tongue is touching when it shouldn't.",
-      "tip_my": "'l' အသံအတွက် လျှာဖျားကို အပေါ်သွားအနောက် အဖုအထစ်မှာ ကပ်ထားပါ — လေက ဘေးနှစ်ဖက်က ထွက်တယ်။ 'r' အသံအတွက် လျှာဖျားကို ဘာနဲ့မှ မထိစေဘဲ နောက်ကွေးထားပါ။ 'right' က 'light' လို ထွက်နေရင် လျှာက မထိသင့်တဲ့နေရာ ထိနေလို့ပဲ။",
-      "phrases": [
-        {
-          "en": "right — light",
-          "my": "မှန်ကန်သော — အလင်း",
-          "focus": "r vs l"
-        },
-        {
-          "en": "red — led",
-          "my": "အနီရောင် — ဦးဆောင်ခဲ့သည်",
-          "focus": "r vs l"
-        },
-        {
-          "en": "grass — glass",
-          "my": "မြက် — ဖန်",
-          "focus": "r vs l"
-        },
-        {
-          "en": "pray — play",
-          "my": "ဆုတောင်းသည် — ကစားသည်",
-          "focus": "r vs l"
-        },
-        {
-          "en": "The red lorry rolled along the road.",
-          "my": "အနီရောင် လော်ရီကားက လမ်းပေါ် လိမ့်သွားတယ်။",
-          "focus": "r vs l shadowing"
-        },
-        {
-          "en": "Really? That's really wrong!",
-          "my": "တကယ်လား? အဲဒါ တကယ်ကို မှားနေတာပဲ!",
-          "focus": "r vs l shadowing",
-          "slow_ok": true
-        },
-        {
-          "en": "Please collect the red plates.",
-          "my": "အနီရောင် ပန်းကန်တွေကို စုပေးပါ။",
-          "focus": "r vs l shadowing",
-          "slow_ok": true
-        },
-        {
-          "en": "Larry rarely laughs loudly.",
-          "my": "Larry က ကျယ်ကျယ်လောလော ရယ်ခဲတယ်။",
-          "focus": "r vs l shadowing"
-        }
-      ]
-    },
-    {
-      "id": "s-final",
-      "level": "Sounds",
-      "title": "Final Consonants",
-      "title_my": "စကားလုံးအဆုံး ဗျည်းအသံများ",
-      "topic": "Pronunciation",
-      "target_sounds": [
-        "final -t and -d (worked, helped)",
-        "final clusters -st, -sk (next, asked)",
-        "final -ks and -sts (six, texts)"
-      ],
-      "tip_en": "Myanmar syllables rarely end in hard consonants, so don't swallow them. For 'worked', say work, then tap a crisp /t/ at the very end. For 'texts', build it up: tex, then add /ts/. Every final consonant is a tiny tap — never skip it.",
-      "tip_my": "မြန်မာစကားမှာ စကားလုံးအဆုံးမှာ ဗျည်းအသံ ပြတ်ပြတ်သားသား သိပ်မရှိတတ်တော့ အဆုံးသံတွေကို မမျိုမိစေနဲ့။ 'worked' အတွက် 'work' ပြောပြီး အဆုံးမှာ 't' ကို ပြတ်ပြတ်သားသား ထည့်ပါ။ 'texts' အတွက် 'tex' ကို အရင်ပြောပြီး 'ts' ထပ်ထည့်ပါ။ အဆုံးဗျည်းတိုင်းက သေးသေးလေး ထိချက်တစ်ခုပဲ — တစ်ခုမှ မကျော်နဲ့။",
-      "phrases": [
-        {
-          "en": "worked",
-          "my": "အလုပ်လုပ်ခဲ့သည်",
-          "focus": "final -kt"
-        },
-        {
-          "en": "helped",
-          "my": "ကူညီခဲ့သည်",
-          "focus": "final -pt"
-        },
-        {
-          "en": "next",
-          "my": "နောက်တစ်ခု",
-          "focus": "final -kst"
-        },
-        {
-          "en": "asked",
-          "my": "မေးခဲ့သည်",
-          "focus": "final -skt"
-        },
-        {
-          "en": "I helped him.",
-          "my": "ငါ သူ့ကို ကူညီခဲ့တယ်။",
-          "focus": "final -pt in 'helped'",
-          "slow_ok": true
-        },
-        {
-          "en": "She sent six texts.",
-          "my": "သူက စာတို ခြောက်စောင် ပို့ခဲ့တယ်။",
-          "focus": "final -sts in 'texts'",
-          "slow_ok": true
-        },
-        {
-          "en": "We watched the match.",
-          "my": "ကျွန်တော်တို့ ပွဲကို ကြည့်ခဲ့ကြတယ်။",
-          "focus": "final -tcht in 'watched'"
-        },
-        {
-          "en": "He fixed the desk.",
-          "my": "သူ စားပွဲကို ပြင်ခဲ့တယ်။",
-          "focus": "final -kst in 'fixed'"
-        }
-      ]
-    },
-    {
-      "id": "s-clusters",
-      "level": "Sounds",
-      "title": "Consonant Clusters",
-      "title_my": "ဗျည်းအသံစုများ",
-      "topic": "Pronunciation",
-      "target_sounds": [
-        "initial clusters str-, spr-, spl-",
-        "final clusters -sps, -sts (crisps)",
-        "clusters linked across words"
-      ],
-      "tip_en": "Don't insert a vowel between the consonants — 'street' is not 'suh-treet'. Say the whole cluster in one breath: for 'splash', hiss /s/, then pop /p/, then flow into /l/ without stopping. Practice slowly, then speed up.",
-      "tip_my": "ဗျည်းနှစ်ခုကြားမှာ သရသံ ထည့်မပြောနဲ့ — 'street' က 'suh-treet' မဟုတ်ဘူး။ အသံစုတစ်ခုလုံးကို တစ်ရှိုက်တည်း ပြောပါ။ 'splash' အတွက် 's' ကို ရှူးရှဲထွက်၊ ပြီးရင် 'p' ကို ပေါက်ထွက်၊ ပြီးရင် ရပ်မနေဘဲ 'l' ထဲ ဝင်သွားပါ။ နှေးနှေးနဲ့ လေ့ကျင့်၊ ပြီးရင် မြန်မြန်ပြောပါ။",
-      "phrases": [
-        {
-          "en": "street",
-          "my": "လမ်း",
-          "focus": "str cluster"
-        },
-        {
-          "en": "splash",
-          "my": "ရေစင်",
-          "focus": "spl cluster"
-        },
-        {
-          "en": "crisps",
-          "my": "အာလူးကြော်",
-          "focus": "final -sps"
-        },
-        {
-          "en": "spring",
-          "my": "နွေဦး",
-          "focus": "spr cluster"
-        },
-        {
-          "en": "strong street",
-          "my": "ခိုင်ခံ့တဲ့ လမ်း",
-          "focus": "str + str linking"
-        },
-        {
-          "en": "split screen",
-          "my": "မျက်နှာပြင် ခွဲခြားခြင်း",
-          "focus": "spl + scr linking",
-          "slow_ok": true
-        },
-        {
-          "en": "The spring splash sparkled on the street.",
-          "my": "နွေဦးရေစင်က လမ်းပေါ်မှာ တောက်ပနေတယ်။",
-          "focus": "cluster shadowing",
-          "slow_ok": true
-        }
-      ]
-    },
-    {
-      "id": "s-stress",
-      "level": "Sounds",
-      "title": "Word Stress",
-      "title_my": "စကားလုံး အလေးပေးသံ",
-      "topic": "Pronunciation",
-      "target_sounds": [
-        "noun vs verb stress (REcord vs reCORD)",
-        "stress shift in long words (PHOtograph vs phoTOgraphy)",
-        "compound vs phrase stress (GREENHOUSE vs green HOUSE)"
-      ],
-      "tip_en": "Stress the wrong syllable and the word changes meaning. Make the stressed syllable louder, longer, and higher in pitch — the others shrink to a quick 'uh' sound. Say RE-cord (the thing) with a punch on RE; say re-CORD (the action) with the punch on CORD.",
-      "tip_my": "အလေးပေးသံ မှားရင် စကားလုံးအဓိပ္ပာယ် ပြောင်းသွားတယ်။ အလေးပေးတဲ့ အသံလုံးကို အသံကျယ်ကျယ်၊ ကြာကြာ၊ အသံမြင့်မြင့် ပြောပါ — ကျန်တာတွေကို 'uh' လို မြန်မြန်သေးသေးပြောပါ။ 'RE-cord' (ပစ္စည်း) မှာ 'RE' ကို ထိထိမိမိပြော၊ 're-CORD' (လုပ်ဆောင်ချက်) မှာ 'CORD' ကို ထိထိမိမိပြောပါ။",
-      "phrases": [
-        {
-          "en": "REcord (noun) — reCORD (verb)",
-          "my": "မှတ်တမ်း — မှတ်တမ်းတင်သည်",
-          "focus": "noun vs verb stress"
-        },
-        {
-          "en": "PREsent (noun) — preSENT (verb)",
-          "my": "လက်ဆောင် — တင်ပြသည်",
-          "focus": "noun vs verb stress"
-        },
-        {
-          "en": "PHOtograph — phoTOgraphy",
-          "my": "ဓာတ်ပုံ — ဓာတ်ပုံပညာ",
-          "focus": "stress shift in long words"
-        },
-        {
-          "en": "a GREEN HOUSE — a green HOUSE",
-          "my": "ဖန်လုံအိမ် — အစိမ်းရောင် အိမ်",
-          "focus": "compound vs phrase stress"
-        },
-        {
-          "en": "I need to reCORD the REcord.",
-          "my": "ငါ အဲဒီမှတ်တမ်းကို မှတ်တမ်းတင်ဖို့ လိုတယ်။",
-          "focus": "noun vs verb stress",
-          "slow_ok": true
-        },
-        {
-          "en": "She gave a PREsent and will preSENT it tomorrow.",
-          "my": "သူ လက်ဆောင်ပေးပြီး မနက်ဖြန် တင်ပြမယ်။",
-          "focus": "noun vs verb stress"
-        },
-        {
-          "en": "PHOtography is her hobby.",
-          "my": "ဓာတ်ပုံရိုက်ခြင်းက သူ့ဝါသနာပဲ။",
-          "focus": "stress in long words",
-          "slow_ok": true
-        },
-        {
-          "en": "They live in a GREENHOUSE, not a green HOUSE.",
-          "my": "သူတို့က ဖန်လုံအိမ်မှာ နေတာ၊ အစိမ်းရောင်အိမ်မှာ မဟုတ်ဘူး။",
-          "focus": "compound vs phrase stress"
-        }
-      ]
-    },
-    {
-      "id": "s-intonation",
-      "level": "Sounds",
-      "title": "Sentence Intonation",
-      "title_my": "ဝါကျအသံ အတက်အကျ",
-      "topic": "Pronunciation",
-      "target_sounds": [
-        "rising intonation in yes/no questions",
-        "falling intonation in wh-questions and statements",
-        "list intonation"
-      ],
-      "tip_en": "Yes/no questions rise at the end — let your voice go up like you're unsure: 'Are you coming? ↗'. Wh-questions and statements fall — your voice lands down firmly: 'Where are you going? ↘'. For lists, rise on each item and fall on the last one.",
-      "tip_my": "Yes/no မေးခွန်းတွေမှာ အဆုံးမှာ အသံတက်ပါ — မသေချာသလို အသံကို အပေါ်တင်ပါ။ 'Are you coming? ↗'။ Wh- မေးခွန်းနဲ့ ကြေညာဝါကျတွေမှာ အသံကျပါ — 'Where are you going? ↘' လို ခိုင်ခိုင်မာမာ ချပါ။ စာရင်းပြောရင် တစ်ခုချင်းစီမှာ အသံတက်၊ နောက်ဆုံးတစ်ခုမှာ အသံကျပါ။",
-      "phrases": [
-        {
-          "en": "Are you coming? ↗",
-          "my": "မင်း လာမှာလား?",
-          "focus": "rising yes/no question"
-        },
-        {
-          "en": "Is it ready? ↗",
-          "my": "အဆင်သင့်ပြီလား?",
-          "focus": "rising yes/no question"
-        },
-        {
-          "en": "Where are you going? ↘",
-          "my": "မင်း ဘယ်သွားမှာလဲ?",
-          "focus": "falling wh-question"
-        },
-        {
-          "en": "What time is it? ↘",
-          "my": "ဘယ်အချိန်ရှိပြီလဲ?",
-          "focus": "falling wh-question"
-        },
-        {
-          "en": "I'm fine, thanks. ↘",
-          "my": "ငါ အဆင်ပြေပါတယ်၊ ကျေးဇူးတင်ပါတယ်။",
-          "focus": "falling statement"
-        },
-        {
-          "en": "I bought apples ↗, bananas ↗, and oranges ↘.",
-          "my": "ငါ ပန်းသီး၊ ငှက်ပျောသီး၊ လိမ္မော်သီး ဝယ်ခဲ့တယ်။",
-          "focus": "list intonation",
-          "slow_ok": true
-        },
-        {
-          "en": "Do you want tea ↗ or coffee ↘?",
-          "my": "လက်ဖက်ရည် သောက်မလား၊ ကော်ဖီ သောက်မလား?",
-          "focus": "choice question intonation",
-          "slow_ok": true
-        },
-        {
-          "en": "She's leaving tomorrow ↘, but she'll call tonight ↗... maybe ↘.",
-          "my": "သူ မနက်ဖြန် ထွက်မယ်၊ ဒါပေမဲ့ ဒီည ဖုန်းခေါ်မယ်... ဖြစ်နိုင်တယ်။",
-          "focus": "mixed intonation shadowing"
-        }
-      ]
+     "en": "What's been keeping you busy lately?",
+     "my": "နောက်ပိုင်း ဘာတွေနဲ့ အလုပ်ရှုပ်နေလဲ?"
     }
-  ]
+   ],
+   "phrases": [
+    {
+     "en": "I'm still pretty new here, so I'm collecting friendly faces.",
+     "my": "ကျွန်တော် ဒီမှာ အသစ်စက်စက်မို့ ဖော်ရွေတဲ့မျက်နှာတွေ စုနေတာ။"
+    },
+    {
+     "en": "That's interesting — tell me more about that.",
+     "my": "စိတ်ဝင်စားစရာပဲ — အဲဒီအကြောင်း နည်းနည်းပြောပြပါဦး။"
+    },
+    {
+     "en": "I love that — how did you get into it?",
+     "my": "အဲဒါ မိုက်တယ် — ဘယ်လို စလုပ်ဖြစ်တာလဲ?"
+    },
+    {
+     "en": "We should totally keep in touch.",
+     "my": "အဆက်အသွယ် မပြတ်အောင် လုပ်ကြတာပေါ့။"
+    },
+    {
+     "en": "It was really great chatting with you.",
+     "my": "ခင်ဗျားနဲ့ စကားပြောရတာ တကယ်ကောင်းတယ်။"
+    },
+    {
+     "en": "I'll let you mingle — but let's talk again soon!",
+     "my": "ခင်ဗျား တခြားသူတွေနဲ့လည်း စကားပြောလိုက်ဦး — မကြာခင် ထပ်ပြောကြတာပေါ့!"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Sorry, your name was ___ again?",
+     "my": "စိတ်မကောင်းပါဘူး၊ ခင်ဗျားနာမည် ___ ဆိုလား?"
+    },
+    {
+     "en": "I totally blanked just now — what were we talking about?",
+     "my": "ခုနက ဦးနှောက်က လုံးဝဗလာသွားတယ် — ဘာအကြောင်း ပြောနေကြတာလဲ?"
+    },
+    {
+     "en": "That's a great question — let me think for a second…",
+     "my": "မေးခွန်းကောင်းတယ် — ခဏစဉ်းစားပါရစေ…"
+    },
+    {
+     "en": "I'm not explaining this well — let me start over.",
+     "my": "ကျွန်တော် ရှင်းပြတာ မကောင်းဘူး — အစက ပြန်စမယ်။"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Start a conversation with a stranger and keep it going for at least 6 exchanges without freezing.",
+    "goal_my": "မသိတဲ့သူနဲ့ စကားစပြောပြီး အနည်းဆုံး ၆ ကြိမ် ဆက်ပြောပါ — ရပ်မသွားစေနဲ့။",
+    "scene_en": "A welcome party for new students. Your AI partner is another new student standing alone by the drinks table.",
+    "scene_my": "ကျောင်းသားသစ်ကြိုဆိုပွဲ။ AI က အဖျော်ယမကာစားပွဲဘေးမှာ တစ်ယောက်တည်း ရပ်နေတဲ့ ကျောင်းသားသစ်တစ်ယောက်။",
+    "tutor_en": "You are a friendly but slightly shy new student. Answer warmly, ask the learner questions back, and keep the conversation alive."
+   },
+   "situation_en": "You're somewhere you don't know anyone — a class, an event, a new office. Your mission: start real conversations instead of hiding in the corner.",
+   "situation_my": "လူမသိသူမသိနေရာတစ်ခု — သင်တန်း၊ ပွဲ၊ ရုံးအသစ်။ ထောင့်မှာပုန်းမနေဘဲ တကယ့်စကားဝိုင်းတွေ စတင်ပါ။",
+   "title": "Meeting New People — Beyond Hello",
+   "title_my": "လူသစ်တွေနဲ့တွေ့ဆုံခြင်း — “ဟဲလို” ထက်ပိုပြီး",
+   "topic": "Social"
+  },
+  {
+   "id": "cafe-small-talk",
+   "level": "A1",
+   "openers": [
+    {
+     "en": "This place is packed today — do you come here often?",
+     "my": "ဒီနေ့ ဒီဆိုင် လူအရမ်းများတယ် — ခင်ဗျား မကြာခဏ လာလေ့ရှိလား?"
+    },
+    {
+     "en": "That looks amazing — what did you order?",
+     "my": "အဲဒါ အရမ်းကောင်းမယ့်ပုံပဲ — ဘာမှာထားတာလဲ?"
+    },
+    {
+     "en": "I'm torn between two drinks — any recommendations?",
+     "my": "အဖျော်နှစ်မျိုးကြား ဝေခွဲမရဘူး — တစ်ခုခု အကြံပေးပါဦး?"
+    },
+    {
+     "en": "Is it always this busy in the mornings?",
+     "my": "မနက်တိုင်း ဒီလောက် စည်လေ့ရှိလား?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "I'll have what she's having — it smells incredible.",
+     "my": "သူ့မှာတဲ့ဟာပဲ ယူမယ် — အနံ့က အရမ်းမွှေးတယ်။"
+    },
+    {
+     "en": "Could I get that to go, please?",
+     "my": "အဲဒါ ပါဆယ်ထုပ်ပေးနိုင်မလား?"
+    },
+    {
+     "en": "The atmosphere in here is so cozy.",
+     "my": "ဒီဆိုင်ရဲ့ လေထုက အရမ်းနွေးထွေးတယ်။"
+    },
+    {
+     "en": "Do you mind if I sit here?",
+     "my": "ဒီမှာ ထိုင်လို့ ရမလား?"
+    },
+    {
+     "en": "I've been meaning to try this place for ages.",
+     "my": "ဒီဆိုင်ကို ကြာပြီ လာချင်နေတာ။"
+    },
+    {
+     "en": "Thanks — you just made my morning.",
+     "my": "ကျေးဇူးပါ — ကျွန်တော့်မနက်ခင်းကို လှပသွားစေပြီ။"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Sorry — what did you say your recommendation was?",
+     "my": "စိတ်မကောင်းပါဘူး — ခင်ဗျား အကြံပေးတာ ဘာတဲ့လဲ?"
+    },
+    {
+     "en": "My mind went blank — one more time, slowly?",
+     "my": "ဦးနှောက်ဗလာသွားပြီ — နောက်တစ်ခါ ဖြည်းဖြည်းပြောပြပါလား?"
+    },
+    {
+     "en": "I don't know the word for it, but it's the hot one with milk…",
+     "my": "စကားလုံး မသိဘူး၊ ဒါပေမဲ့ နို့နဲ့အပူဟာလေ…"
+    },
+    {
+     "en": "Let me just point at the menu — that one!",
+     "my": "မီနူးကို လက်ညှိုးထိုးပြမယ် — ဟိုဟာလေ!"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Order naturally, make small talk with the barista, and survive one surprise question without freezing.",
+    "goal_my": "သဘာဝကျကျ မှာပါ၊ ဝန်ထမ်းနဲ့ စကားစမြည်ပြောပါ၊ မမျှော်လင့်တဲ့မေးခွန်းတစ်ခုကို ရပ်မသွားဘဲ ဖြေပါ။",
+    "scene_en": "A busy café. Your AI partner is the barista — friendly, fast-talking, and a little playful.",
+    "scene_my": "လူများတဲ့ ကော်ဖီဆိုင်။ AI က ဖော်ရွေပြီး စကားမြန်တဲ့ ဝန်ထမ်း။",
+    "tutor_en": "You are a cheerful barista. Take the learner's order, make small talk, and throw in one unexpected question."
+   },
+   "situation_en": "You're waiting for your coffee, sitting near strangers, or chatting with the barista. Turn dead time into a real moment.",
+   "situation_my": "ကော်ဖီ စောင့်နေတုန်း၊ မသိတဲ့သူတွေအနား ထိုင်နေတုန်း၊ ဒါမှမဟုတ် ဝန်ထမ်းနဲ့ စကားပြောတုန်း။ အချိန်ပုပ်ကို တကယ့်အခိုက်အတန့်အဖြစ် ပြောင်းလိုက်ပါ။",
+   "title": "Café Small Talk",
+   "title_my": "ကော်ဖီဆိုင်မှာ စကားစမြည်ပြောခြင်း",
+   "topic": "Everyday"
+  },
+  {
+   "id": "at-a-party",
+   "level": "A1",
+   "openers": [
+    {
+     "en": "Okay, I have to ask — how do you know the host?",
+     "my": "မေးရမယ် — အိမ်ရှင်နဲ့ ခင်ဗျား ဘယ်လိုသိတာလဲ?"
+    },
+    {
+     "en": "This playlist is dangerously good. Are you into this kind of music?",
+     "my": "သီချင်းစာရင်းက အရမ်းမိုက်တယ်။ ဒီလို ဂီတမျိုး ကြိုက်လား?"
+    },
+    {
+     "en": "I come bearing zero interesting stories, so tell me one of yours.",
+     "my": "ကျွန်တော့်မှာ စိတ်ဝင်စားစရာ ဇာတ်လမ်း လုံးဝမရှိဘူး၊ ဒါကြောင့် ခင်ဗျားဟာတစ်ခု ပြောပြပါ။"
+    },
+    {
+     "en": "What's the best thing you've eaten tonight?",
+     "my": "ဒီည စားခဲ့သမျှထဲမှာ အကောင်းဆုံးက ဘာလဲ?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "I'm so glad I dragged myself out tonight.",
+     "my": "ဒီည အပြင်ထွက်ခဲ့မိတာ တကယ် ဝမ်းသာတယ်။"
+    },
+    {
+     "en": "You have the best energy — I had to come say hi.",
+     "my": "ခင်ဗျားမှာ စွမ်းအင်အကောင်းဆုံးရှိတယ် — လာနှုတ်ဆက်ရမယ်ဆိုတာ သိတယ်။"
+    },
+    {
+     "en": "Wait, you did what?! You have to tell me everything.",
+     "my": "ခဏ၊ ခင်ဗျား ဘာလုပ်ခဲ့တာလဲ?! အကုန်ပြောပြရမယ်။"
+    },
+    {
+     "en": "I'm going to grab another drink — want one?",
+     "my": "နောက်တစ်ခွက် သွားယူမယ် — ခင်ဗျားရော လိုချင်လား?"
+    },
+    {
+     "en": "This was fun — we should do this again sometime!",
+     "my": "ဒါ ပျော်စရာပဲ — နောက်တစ်ခါ ထပ်လုပ်ကြတာပေါ့!"
+    },
+    {
+     "en": "I won't keep you — go enjoy the party!",
+     "my": "ခင်ဗျားကို ဆက်မထားတော့ဘူး — ပါတီကို ပျော်ပျော်ပါးပါး ဖြတ်သန်းလိုက်ပါ!"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Sorry, it's so loud in here — say that again?",
+     "my": "စိတ်မကောင်းပါဘူး၊ ဒီမှာ အသံအရမ်းဆူတယ် — ထပ်ပြောပါလား?"
+    },
+    {
+     "en": "I completely lost the thread — were you saying…?",
+     "my": "စကားစဉ်လုံးဝ ပျောက်သွားပြီ — ခင်ဗျား ပြောနေတာက…?"
+    },
+    {
+     "en": "Hold that thought — I need a second to catch up!",
+     "my": "အဲဒီအတွေးကို ခဏထား — လိုက်မီအောင် ခဏလိုတယ်!"
+    },
+    {
+     "en": "Okay you caught me — I have no idea what that is. Explain?",
+     "my": "ဟုတ်ပြီ မိသွားပြီ — အဲဒါ ဘာမှန်းကို ကျွန်တော် မသိဘူး။ ရှင်းပြပါလား?"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Mingle: start two mini-conversations and handle one surprise question without freezing.",
+    "goal_my": "လူတွေကြား ဝင်ဆံ့ပါ — စကားဝိုင်း နှစ်ခု စပါ၊ မမျှော်လင့်တဲ့မေးခွန်းတစ်ခုကို ရပ်မသွားဘဲ ကိုင်တွယ်ပါ။",
+    "scene_en": "A friend's birthday party. Your AI partner is a guest who's been here a while and knows everyone.",
+    "scene_my": "သူငယ်ချင်းတစ်ယောက်ရဲ့ မွေးနေ့ပါတီ။ AI က ဒီမှာ ကြာပြီဖြစ်ပြီး လူတိုင်းကို သိတဲ့ ဧည့်သည်။",
+    "tutor_en": "You are a sociable party guest. Chat, joke, introduce wild topics, and ask the learner something unexpected mid-conversation."
+   },
+   "situation_en": "Music, strangers, snacks. Parties are the ultimate small-talk gym — here's how to work the room instead of guarding the wall.",
+   "situation_my": "ဂီတ၊ လူစိမ်း၊ မုန့်ပဲသရေစာ။ ပါတီပွဲတွေက စကားစမြည်ရဲ့ အကောင်းဆုံး လေ့ကျင့်ခန်းကွင်း — နံရံကပ်မနေဘဲ လူတွေကြား ဝင်ဆံ့ပါ။",
+   "title": "At a Party",
+   "title_my": "ပါတီပွဲမှာ",
+   "topic": "Social"
+  },
+  {
+   "id": "asking-for-help",
+   "level": "A1",
+   "openers": [
+    {
+     "en": "Excuse me — could I steal thirty seconds of your time?",
+     "my": "စိတ်မကောင်းပါဘူး — ခင်ဗျားအချိန် စက္ကန့် ၃၀ လောက် ယူလို့ရမလား?"
+    },
+    {
+     "en": "You look like someone who knows this area — am I right?",
+     "my": "ခင်ဗျားက ဒီနယ်မြေကို သိတဲ့သူပုံပေါက်တယ် — မှန်လား?"
+    },
+    {
+     "en": "I'm in a bit of a pickle — any chance you could help me out?",
+     "my": "ကျွန်တော် နည်းနည်းအခက်တွေ့နေတယ် — ကူညီနိုင်မလား?"
+    },
+    {
+     "en": "This is going to sound random, but…",
+     "my": "ဒါ ထူးဆန်းမယ်ထင်တယ်၊ ဒါပေမဲ့…"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "I'd really owe you one.",
+     "my": "ခင်ဗျားကို တကယ် ကျေးဇူးတင်နေရမယ်။"
+    },
+    {
+     "en": "No worries at all if you can't — just thought I'd ask!",
+     "my": "မကူနိုင်လည်း လုံးဝစိတ်မပူပါနဲ့ — မေးကြည့်တာပါ!"
+    },
+    {
+     "en": "That would be a lifesaver, honestly.",
+     "my": "အဲဒါဆို တကယ် အသက်ကယ်တာပဲ။"
+    },
+    {
+     "en": "I hate to bother you, but…",
+     "my": "ခင်ဗျားကို အနှောင့်အယှက်ပေးရတာ စိတ်မကောင်းပါဘူး၊ ဒါပေမဲ့…"
+    },
+    {
+     "en": "You're the best — seriously, thank you!",
+     "my": "ခင်ဗျားက အကောင်းဆုံးပဲ — တကယ်ကျေးဇူးတင်ပါတယ်!"
+    },
+    {
+     "en": "Let me return the favor sometime.",
+     "my": "နောက်တစ်ခါ ကျေးဇူးပြန်ဆပ်ပါရစေ။"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Sorry, let me explain what I need more clearly…",
+     "my": "စိတ်မကောင်းပါဘူး၊ လိုတာကို ပိုရှင်းအောင် ရှင်းပြပါမယ်…"
+    },
+    {
+     "en": "I'm not sure how to say this, but basically…",
+     "my": "ဘယ်လိုပြောရမယ် မသိဘူး၊ ဒါပေမဲ့ အခြေခံအားဖြင့်…"
+    },
+    {
+     "en": "Okay, simpler version: I need…",
+     "my": "ဟုတ်ပြီ၊ ရိုးရှင်းတဲ့ဗားရှင်း — ကျွန်တော် လိုတာက…"
+    },
+    {
+     "en": "Does that make sense, or am I rambling?",
+     "my": "အဲဒါ သဘောပေါက်လား၊ ဒါမှမဟုတ် ကျွန်တော် လျှောက်ပြောနေတာလား?"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Get clear directions without freezing — ask at least two follow-up questions.",
+    "goal_my": "လမ်းညွှန်ရှင်းရှင်းရအောင် — နောက်ဆက်တွဲမေးခွန်း အနည်းဆုံး နှစ်ခု မေးပါ၊ ရပ်မသွားစေနဲ့။",
+    "scene_en": "You're lost in a new neighborhood with a dying phone. Your AI partner is a local walking their dog.",
+    "scene_my": "ဖုန်းအားကုန်ခါနီးနဲ့ မသိတဲ့ ရပ်ကွက်မှာ လမ်းပျောက်နေတယ်။ AI က ခွေးထိန်းကျောင်းနေတဲ့ ဒေသခံ။",
+    "tutor_en": "You are a friendly local. Help with directions, but be a little vague at first so the learner has to ask follow-up questions."
+   },
+   "situation_en": "You need help — directions, a favor, a hand with something heavy. Ask in a way that makes people WANT to help you.",
+   "situation_my": "အကူအညီလိုတယ် — လမ်းညွှန်၊ ကျေးဇူးတစ်ခု၊ လေးတဲ့ပစ္စည်းမတာ။ လူတွေ ကူညီချင်လာအောင် တောင်းပါ။",
+   "title": "Asking for Help",
+   "title_my": "အကူအညီတောင်းခြင်း",
+   "topic": "Everyday"
+  },
+  {
+   "id": "phone-calls",
+   "level": "A1",
+   "openers": [
+    {
+     "en": "Hi! Is this a good time for a quick call?",
+     "my": "ဟဲလို! ဖုန်းအမြန်ပြောလို့ အဆင်ပြေတဲ့အချိန်လား?"
+    },
+    {
+     "en": "Thanks for picking up — I'll keep this short, I promise.",
+     "my": "ဖုန်းကိုင်ပေးတာ ကျေးဇူးပါ — အတိုချုပ်ပဲ ပြောမယ်၊ ကတိပေးတယ်။"
+    },
+    {
+     "en": "It's ___ calling — we met at ___. Do you remember?",
+     "my": "___ ခေါ်တာပါ — ___ မှာ တွေ့ဖူးတယ်။ မှတ်မိလား?"
+    },
+    {
+     "en": "I'm calling about ___ — is now okay, or should I call back later?",
+     "my": "___ အကြောင်း ခေါ်တာပါ — အခုအဆင်ပြေလား၊ ဒါမှမဟုတ် နောက်မှ ပြန်ခေါ်ရမလား?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "Sorry, you cut out for a second — could you repeat that?",
+     "my": "စိတ်မကောင်းပါဘူး၊ ခဏ အသံပျောက်သွားတယ် — ထပ်ပြောပေးနိုင်မလား?"
+    },
+    {
+     "en": "Let me make sure I've got this right…",
+     "my": "ကျွန်တော် မှန်မှန်ရလား စစ်ကြည့်မယ်…"
+    },
+    {
+     "en": "Could you speak a tiny bit slower, please?",
+     "my": "နည်းနည်းလေး ဖြည်းဖြည်းပြောပေးနိုင်မလား?"
+    },
+    {
+     "en": "I'll send you a quick text to confirm.",
+     "my": "အတည်ပြုဖို့ မက်ဆေ့ခ်အတိုလေး ပို့လိုက်မယ်။"
+    },
+    {
+     "en": "Thanks so much for your time — talk soon!",
+     "my": "အချိန်ပေးတာ ကျေးဇူးအရမ်းတင်ပါတယ် — မကြာခင် ပြောကြတာပေါ့!"
+    },
+    {
+     "en": "Oh — before I forget…",
+     "my": "အို — မေ့မသွားခင်…"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Sorry, I didn't catch your name — could you spell it?",
+     "my": "စိတ်မကောင်းပါဘူး၊ နာမည် မကြားလိုက်ရဘူး — စာလုံးပေါင်းပြပေးနိုင်မလား?"
+    },
+    {
+     "en": "My English on the phone is a bit rusty — bear with me!",
+     "my": "ဖုန်းပေါ်မှာ ကျွန်တော့်အင်္ဂလိပ်က နည်းနည်းတုံးနေတယ် — သည်းခံပေးပါ!"
+    },
+    {
+     "en": "Let me think out loud for a second…",
+     "my": "အသံကျယ်နဲ့ ခဏစဉ်းစားပါရစေ…"
+    },
+    {
+     "en": "Actually, can I call you right back in two minutes?",
+     "my": "တကယ်တော့ နှစ်မိနစ်နေရင် ပြန်ခေါ်လို့ရမလား?"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Book the appointment entirely by voice — ask them to repeat or slow down instead of freezing.",
+    "goal_my": "ရက်ချိန်းကို အသံသက်သက်နဲ့ ယူပါ — ရပ်မသွားဘဲ ထပ်ပြောခိုင်းပါ၊ ဖြည်းဖြည်းပြောခိုင်းပါ။",
+    "scene_en": "You need to call a clinic to book an appointment. Your AI partner is the receptionist.",
+    "scene_my": "ဆေးခန်းကို ဖုန်းဆက်ပြီး ရက်ချိန်းယူရမယ်။ AI က ဧည့်ကြိုဝန်ထမ်း။",
+    "tutor_en": "You are a busy clinic receptionist. Speak at natural speed, ask for details (name spelling, symptoms, preferred times), and don't slow down unless asked."
+   },
+   "situation_en": "No faces, no gestures — just your voice. Phone calls terrify learners, but a few strong openers change everything.",
+   "situation_my": "မျက်နှာ မမြင်ရ၊ အမူအရာ မမြင်ရ — အသံတစ်ခုတည်း။ ဖုန်းခေါ်တာက ကျောင်းသားတွေကို ကြောက်စေတယ်၊ ဒါပေမဲ့ အစပျိုးစကားအနည်းငယ်က အရာအားလုံး ပြောင်းလဲစေတယ်။",
+   "title": "Phone Calls That Don't Panic You",
+   "title_my": "မကြောက်ရတော့မယ့် ဖုန်းခေါ်ဆိုမှုများ",
+   "topic": "Everyday"
+  },
+  {
+   "id": "travel-chat",
+   "level": "A1",
+   "openers": [
+    {
+     "en": "Is this your first time here too, or are you a regular?",
+     "my": "ခင်ဗျားလည်း ဒီမှာ ပထမဆုံးလား၊ ဒါမှမဟုတ် ပုံမှန်လာနေကျလား?"
+    },
+    {
+     "en": "You look like you've got a great story — where are you headed?",
+     "my": "ခင်ဗျားမှာ ဇာတ်လမ်းကောင်းရှိပုံပဲ — ဘယ်ကို သွားမှာလဲ?"
+    },
+    {
+     "en": "Any hidden gems around here you'd recommend?",
+     "my": "ဒီအနီးမှာ လူသိနည်းတဲ့ ကောင်းတဲ့နေရာများ အကြံပေးပါဦး?"
+    },
+    {
+     "en": "I just arrived yesterday — what's the one thing I absolutely can't miss?",
+     "my": "မနေ့ကမှ ရောက်တာ — လုံးဝ လွတ်မခံသင့်တဲ့အရာ တစ်ခုက ဘာလဲ?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "I'm traveling on a shoestring, so local tips are gold to me.",
+     "my": "ကျွန်တော် ချွေတာပြီး ခရီးသွားနေတာ၊ ဒါကြောင့် ဒေသခံအကြံတွေက ကျွန်တော့်အတွက် ရွှေပဲ။"
+    },
+    {
+     "en": "This view is unreal — I had to stop and stare.",
+     "my": "ဒီရှုခင်း မယုံနိုင်စရာပဲ — ရပ်ပြီး ကြည့်နေရတယ်။"
+    },
+    {
+     "en": "What's the local specialty I should try?",
+     "my": "စမ်းကြည့်သင့်တဲ့ ဒေသအထူးအစားအစာက ဘာလဲ?"
+    },
+    {
+     "en": "I'm trying to get off the beaten path a little.",
+     "my": "လူသွားများတဲ့လမ်းကနေ နည်းနည်းခွာကြည့်နေတာ။"
+    },
+    {
+     "en": "Safe travels — maybe our paths will cross again!",
+     "my": "ခရီးဘေးကင်းပါစေ — နောက်တစ်ခါ လမ်းဆုံကြရင်ကောင်းမယ်!"
+    },
+    {
+     "en": "That was the highlight of my trip so far.",
+     "my": "အဲဒါ ကျွန်တော့်ခရီးရဲ့ အထူးခြားဆုံးအခိုက်အတန့်ပဲ။"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Sorry, I didn't catch the name of that place — one more time?",
+     "my": "စိတ်မကောင်းပါဘူး၊ အဲဒီနေရာနာမည် မကြားလိုက်ရဘူး — နောက်တစ်ခါလား?"
+    },
+    {
+     "en": "My map is confusing me more than helping — can you show me?",
+     "my": "မြေပုံက ကူညီတာထက် ရှုပ်စေတယ် — ပြပေးနိုင်မလား?"
+    },
+    {
+     "en": "I'm butchering the pronunciation, I know — did you get what I meant?",
+     "my": "အသံထွက် မှားနေတာ သိတယ် — ဆိုလိုတာကို သဘောပေါက်လား?"
+    },
+    {
+     "en": "Let me write that down before I forget it!",
+     "my": "မေ့မသွားခင် ချရေးထားမယ်!"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Keep a 6+ exchange conversation going with a stranger, including one surprise question.",
+    "goal_my": "လူစိမ်းနဲ့ အနည်းဆုံး ၆ ကြိမ် စကားပြောပါ၊ မမျှော်လင့်တဲ့မေးခွန်းလည်း ပါမယ်။",
+    "scene_en": "A long taxi ride in a new city. Your AI partner is a chatty local driver.",
+    "scene_my": "မသိတဲ့မြို့မှာ တက္ကစီစီးရတာ ကြာတယ်။ AI က စကားများတဲ့ ဒေသခံ ယာဉ်မောင်း။",
+    "tutor_en": "You are a talkative taxi driver who loves your city. Ask the learner about their trip, recommend places, and suddenly ask an unexpected personal question."
+   },
+   "situation_en": "Taxis, hotel lobbies, fellow travelers. Travel throws strangers at you daily — turn them into conversations.",
+   "situation_my": "တက္ကစီ၊ ဟိုတယ်လော်ဘီ၊ ခရီးသွားဖော်များ။ ခရီးက နေ့တိုင်း လူစိမ်းတွေ ပေးတယ် — သူတို့ကို စကားဝိုင်းအဖြစ် ပြောင်းလိုက်ပါ။",
+   "title": "Chatting While You Travel",
+   "title_my": "ခရီးသွားရင်း စကားပြောခြင်း",
+   "topic": "Travel"
+  },
+  {
+   "id": "meetings",
+   "level": "A2",
+   "openers": [
+    {
+     "en": "Can I jump in here for a second?",
+     "my": "ဒီမှာ ခဏဝင်ပြောလို့ရမလား?"
+    },
+    {
+     "en": "Building on what ___ just said…",
+     "my": "___ ခုနက ပြောတာကို ဆက်ပြီး…"
+    },
+    {
+     "en": "I see it a bit differently — can I share my take?",
+     "my": "ကျွန်တော် နည်းနည်းကွဲပြားပြီး မြင်တယ် — ကျွန်တော့်အမြင် ပြောလို့ရမလား?"
+    },
+    {
+     "en": "Quick thought before we move on…",
+     "my": "နောက်တစ်ခု မသွားခင် အတွေးအမြန်လေး…"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "To play devil's advocate for a moment…",
+     "my": "ခဏတာ ဆန့်ကျင်ဘက်အမြင်နဲ့ ပြောရရင်…"
+    },
+    {
+     "en": "The way I see it, we're missing the bigger picture.",
+     "my": "ကျွန်တော် မြင်တာက ပိုကြီးတဲ့ပုံကို လွတ်နေတယ်။"
+    },
+    {
+     "en": "Can we park that and come back to it?",
+     "my": "အဲဒါကို ခဏရပ်ထားပြီး ပြန်လာလို့ရမလား?"
+    },
+    {
+     "en": "I'd love to hear what the rest of you think.",
+     "my": "ကျန်တဲ့သူတွေ ဘာထင်လဲ ကြားချင်တယ်။"
+    },
+    {
+     "en": "Let's take this offline after the meeting.",
+     "my": "အစည်းအဝေးပြီးမှ ဒါကို သီးသန့်ဆွေးနွေးကြတာပေါ့။"
+    },
+    {
+     "en": "Just to make sure we're all on the same page…",
+     "my": "အားလုံး တူညီတဲ့ နားလည်မှုရှိအောင်…"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Sorry, I lost my point halfway — let me rephrase.",
+     "my": "စိတ်မကောင်းပါဘူး၊ ပြောနေရင်း အဓိကအချက် ပျောက်သွားတယ် — ပြန်ပြောမယ်။"
+    },
+    {
+     "en": "Give me ten seconds to gather my thoughts…",
+     "my": "အတွေးစုဖို့ စက္ကန့် ၁၀ ပေးပါ…"
+    },
+    {
+     "en": "I'm not phrasing this well — what I mean is…",
+     "my": "ကောင်းကောင်း မပြောတတ်ဘူး — ဆိုလိုတာက…"
+    },
+    {
+     "en": "Can someone help me out here? I'm stuck on the word…",
+     "my": "တစ်ယောက်ယောက် ကူညီပေးနိုင်မလား? စကားလုံးမှာ ပိတ်မိနေတယ်…"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Jump in twice with your own points — once voluntarily, once when put on the spot.",
+    "goal_my": "ကိုယ့်အမြင် နှစ်ကြိမ် ဝင်ပြောပါ — တစ်ကြိမ်က ကိုယ်တိုင်ဝင်၊ တစ်ကြိမ်က မေးခံရတဲ့အခါ။",
+    "scene_en": "A weekly team meeting. Your AI partner is the team lead running the agenda — brisk and no-nonsense.",
+    "scene_my": "အပတ်စဉ် အဖွဲ့အစည်းအဝေး။ AI က အစီအစဉ်ကို ဦးဆောင်နေတဲ့ အဖွဲ့ခေါင်း — မြန်ပြီး တိကျတယ်။",
+    "tutor_en": "You are a direct team lead. Move through agenda points quickly; give the learner one opening to contribute and one moment where they're put on the spot."
+   },
+   "situation_en": "Everyone's nodding along, but you have a thought worth hearing. Here's how to jump in without waiting for the 'perfect' moment.",
+   "situation_my": "လူတိုင်း ခေါင်းညိတ်နေတယ်၊ ဒါပေမဲ့ ခင်ဗျားမှာ ကြားသင့်တဲ့အတွေးရှိတယ်။ “အကောင်းဆုံး” အခိုက်အတန့်ကို မစောင့်ဘဲ ဝင်ပြောပုံ။",
+   "title": "Speaking Up in Meetings",
+   "title_my": "အစည်းအဝေးမှာ ရဲရဲဝင်ပြောခြင်း",
+   "topic": "Work"
+  },
+  {
+   "id": "disagreeing",
+   "level": "A2",
+   "openers": [
+    {
+     "en": "I hear you, but I see it a little differently…",
+     "my": "ခင်ဗျားပြောတာ ကြားတယ်၊ ဒါပေမဲ့ ကျွန်တော် နည်းနည်းကွဲပြီး မြင်တယ်…"
+    },
+    {
+     "en": "That's an interesting take — can I offer another angle?",
+     "my": "စိတ်ဝင်စားစရာအမြင်ပဲ — နောက်တစ်ဘက်ထောင့်က ပြောလို့ရမလား?"
+    },
+    {
+     "en": "I'm going to respectfully push back on that…",
+     "my": "လေးစားမှုနဲ့ အဲဒါကို ဆန့်ကျင်ပြောရမယ်…"
+    },
+    {
+     "en": "Hmm, I'm not so sure about that — here's why…",
+     "my": "ဟမ်၊ အဲဒါကို သိပ်မသေချာဘူး — အကြောင်းရင်းက…"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "Let's agree to disagree on this one.",
+     "my": "ဒီတစ်ခုမှာတော့ သဘောကွဲတာကို သဘောတူကြတာပေါ့။"
+    },
+    {
+     "en": "I might be wrong, but my gut says…",
+     "my": "ကျွန်တော် မှားနိုင်တယ်၊ ဒါပေမဲ့ ခံစားချက်က…"
+    },
+    {
+     "en": "Fair point — I hadn't thought of it that way.",
+     "my": "မှန်တဲ့အချက် — အဲဒီလိုမျိုး မစဉ်းစားမိဘူး။"
+    },
+    {
+     "en": "We're probably both a little bit right.",
+     "my": "ကျွန်တော်တို့နှစ်ယောက်လုံး နည်းနည်းစီ မှန်နေလောက်တယ်။"
+    },
+    {
+     "en": "Can we find some middle ground here?",
+     "my": "ဒီမှာ အလယ်အလတ်အချက် ရှာလို့ရမလား?"
+    },
+    {
+     "en": "I respect your opinion, even though I don't share it.",
+     "my": "ခင်ဗျားအမြင်ကို လေးစားတယ်၊ ကျွန်တော် မတူညီပေမဲ့။"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Wait — I think we're talking past each other. Let me clarify…",
+     "my": "ခဏ — ကျွန်တော်တို့ တစ်ယောက်စကားတစ်ယောက် လွဲနေပြီထင်တယ်။ ရှင်းပြမယ်…"
+    },
+    {
+     "en": "That came out harsher than I meant — sorry about that.",
+     "my": "ပြောတာ ရည်ရွယ်တာထက် ပြင်းသွားတယ် — တောင်းပန်ပါတယ်။"
+    },
+    {
+     "en": "Let me take that back and say it better…",
+     "my": "အဲဒါ ပြန်ရုပ်ပြီး ပိုကောင်းအောင် ပြောမယ်…"
+    },
+    {
+     "en": "Okay, deep breath — where were we?",
+     "my": "ဟုတ်ပြီ၊ အသက်ပြင်းပြင်းရှူ — ဘယ်ရောက်နေပြီလဲ?"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Disagree three times without being rude — and recover smoothly if it gets tense.",
+    "goal_my": "ရိုင်းစိုင်းမသွားဘဲ သုံးကြိမ် သဘောကွဲပါ — တင်းမာလာရင် ချောချောမွေ့မွေ့ ပြန်ထိန်းပါ။",
+    "scene_en": "Coffee with a friend who insists the best movies are all old classics. You disagree. Your AI partner plays the friend — passionate and stubborn.",
+    "scene_my": "သူငယ်ချင်းနဲ့ ကော်ဖီသောက်တုန်း — သူက ဇာတ်ကားအကောင်းဆုံးတွေက ရှေးဟောင်းတွေချည်းပဲလို့ အခိုင်အမာပြောတယ်။ ခင်ဗျား သဘောမတူဘူး။ AI က ခေါင်းမာတဲ့သူငယ်ချင်း။",
+    "tutor_en": "You are a stubborn friend who loves old movies. Defend your position with passion; get a little heated once, then cool down."
+   },
+   "situation_en": "Someone says something you think is wrong. Disagreeing well is a superpower — here's how to do it without burning bridges.",
+   "situation_my": "တစ်ယောက်ယောက်က ခင်ဗျားမှားတယ်ထင်တာကို ပြောတယ်။ ကောင်းကောင်းသဘောကွဲတာက စူပါပါဝါပဲ — တံတားမီးမရှို့ဘဲ လုပ်ပုံ။",
+   "title": "Disagreeing Without Starting a Fight",
+   "title_my": "ရန်မဖြစ်ဘဲ သဘောကွဲပြားခြင်း",
+   "topic": "Social"
+  },
+  {
+   "id": "storytelling",
+   "level": "A2",
+   "openers": [
+    {
+     "en": "Okay, you won't believe what happened to me…",
+     "my": "ဟုတ်ပြီ၊ ကျွန်တော့်ကို ဘာဖြစ်ခဲ့လဲ ယုံမှာ မဟုတ်ဘူး…"
+    },
+    {
+     "en": "This is a story I've been dying to tell someone.",
+     "my": "ဒါ တစ်ယောက်ယောက်ကို ပြောချင်နေတဲ့ ဇာတ်လမ်း။"
+    },
+    {
+     "en": "So picture this: it's 2 AM, and I'm standing in the rain…",
+     "my": "ဒီလို မြင်ကြည့်ပါ — မနက် ၂ နာရီ၊ ကျွန်တော် မိုးထဲမှာ ရပ်နေတယ်…"
+    },
+    {
+     "en": "Have I told you about the time I…?",
+     "my": "ကျွန်တော် … တုန်းက အကြောင်း ပြောပြဖူးလား?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "Long story short…",
+     "my": "အတိုချုပ်ပြောရရင်…"
+    },
+    {
+     "en": "And here's the kicker…",
+     "my": "အံ့ဩစရာအချက်က…"
+    },
+    {
+     "en": "I was freaking out, honestly.",
+     "my": "တကယ်ကို လန့်နေတာ။"
+    },
+    {
+     "en": "You should've seen their faces!",
+     "my": "သူတို့မျက်နှာတွေ မြင်သင့်တယ်!"
+    },
+    {
+     "en": "And that's how I learned to never…",
+     "my": "အဲဒါကနေ ကျွန်တော် ဘယ်တော့မှ … မလုပ်ဖို့ သင်ခဲ့ရတယ်။"
+    },
+    {
+     "en": "Plot twist — it gets better.",
+     "my": "ဇာတ်လမ်းအလှည့် — ပိုကောင်းလာတယ်။"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Wait, I'm telling this all out of order — rewind!",
+     "my": "ခဏ၊ စဉ်မလိုက်ဘဲ ပြောနေတယ် — ပြန်ရစ်!"
+    },
+    {
+     "en": "Where was I? Oh right — so then…",
+     "my": "ဘယ်ရောက်နေပြီလဲ? အော် ဟုတ်တယ် — ပြီးတော့…"
+    },
+    {
+     "en": "I'm butchering this story — the point is…",
+     "my": "ဇာတ်လမ်း မှားပြောနေတယ် — အဓိကအချက်က…"
+    },
+    {
+     "en": "Okay that sounded way cooler in my head.",
+     "my": "ဟုတ်ပြီ၊ ခေါင်းထဲမှာ ပိုမိုက်တယ်ထင်ခဲ့တာ။"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Tell a 6+ exchange story from your life (real or invented) without losing the thread.",
+    "goal_my": "ခင်ဗျားဘဝက ဇာတ်လမ်းတစ်ခု (အမှန်/စိတ်ကူး) ကို ၆ ကြိမ်ထက် ပိုပြောပါ — စဉ်မပျက်စေနဲ့။",
+    "scene_en": "Catching up with an old friend over dinner. Your AI partner keeps asking 'and then what happened?!'",
+    "scene_my": "သူငယ်ချင်းဟောင်းနဲ့ ညစာစားရင်း အဆက်အသွယ်ပြန်။ AI က 'ပြီးတော့ ဘာဖြစ်လဲ?!' လို့ ထပ်ခါထပ်ခါ မေးတယ်။",
+    "tutor_en": "You are an enthusiastic friend who loves gossip and stories. React big, ask follow-ups, and once interrupt with a totally unrelated question."
+   },
+   "situation_en": "'So what did you do this weekend?' Don't say 'nothing much.' Turn your life into stories people actually want to hear.",
+   "situation_my": "“ဒီအပတ်မှာ ဘာလုပ်ခဲ့လဲ?” “ဘာမှအထူးမရှိဘူး” လို့ မပြောနဲ့။ ခင်ဗျားဘဝကို လူတွေ တကယ်ကြားချင်တဲ့ ဇာတ်လမ်းအဖြစ် ပြောင်းလိုက်ပါ။",
+   "title": "Telling Stories People Remember",
+   "title_my": "မှတ်မိနေစေမယ့် ဇာတ်လမ်းပြောခြင်း",
+   "topic": "Social"
+  },
+  {
+   "id": "catching-up",
+   "level": "A2",
+   "openers": [
+    {
+     "en": "No way — is that really you?! You look amazing!",
+     "my": "မဖြစ်နိုင်ဘူး — တကယ် ခင်ဗျားလား?! အရမ်းလှလာတယ်!"
+    },
+    {
+     "en": "Okay, rapid-fire update: what have you been up to?",
+     "my": "ဟုတ်ပြီ၊ အမြန်ပြော — ဘာတွေ လုပ်နေလဲ?"
+    },
+    {
+     "en": "I was literally just thinking about you the other day!",
+     "my": "ဟိုတစ်နေ့ကမှ ခင်ဗျားအကြောင်း စဉ်းစားနေတာ!"
+    },
+    {
+     "en": "We have SO much to catch up on — where do we even start?",
+     "my": "ပြောစရာ အရမ်းများတယ် — ဘယ်က စရမလဲ?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "What's new in your world?",
+     "my": "ခင်ဗျားကမ္ဘာမှာ ဘာအသစ်ရှိလဲ?"
+    },
+    {
+     "en": "I'm so happy our paths crossed again.",
+     "my": "လမ်းပြန်ဆုံကြတာ အရမ်းဝမ်းသာတယ်။"
+    },
+    {
+     "en": "We shouldn't let another two years go by!",
+     "my": "နောက် နှစ်နှစ်တော့ မကြာစေနဲ့!"
+    },
+    {
+     "en": "Fill me in — I want all the details!",
+     "my": "အသေးစိတ်ပြောပြ — အကုန်ကြားချင်တယ်!"
+    },
+    {
+     "en": "You've really come a long way!",
+     "my": "ခင်ဗျား တကယ် ခရီးဝေးရောက်ခဲ့ပြီ!"
+    },
+    {
+     "en": "Let's not be strangers, okay?",
+     "my": "လူစိမ်းတွေ မဖြစ်ကြနဲ့နော်?"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "I'm blanking on the details — remind me how we met?",
+     "my": "အသေးစိတ်တွေ မေ့နေတယ် — ဘယ်လိုတွေ့ခဲ့လဲ ပြန်ပြောပါလား?"
+    },
+    {
+     "en": "Sorry, I'm terrible with timelines — was that before or after…?",
+     "my": "စိတ်မကောင်းပါဘူး၊ အချိန်ဇယားနဲ့ မကောင်းဘူး — အဲဒါ … အရင်လား နောက်လား?"
+    },
+    {
+     "en": "My memory is failing me — who else was there?",
+     "my": "မှတ်ဉာဏ်က ချို့ယွင်းနေတယ် — တခြားဘယ်သူတွေ ရှိခဲ့လဲ?"
+    },
+    {
+     "en": "Okay, I'm going to pretend I remember and you fill in the gaps!",
+     "my": "ဟုတ်ပြီ၊ မှတ်မိသလို ဟန်ဆောင်မယ်၊ ခင်ဗျား ကွက်လပ်ဖြည့်ပေးပါ!"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Catch up for 6+ exchanges: share news, ask questions, handle one awkward question gracefully.",
+    "goal_my": "အနည်းဆုံး ၆ ကြိမ် အဆက်အသွယ်ယူပါ — သတင်းမျှပါ၊ မေးပါ၊ ခက်တဲ့မေးခွန်းတစ်ခုကို ချောမွေ့စွာ ကိုင်တွယ်ပါ။",
+    "scene_en": "You run into an old classmate at the mall. Your AI partner is thrilled — and full of questions about your life.",
+    "scene_my": "ဈေးဝယ်စင်တာမှာ ကျောင်းနေဖက်ဟောင်းနဲ့ တိုးတယ်။ AI က အရမ်းဝမ်းသာပြီး ခင်ဗျားဘဝအကြောင်း မေးခွန်းတွေနဲ့ ပြည့်နေတယ်။",
+    "tutor_en": "You are an excited old classmate. Ask rapid personal questions, share your own news, and once ask something slightly awkward."
+   },
+   "situation_en": "You bump into someone you haven't seen in years. Skip 'long time no see' autopilot — make it a real catch-up.",
+   "situation_my": "နှစ်တွေကြာအောင် မတွေ့တဲ့သူနဲ့ တိုးတယ်။ “ကြာပြီနော်” အလိုအလျောက်စကားကို ကျော်ပြီး တကယ့်အဆက်အသွယ်ပြန်ယူပါ။",
+   "title": "Catching Up with Old Friends",
+   "title_my": "သူငယ်ချင်းဟောင်းတွေနဲ့ အဆက်အသွယ်ပြန်ယူခြင်း",
+   "topic": "Social"
+  },
+  {
+   "id": "making-plans",
+   "level": "A2",
+   "openers": [
+    {
+     "en": "Okay, I'm done saying 'we should meet up' — are you free Saturday?",
+     "my": "ဟုတ်ပြီ၊ “တွေ့ကြတာပေါ့” လို့ ပြောတာရပ်ပြီ — စနေနေ့ အားလား?"
+    },
+    {
+     "en": "I've got a wild idea — hear me out…",
+     "my": "ရူးသွပ်တဲ့အတွေးတစ်ခုရှိတယ် — နားထောင်ကြည့်…"
+    },
+    {
+     "en": "What are you doing this weekend? No wrong answers.",
+     "my": "ဒီအပတ် ဘာလုပ်မှာလဲ? အမှားအဖြေ မရှိဘူး။"
+    },
+    {
+     "en": "I need your honest opinion on a plan I'm hatching…",
+     "my": "ကျွန်တော် စီစဉ်နေတဲ့အစီအစဉ်အပေါ် ရိုးသားတဲ့အမြင် လိုတယ်…"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "Let's lock it in — Saturday, 3 PM, your place or mine?",
+     "my": "အတည်လုပ်ကြတာပေါ့ — စနေ၊ ညနေ ၃ နာရီ၊ ခင်ဗျားအိမ်လား ကျွန်တော့်အိမ်လား?"
+    },
+    {
+     "en": "I'm down if you're down.",
+     "my": "ခင်ဗျားလိုက်ရင် ကျွန်တော်လိုက်တယ်။"
+    },
+    {
+     "en": "Rain check? Something came up.",
+     "my": "နောက်တစ်ခါလား? ကိစ္စတစ်ခုပေါ်လာတယ်။"
+    },
+    {
+     "en": "Let's play it by ear and see how we feel.",
+     "my": "ခံစားချက်အတိုင်း ဆုံးဖြတ်ကြတာပေါ့။"
+    },
+    {
+     "en": "Count me in!",
+     "my": "ကျွန်တော်ပါဝင်မယ်!"
+    },
+    {
+     "en": "Okay, it's a date — no backing out!",
+     "my": "ဟုတ်ပြီ၊ ချိန်းထားပြီ — ပြန်လှည့်မရဘူး!"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Wait, I'm confusing myself — what did we just agree on?",
+     "my": "ခဏ၊ ကိုယ့်ကိုယ်ကို ရှုပ်နေတယ် — ခုနက ဘာသဘောတူခဲ့လဲ?"
+    },
+    {
+     "en": "Let me check my calendar before I commit to anything…",
+     "my": "ကတိမပေးခင် ပြက္ခဒိန်စစ်ပါရစေ…"
+    },
+    {
+     "en": "Okay, worst case scenario — what's our backup plan?",
+     "my": "ဟုတ်ပြီ၊ အဆိုးဆုံးအခြေအနေ — အရန်အစီအစဉ်က ဘာလဲ?"
+    },
+    {
+     "en": "I'm overcomplicating this — simple version: Saturday, yes or no?",
+     "my": "ရှုပ်အောင်လုပ်နေတယ် — ရိုးရှင်းတဲ့ဗားရှင်း — စနေနေ့၊ ဟုတ်လား မဟုတ်လား?"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Nail down a real plan: place, day, and budget — without the conversation dying.",
+    "goal_my": "တကယ့်အစီအစဉ် အတည်လုပ်ပါ — နေရာ၊ ရက်၊ ဘတ်ဂျက် — စကားမသေစေနဲ့။",
+    "scene_en": "Planning a weekend trip with a friend. Your AI partner has strong opinions and a tight budget.",
+    "scene_my": "သူငယ်ချင်းနဲ့ အပတ်စဉ်ခရီးစီစဉ်တယ်။ AI က အမြင်ပြင်းပြီး ဘတ်ဂျက်တင်းကျပ်တယ်။",
+    "tutor_en": "You are a picky friend with a small budget. Push back on expensive ideas, suggest alternatives, and change your mind once."
+   },
+   "situation_en": "'We should hang out sometime' — and then never. Learn to make plans that actually happen.",
+   "situation_my": "“တစ်ခါတစ်လေ တွေ့ကြတာပေါ့” — ပြီးတော့ ဘယ်တော့မှ မဖြစ်။ တကယ်ဖြစ်မယ့် အစီအစဉ်ဆွဲနည်း သင်ပါ။",
+   "title": "Making Plans That Actually Happen",
+   "title_my": "တကယ်ဖြစ်မယ့် အစီအစဉ်ဆွဲခြင်း",
+   "topic": "Social"
+  },
+  {
+   "id": "networking",
+   "level": "A2",
+   "openers": [
+    {
+     "en": "What brings you to this event — business or curiosity?",
+     "my": "ဒီပွဲကို ဘာကြောင့်လာတာလဲ — စီးပွားရေးလား၊ စူးစမ်းချင်တာလား?"
+    },
+    {
+     "en": "I'm collecting interesting people today — you qualify. What do you do?",
+     "my": "ဒီနေ့ စိတ်ဝင်စားစရာလူတွေ စုနေတာ — ခင်ဗျား ပါဝင်တယ်။ ဘာလုပ်လဲ?"
+    },
+    {
+     "en": "Be honest: how many of these events have you survived?",
+     "my": "အမှန်ပြော — ဒီလိုပွဲတွေ ဘယ်နှစ်ခု ရှင်သန်ခဲ့ပြီလဲ?"
+    },
+    {
+     "en": "What's the most exciting thing you're working on right now?",
+     "my": "အခုလုပ်နေတဲ့အထဲမှာ အစိတ်လှုပ်ရှားစရာအကောင်းဆုံးက ဘာလဲ?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "I'd love to pick your brain about ___ sometime.",
+     "my": "___ အကြောင်း တစ်ခါတစ်လေ ခင်ဗျားအတွေ့အကြုံကို မေးကြည့်ချင်တယ်။"
+    },
+    {
+     "en": "Let's definitely stay in touch — here's my card.",
+     "my": "အဆက်အသွယ် မပြတ်စေနဲ့ — ဒါ ကျွန်တော့်ကတ်။"
+    },
+    {
+     "en": "That sounds like a fascinating space to be in.",
+     "my": "အဲဒါ စိတ်ဝင်စားစရာနယ်ပယ်မှာ ရှိနေတာပဲ။"
+    },
+    {
+     "en": "I might know someone who could help with that.",
+     "my": "အဲဒါနဲ့ ကူညီနိုင်မယ့်သူကို ကျွန်တော် သိနိုင်တယ်။"
+    },
+    {
+     "en": "It was a pleasure meeting you — let's grab coffee next week!",
+     "my": "တွေ့ရတာ ဝမ်းသာပါတယ် — နောက်အပတ် ကော်ဖီသောက်ကြတာပေါ့!"
+    },
+    {
+     "en": "I'll send you that article we talked about.",
+     "my": "ပြောခဲ့တဲ့ဆောင်းပါး ပို့ပေးမယ်။"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Sorry — your name went in one ear and out the other. One more time?",
+     "my": "စိတ်မကောင်းပါဘူး၊ နာမည် တစ်နားဝင်တစ်နားထွက် သွားတယ်။ နောက်တစ်ခါလား?"
+    },
+    {
+     "en": "I'm blanking on what your company does — remind me?",
+     "my": "ခင်ဗျားကုမ္ပဏီ ဘာလုပ်လဲ မေ့နေတယ် — ပြန်ပြောပါလား?"
+    },
+    {
+     "en": "Okay, elevator pitch version — what do YOU do?",
+     "my": "ဟုတ်ပြီ၊ အတိုချုပ်ဗားရှင်း — ခင်ဗျား ဘာလုပ်လဲ?"
+    },
+    {
+     "en": "I'm losing the thread — were you saying the market is…?",
+     "my": "စဉ်ပျောက်နေတယ် — ဈေးကွက်က … လို့ ပြောနေတာလား?"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Hold a 6+ exchange professional conversation and end with a follow-up plan.",
+    "goal_my": "အနည်းဆုံး ၆ ကြိမ် ပညာရှင်ဆန်ဆန် ပြောပြီး နောက်ဆက်တွဲအစီအစဉ်နဲ့ အဆုံးသတ်ပါ။",
+    "scene_en": "An industry mixer after a conference. Your AI partner is a senior manager at a company you admire.",
+    "scene_my": "ကွန်ဖရင့်ပြီးတဲ့ လုပ်ငန်းပွဲ။ AI က ခင်ဗျား လေးစားတဲ့ကုမ္ပဏီက အကြီးတန်းမန်နေဂျာ။",
+    "tutor_en": "You are an experienced manager, polite but busy. Give short answers at first; warm up if the learner asks good questions."
+   },
+   "situation_en": "A room full of professionals and a pocket full of business cards. Network like a human, not a LinkedIn bot.",
+   "situation_my": "ပညာရှင်တွေနဲ့ပြည့်နေတဲ့အခန်း၊ လိပ်စာကတ်တွေနဲ့ပြည့်နေတဲ့အိတ်။ လူသားလို ကွန်ယက်ချိတ်ပါ၊ LinkedIn ရော့ဘော့လို မဟုတ်ဘဲ။",
+   "title": "Networking Like a Human",
+   "title_my": "လူသားဆန်ဆန် ကွန်ယက်ချိတ်ဆက်ခြင်း",
+   "topic": "Work"
+  },
+  {
+   "id": "opinions",
+   "level": "A2",
+   "openers": [
+    {
+     "en": "Okay, hot take incoming — are you ready?",
+     "my": "ဟုတ်ပြီ၊ ပူတဲ့အမြင် လာပြီ — အဆင်သင့်လား?"
+    },
+    {
+     "en": "I've been thinking about this a lot lately…",
+     "my": "နောက်ပိုင်း ဒီအကြောင်း အရမ်းစဉ်းစားနေတာ…"
+    },
+    {
+     "en": "Unpopular opinion, but here goes…",
+     "my": "လူကြိုက်နည်းတဲ့အမြင်၊ ဒါပေမဲ့ ပြောမယ်…"
+    },
+    {
+     "en": "Can I be brutally honest for a second?",
+     "my": "ခဏတာ ရက်စက်စွာ ရိုးသားလို့ရမလား?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "If you ask me, …",
+     "my": "ကျွန်တော့်ကို မေးရင်…"
+    },
+    {
+     "en": "I'm torn on this one, honestly.",
+     "my": "ဒီတစ်ခုမှာ တကယ် ဝေခွဲမရဘူး။"
+    },
+    {
+     "en": "The way I see it…",
+     "my": "ကျွန်တော် မြင်တာက…"
+    },
+    {
+     "en": "I used to think ___, but now I'm not so sure.",
+     "my": "အရင်က ___ လို့ ထင်ခဲ့တယ်၊ ဒါပေမဲ့ အခု သိပ်မသေချာတော့ဘူး။"
+    },
+    {
+     "en": "Don't quote me on this, but…",
+     "my": "ကျွန်တော်ပြောတာလို့ မကိုးကားနဲ့၊ ဒါပေမဲ့…"
+    },
+    {
+     "en": "At the end of the day, …",
+     "my": "အဆုံးသတ်မှာ…"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Hmm, how do I put this without sounding harsh…",
+     "my": "ဟမ်၊ ပြင်းထန်မသွားအောင် ဘယ်လိုပြောရမလဲ…"
+    },
+    {
+     "en": "I'm still forming my opinion on this — but my gut says…",
+     "my": "အမြင် အခုထိ ပုံဖော်နေတုန်း — ဒါပေမဲ့ ခံစားချက်က…"
+    },
+    {
+     "en": "Okay, that came out wrong — let me try again.",
+     "my": "ဟုတ်ပြီ၊ မှားထွက်သွားတယ် — ထပ်ကြိုးစားမယ်။"
+    },
+    {
+     "en": "You know what, I might be talking nonsense — what do YOU think?",
+     "my": "သိလား၊ အဓိပ္ပာယ်မဲ့ပြောနေတာဖြစ်နိုင်တယ် — ခင်ဗျား ဘာထင်လဲ?"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Give your honest negative opinion kindly, without freezing or just agreeing.",
+    "goal_my": "ရိုးသားတဲ့ အနုတ်အမြင်ကို ကြင်နာစွာပေးပါ — ရပ်မသွားဘဲ၊ သဘောတူလိုက်ရုံ မဟုတ်ဘဲ။",
+    "scene_en": "A friend asks what you really thought of a movie you both just watched. Your AI partner LOVED it. You didn't.",
+    "scene_my": "သူငယ်ချင်းက နှစ်ယောက်အတူ ကြည့်ခဲ့တဲ့ရုပ်ရှင်ကို တကယ်ဘယ်လိုထင်လဲ မေးတယ်။ AI က အရမ်းကြိုက်တယ်။ ခင်ဗျား မကြိုက်ဘူး။",
+    "tutor_en": "You are an enthusiastic friend who adored the movie. Keep asking what the learner thought; get a bit defensive once."
+   },
+   "situation_en": "'What do you think?' — the four scariest words. Have opinions and say them like you mean them.",
+   "situation_my": "“ခင်ဗျား ဘာထင်လဲ?” — အကြောက်စရာအကောင်းဆုံး စကားလေးလုံး။ အမြင်ရှိပါ၊ ဆိုလိုသလို ပြောပါ။",
+   "title": "Giving Your Opinion",
+   "title_my": "အမြင်တွေ ထုတ်ဖော်ပြောဆိုခြင်း",
+   "topic": "Social"
+  },
+  {
+   "id": "keeping-going",
+   "level": "A2",
+   "openers": [
+    {
+     "en": "So — what's been the highlight of your week?",
+     "my": "ဒါဆို — ဒီအပတ်ရဲ့ အထူးခြားဆုံးက ဘာလဲ?"
+    },
+    {
+     "en": "Tell me something good that happened recently.",
+     "my": "နောက်ပိုင်း ဖြစ်ခဲ့တဲ့ ကောင်းတဲ့အရာတစ်ခု ပြောပြပါ။"
+    },
+    {
+     "en": "If you weren't here right now, where would you rather be?",
+     "my": "အခု ဒီမှာ မဟုတ်ရင် ဘယ်မှာ ရှိချင်လဲ?"
+    },
+    {
+     "en": "What's something you're looking forward to?",
+     "my": "မျှော်လင့်နေတဲ့အရာ တစ်ခုက ဘာလဲ?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "Oh, that reminds me…",
+     "my": "အို၊ အဲဒါက သတိရစေတယ်…"
+    },
+    {
+     "en": "Wait, back up — I need details!",
+     "my": "ခဏ၊ နောက်ပြန် — အသေးစိတ်လိုတယ်!"
+    },
+    {
+     "en": "No way! What happened next?",
+     "my": "မဖြစ်နိုင်ဘူး! ပြီးတော့ ဘာဖြစ်လဲ?"
+    },
+    {
+     "en": "That's hilarious — tell me everything.",
+     "my": "အဲဒါ ရယ်စရာပဲ — အကုန်ပြောပြပါ။"
+    },
+    {
+     "en": "Speaking of which…",
+     "my": "အဲဒါနဲ့ ပတ်သက်ပြီး…"
+    },
+    {
+     "en": "Okay, new topic — if you could have dinner with anyone…?",
+     "my": "ဟုတ်ပြီ၊ အကြောင်းအရာသစ် — ဘယ်သူနဲ့မဆို ညစာစားလို့ရရင်…?"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "And… that's my brain buffering. Give me a sec!",
+     "my": "ပြီးတော့… ဦးနှောက်က လုပ်ဆောင်နေတုန်း။ ခဏပေး!"
+    },
+    {
+     "en": "Okay, awkward silence — quick, ask me anything!",
+     "my": "ဟုတ်ပြီ၊ ခက်တဲ့တိတ်ဆိတ်မှု — မြန်၊ ဘာမဆို မေးပါ!"
+    },
+    {
+     "en": "I'm officially out of things to say — your turn to carry this conversation!",
+     "my": "ပြောစရာ တရားဝင်ကုန်ပြီ — ဒီစကားဝိုင်းကို ခင်ဗျားဆက်သယ်ပါ!"
+    },
+    {
+     "en": "Let's just acknowledge the silence happened and move on!",
+     "my": "တိတ်ဆိတ်မှုဖြစ်ခဲ့တာကို အသိအမှတ်ပြုပြီး ဆက်သွားကြတာပေါ့!"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Keep the conversation alive for 8 exchanges against short answers — no awkward surrender.",
+    "goal_my": "တိုတဲ့အဖြေတွေကို ဆန့်ကျင်ပြီး ၈ ကြိမ် စကားဆက်ပြောပါ — လက်လျှော့အရှုံးမပေးနဲ့။",
+    "scene_en": "You're stuck in a long elevator ride with a coworker you barely know. Your AI partner gives short, dry answers.",
+    "scene_my": "သိပ်မသိတဲ့ လုပ်ဖော်ကိုင်ဖက်နဲ့ ဓာတ်လှေကားမှာ ကြာကြာပိတ်မိနေတယ်။ AI က တိုပြီး ခြောက်တဲ့ အဖြေတွေပေးတယ်။",
+    "tutor_en": "You are a coworker who answers in short, dry sentences. Don't volunteer anything. Make the learner work to keep it alive."
+   },
+   "situation_en": "The nightmare: two people, zero words, awkward silence. Learn the art of keeping any conversation breathing.",
+   "situation_my": "အိပ်မက် — လူနှစ်ယောက်၊ စကားလုံးမရှိ၊ ခက်ခဲတဲ့တိတ်ဆိတ်မှု။ ဘယ်စကားဝိုင်းမဆို အသက်ရှူနေအောင် ထားတဲ့အတတ်ပညာ သင်ပါ။",
+   "title": "Keeping a Conversation Alive",
+   "title_my": "စကားဝိုင်းကို အသက်ဆက်ရှင်အောင်ထားခြင်း",
+   "topic": "Social"
+  },
+  {
+   "id": "job-interviews",
+   "level": "B1",
+   "openers": [
+    {
+     "en": "Thanks for having me — I've been looking forward to this conversation.",
+     "my": "ခေါ်ယူတာ ကျေးဇူးပါ — ဒီစကားဝိုင်းကို မျှော်လင့်နေတာ။"
+    },
+    {
+     "en": "That's a great question — let me give you a real example.",
+     "my": "မေးခွန်းကောင်းတယ် — တကယ့်ဥပမာပေးမယ်။"
+    },
+    {
+     "en": "I'd love to tell you about a project I'm really proud of…",
+     "my": "ဂုဏ်ယူရတဲ့ပရောဂျက်အကြောင်း ပြောပြချင်တယ်…"
+    },
+    {
+     "en": "Before we dive in — what's the biggest challenge your team is facing right now?",
+     "my": "မစခင် — ခင်ဗျားအဖွဲ့ အခု ရင်ဆိုင်နေရတဲ့ အကြီးဆုံးစိန်ခေါ်မှုက ဘာလဲ?"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "What really drives me is…",
+     "my": "ကျွန်တော့်ကို တကယ် မောင်းနှင်တာက…"
+    },
+    {
+     "en": "A time I really proved myself was when…",
+     "my": "ကိုယ့်ကိုယ်ကို တကယ်သက်သေပြခဲ့တဲ့အချိန်က…"
+    },
+    {
+     "en": "I'm particularly proud of…",
+     "my": "အထူးသဖြင့် ဂုဏ်ယူတာက…"
+    },
+    {
+     "en": "What excites me about this role is…",
+     "my": "ဒီရာထူးနဲ့ ပတ်သက်ပြီး စိတ်လှုပ်ရှားစေတာက…"
+    },
+    {
+     "en": "That's an area I'm actively working on.",
+     "my": "အဲဒါ တက်တက်ကြွကြွ လုပ်ဆောင်နေတဲ့နယ်ပယ်ပဲ။"
+    },
+    {
+     "en": "Do you have any reservations about my fit for this role?",
+     "my": "ဒီရာထူးနဲ့ ကျွန်တော် ကိုက်ညီမှုအပေါ် စိုးရိမ်ချက်ရှိလား?"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "That's a tough one — let me take a moment to think…",
+     "my": "ခက်တဲ့တစ်ခုပဲ — ခဏစဉ်းစားပါရစေ…"
+    },
+    {
+     "en": "Could you rephrase the question? I want to make sure I answer what you're really asking.",
+     "my": "မေးခွန်းကို ပြန်ပြောပေးနိုင်မလား? တကယ်မေးတာကို ဖြေချင်လို့။"
+    },
+    {
+     "en": "I don't have a perfect example, but here's a related one…",
+     "my": "ပြီးပြည့်စုံတဲ့ဥပမာ မရှိဘူး၊ ဒါပေမဲ့ ဆက်စပ်တာတစ်ခု…"
+    },
+    {
+     "en": "Can I come back to that one at the end? I want to give it proper thought.",
+     "my": "အဲဒါကို အဆုံးမှာ ပြန်လာလို့ရမလား? ကောင်းကောင်းစဉ်းစားချင်လို့။"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Answer 6+ questions with stories and specifics — no freezing, no one-word answers.",
+    "goal_my": "မေးခွန်း ၆ ခုထက်ပို ဇာတ်လမ်းနဲ့အသေးစိတ်ဖြေပါ — ရပ်မသွားနဲ့၊ စကားလုံးတစ်လုံးတည်း မဖြေနဲ့။",
+    "scene_en": "A job interview for a role you really want. Your AI partner is the hiring manager — warm but probing.",
+    "scene_my": "တကယ်လိုချင်တဲ့အလုပ်အတွက် အင်တာဗျူး။ AI က နွေးထွေးပေမဲ့ စူးစမ်းတဲ့ အလုပ်ခန့်မန်နေဂျာ။",
+    "tutor_en": "You are a hiring manager. Ask classic questions ('tell me about yourself', 'greatest weakness', 'why here'), then throw one curveball."
+   },
+   "situation_en": "'Tell me about yourself' — and suddenly your mind is empty. Walk in sounding like the interesting professional you are.",
+   "situation_my": "“ခင်ဗျားအကြောင်း ပြောပြပါ” — ပြီးတော့ ရုတ်တရက် ဦးနှောက်ဗလာ။ စိတ်ဝင်စားစရာပညာရှင်လို အသံထွက်ပြီး ဝင်သွားပါ။",
+   "title": "Job Interviews",
+   "title_my": "အလုပ်အင်တာဗျူးများ",
+   "topic": "Work"
+  },
+  {
+   "id": "saying-no",
+   "level": "B1",
+   "openers": [
+    {
+     "en": "I appreciate you thinking of me, and I have to be honest…",
+     "my": "ကျွန်တော့်ကို သတိရတာ ကျေးဇူးတင်တယ်၊ ရိုးသားရရင်…"
+    },
+    {
+     "en": "Can I be straight with you about this?",
+     "my": "ဒီအကြောင်း တိုက်ရိုက်ပြောလို့ရမလား?"
+    },
+    {
+     "en": "I've been turning this over in my mind…",
+     "my": "ဒါကို စိတ်ထဲမှာ လှည့်ပတ်စဉ်းစားနေတာ…"
+    },
+    {
+     "en": "There's something I've been meaning to bring up…",
+     "my": "ထုတ်ပြောချင်နေတာတစ်ခုရှိတယ်…"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "I'm going to have to pass on this one.",
+     "my": "ဒီတစ်ခုတော့ ဖြတ်ရမယ်။"
+    },
+    {
+     "en": "That doesn't work for me, but here's what I CAN do…",
+     "my": "အဲဒါ ကျွန်တော့်အတွက် အဆင်မပြေဘူး၊ ဒါပေမဲ့ လုပ်နိုင်တာက…"
+    },
+    {
+     "en": "I need to protect my time on this one.",
+     "my": "ဒီတစ်ခုမှာ ကျွန်တော့်အချိန်ကို ကာကွယ်ရမယ်။"
+    },
+    {
+     "en": "It's a no for now — not a no forever.",
+     "my": "အခုတော့ မဟုတ်ဘူး — ထာဝရမဟုတ်ဘူး။"
+    },
+    {
+     "en": "I hope you understand — this wasn't an easy call.",
+     "my": "နားလည်မယ်လို့ မျှော်လင့်တယ် — လွယ်တဲ့ဆုံးဖြတ်ချက် မဟုတ်ဘူး။"
+    },
+    {
+     "en": "Let's find another way to make this work.",
+     "my": "ဒါကို အဆင်ပြေအောင် နောက်တစ်နည်း ရှာကြတာပေါ့။"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "I'm not saying this well — what I mean is, I can't commit to that.",
+     "my": "ကောင်းကောင်း မပြောတတ်ဘူး — ဆိုလိုတာက အဲဒါကို ကတိမပေးနိုင်ဘူး။"
+    },
+    {
+     "en": "This is uncomfortable for me to say, so bear with me…",
+     "my": "ပြောရတာ အဆင်မပြေဘူး၊ ဒါကြောင့် သည်းခံပေးပါ…"
+    },
+    {
+     "en": "Let me be clearer: the answer is no, and here's why…",
+     "my": "ပိုရှင်းအောင်ပြောမယ် — အဖြေက မဟုတ်ဘူး၊ အကြောင်းရင်းက…"
+    },
+    {
+     "en": "I can see you're disappointed — I get it.",
+     "my": "ခင်ဗျား စိတ်ပျက်နေတာ မြင်တယ် — နားလည်တယ်။"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Say no three times, kindly and clearly, without caving or freezing.",
+    "goal_my": "ကြင်နာရှင်းလင်းစွာ သုံးကြိမ် ငြင်းပါ — လက်လျှော့မသွားဘဲ၊ ရပ်မသွားဘဲ။",
+    "scene_en": "A friend keeps pushing you to join an expensive trip you can't afford. Your AI partner doesn't take the first no.",
+    "scene_my": "သူငယ်ချင်းက မတတ်နိုင်တဲ့ဈေးကြီးခရီးကို လိုက်ဖို့ ဖိအားပေးနေတယ်။ AI က ပထမငြင်းတာ လက်မခံဘူး။",
+    "tutor_en": "You are a pushy friend. Don't accept the first no — guilt-trip a little, then respect it if they hold firm kindly."
+   },
+   "situation_en": "Someone asks for something you can't — or won't — do. Saying no clearly and kindly is pure articulation.",
+   "situation_my": "တစ်ယောက်ယောက်က မလုပ်နိုင် — ဒါမှမဟုတ် မလုပ်ချင် — တဲ့အရာတောင်းတယ်။ ရှင်းရှင်းနဲ့ ကြင်နာစွာ ငြင်းတာက စစ်မှန်တဲ့အနုပညာပဲ။",
+   "title": "Saying No & Difficult Conversations",
+   "title_my": "ငြင်းဆိုခြင်းနှင့် ခက်ခဲတဲ့စကားဝိုင်းများ",
+   "topic": "Social"
+  },
+  {
+   "id": "presentation-qa",
+   "level": "B1",
+   "openers": [
+    {
+     "en": "Great question — here's how I think about it…",
+     "my": "မေးခွန်းကောင်းတယ် — ကျွန်တော် ဒီလို စဉ်းစားတယ်…"
+    },
+    {
+     "en": "I'm glad you asked that, because…",
+     "my": "အဲဒါမေးတာ ဝမ်းသာတယ်၊ ဘာလို့လဲဆိုတော့…"
+    },
+    {
+     "en": "Let me make sure I understand what you're asking…",
+     "my": "မေးတာကို နားလည်လား စစ်ကြည့်မယ်…"
+    },
+    {
+     "en": "That's exactly the right thing to push on…",
+     "my": "အဲဒါ တွန်းသင့်တဲ့အရာအတိအကျပဲ…"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "The short answer is yes — the longer answer is…",
+     "my": "အတိုအဖြေက ဟုတ်တယ် — အရှည်အဖြေက…"
+    },
+    {
+     "en": "That's outside my lane, but my best read is…",
+     "my": "အဲဒါ ကျွန်တော့်နယ်ပယ်အပြင်မှာ၊ ဒါပေမဲ့ အကောင်းဆုံးခန့်မှန်းချက်က…"
+    },
+    {
+     "en": "I don't have that number on hand, but I'll follow up.",
+     "my": "အဲဒီနံပါတ် အခု မရှိဘူး၊ ဒါပေမဲ့ နောက်ဆက်တွဲလုပ်မယ်။"
+    },
+    {
+     "en": "What I can tell you is…",
+     "my": "ပြောပြနိုင်တာက…"
+    },
+    {
+     "en": "Let me give you a concrete example…",
+     "my": "ခိုင်မာတဲ့ဥပမာပေးမယ်…"
+    },
+    {
+     "en": "Does that answer your question, or should I go deeper?",
+     "my": "မေးခွန်းကို ဖြေပြီးလား၊ ဒါမှမဟုတ် ပိုနက်အောင် သွားရမလား?"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "That's a curveball — let me think out loud for a moment…",
+     "my": "အဲဒါ မမျှော်လင့်တာပဲ — အသံကျယ်နဲ့ ခဏစဉ်းစားမယ်…"
+    },
+    {
+     "en": "I want to give you a good answer, not a fast one.",
+     "my": "မြန်တဲ့အဖြေထက် ကောင်းတဲ့အဖြေပေးချင်တယ်။"
+    },
+    {
+     "en": "Honestly? I don't know — and I'd rather say so than guess.",
+     "my": "ရိုးရိုးသားသား? မသိဘူး — ခန့်မှန်းတာထက် အဲဒီလိုပြောတာ ပိုကောင်းတယ်။"
+    },
+    {
+     "en": "Can we take that one offline? I want to give it proper thought.",
+     "my": "အဲဒါကို သီးသန့်ဆွေးနွေးလို့ရမလား? ကောင်းကောင်းစဉ်းစားချင်လို့။"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Handle 3 questions: answer two fully, deflect one honestly without freezing.",
+    "goal_my": "မေးခွန်း ၃ ခု ကိုင်တွယ်ပါ — နှစ်ခုကို အပြည့်အဝဖြေ၊ တစ်ခုကို ရိုးသားစွာ လွှဲပါ၊ ရပ်မသွားနဲ့။",
+    "scene_en": "You just presented a project update. Your AI partner is a skeptical senior manager in the audience.",
+    "scene_my": "ပရောဂျက်အခြေအနေ တင်ပြပြီးပြီ။ AI က ပရိသတ်ထဲက သံသယရှိတဲ့ အကြီးတန်းမန်နေဂျာ။",
+    "tutor_en": "You are a skeptical senior manager. Ask two fair questions and one deliberately tough one. Don't go easy."
+   },
+   "situation_en": "You nailed the presentation. Now the hard part: unpredictable questions from the room. Handle them like you own the place.",
+   "situation_my": "တင်ဆက်မှု အောင်မြင်သွားပြီ။ အခု ခက်တဲ့အပိုင်း — အခန်းထဲက မမျှော်လင့်တဲ့မေးခွန်းများ။ နေရာပိုင်သလို ကိုင်တွယ်ပါ။",
+   "title": "Handling Q&A Like a Pro",
+   "title_my": "တင်ဆက်မှုအပြီး မေးခွန်းကိုင်တွယ်ခြင်း",
+   "topic": "Work"
+  },
+  {
+   "id": "debates",
+   "level": "B1",
+   "openers": [
+    {
+     "en": "Okay, controversial opinion time: ___ is overrated.",
+     "my": "ဟုတ်ပြီ၊ အငြင်းပွားစရာအမြင်အချိန် — ___ က အလွန်အကျွံချီးကျူးခံရတယ်။"
+    },
+    {
+     "en": "Settle this for us once and for all: ___ or ___?",
+     "my": "ဒါကို တစ်ခါတည်း အပြီးသတ်ပေးပါ — ___ လား ___ လား?"
+    },
+    {
+     "en": "I'm prepared to die on this hill: …",
+     "my": "ဒီတောင်ပေါ်မှာ သေဖို့ အဆင်သင့်ပဲ — …"
+    },
+    {
+     "en": "Change my mind: …",
+     "my": "ကျွန်တော့်စိတ်ပြောင်းပေးပါ — …"
+    }
+   ],
+   "phrases": [
+    {
+     "en": "Hear me out…",
+     "my": "နားထောင်ကြည့်ပါ…"
+    },
+    {
+     "en": "Okay, but counterpoint…",
+     "my": "ဟုတ်ပြီ၊ ဒါပေမဲ့ ဆန့်ကျင်ဘက်အချက်…"
+    },
+    {
+     "en": "That's actually a solid argument — but…",
+     "my": "အဲဒါ တကယ့် ခိုင်မာတဲ့အငြင်းချက် — ဒါပေမဲ့…"
+    },
+    {
+     "en": "You're not wrong, you're just not right either.",
+     "my": "ခင်ဗျား မမှားဘူး၊ ဒါပေမဲ့ မှန်လည်း မမှန်ဘူး။"
+    },
+    {
+     "en": "Let's say, hypothetically…",
+     "my": "ယူဆချက်အနေနဲ့ ပြောရရင်…"
+    },
+    {
+     "en": "Okay, you win this round — rematch tomorrow?",
+     "my": "ဟုတ်ပြီ၊ ဒီအချီ ခင်ဗျားနိုင် — မနက်ဖြန် ပြန်ပြိုင်မလား?"
+    }
+   ],
+   "rescue": [
+    {
+     "en": "Okay, you've got me there — I need a second to regroup!",
+     "my": "ဟုတ်ပြီ၊ အဲဒီမှာ မိသွားပြီ — ပြန်စုဖို့ ခဏလိုတယ်!"
+    },
+    {
+     "en": "I'm losing this debate and I know it — one last argument!",
+     "my": "အငြင်းပွားတာ ရှုံးနေတာ သိတယ် — နောက်ဆုံးအငြင်းချက်တစ်ခု!"
+    },
+    {
+     "en": "Wait, what was my point again? Oh right…",
+     "my": "ခဏ၊ ကျွန်တော့်အချက်က ဘာလဲ? အော် ဟုတ်တယ်…"
+    },
+    {
+     "en": "Fine — new rule: no interrupting for 30 seconds!",
+     "my": "ဟုတ်ပြီ — စည်းမျဉ်းသစ် — စက္ကန့် ၃၀ ကြာ မဖြတ်နဲ့!"
+    }
+   ],
+   "roleplay": {
+    "goal_en": "Debate for 6+ exchanges: argue, concede a point gracefully, land a funny closing line.",
+    "goal_my": "အနည်းဆုံး ၆ ကြိမ် အငြင်းပွားပါ — ငြင်းပါ၊ အချက်တစ်ခု ချောမွေ့စွာ လက်ခံပါ၊ ရယ်စရာအပိတ်စကားနဲ့ အဆုံးသတ်ပါ။",
+    "scene_en": "A friend declares pineapple on pizza is a crime. Your AI partner is ready to FIGHT about it.",
+    "scene_my": "သူငယ်ချင်းက ပီဇာပေါ် နာနတ်သီးထည့်တာ ရာဇဝတ်မှုလို့ ကြေညာတယ်။ AI က တိုက်ခိုက်ဖို့ အဆင်သင့်။",
+    "tutor_en": "You are hilariously passionate about pizza toppings. Argue hard, be dramatic, and once pretend to be deeply offended."
+   },
+   "situation_en": "Is coffee better than tea? Should phones be banned at dinner? Low-stakes debates are fluency playgrounds.",
+   "situation_my": "ကော်ဖီက လက်ဖက်ရည်ထက် ကောင်းလား? ညစာမှာ ဖုန်းတားသင့်လား? အန္တရာယ်နည်းတဲ့အငြင်းပွားမှုတွေက ကျွမ်းကျင်မှုကစားကွင်းပဲ။",
+   "title": "Friendly Debates",
+   "title_my": "ဖော်ရွေတဲ့ အငြင်းပွားမှုများ",
+   "topic": "Social"
+  }
+ ]
 }

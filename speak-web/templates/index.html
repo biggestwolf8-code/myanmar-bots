@@ -4,8 +4,8 @@
 <div class="card" style="text-align:center; padding:28px 18px;">
   <div style="font-size:52px;">🗣️</div>
   <h1>{{ app_name }}</h1>
-  <p class="muted">Speak English clearly and confidently. Bite-sized lessons train the exact sounds Myanmar speakers find hardest — <b>th</b>, <b>v/w</b>, <b>r/l</b>, final consonants — with instant feedback on <b>every sound you make</b>.</p>
-  <p class="small muted">🎧 Listen &nbsp;·&nbsp; 🎤 Repeat &nbsp;·&nbsp; 📝 Get per-sound tips in English + မြန်မာ</p>
+  <p class="muted">Learn to speak English <b>naturally — without hesitating</b>. Situation lessons teach you brilliant openers, phrases native speakers actually use, and rescue lines for the moment you freeze. Then practice in <b>AI roleplays</b> with instant coaching on your flow.</p>
+  <p class="small muted">🎧 Learn &nbsp;·&nbsp; 🎤 Speak &nbsp;·&nbsp; 🎭 Roleplay &nbsp;·&nbsp; 🥶 Survive the freeze drill</p>
 </div>
 <div class="card">
   <h3>Have an invite code?</h3>
@@ -18,14 +18,14 @@
 <div class="card" style="display:flex; align-items:center; gap:14px;">
   <div style="font-size:40px;">🎯</div>
   <div>
-    <div style="font-weight:800; font-size:17px;">Train your sounds daily</div>
+    <div style="font-weight:800; font-size:17px;">Stay fluent daily</div>
     <div class="small muted">🔥 {{ stats.streak }} day streak &nbsp;·&nbsp; ⭐ {{ stats.xp }} XP</div>
   </div>
 </div>
 
 <a href="/freetalk" class="card lessoncard" style="border:2px solid var(--accent);">
   <h3 style="margin:0;">💬 Free Talk <span style="float:right;">→</span></h3>
-  <p class="small muted" style="margin:6px 0 0;">Chat out loud with your AI tutor — it notes your clearest pronunciation issues each turn.</p>
+  <p class="small muted" style="margin:6px 0 0;">Chat out loud with your AI tutor — it coaches your flow and gives you smarter ways to say things.</p>
 </a>
 
 <h2>📚 Lessons</h2>
@@ -40,7 +40,7 @@
   <h3 style="margin:6px 0 2px;">{{ c.title }}</h3>
   <div class="small muted">{{ c.title_my }} · {{ c.topic }}</div>
   <div class="pbar"><div style="width:{{ (100*c.done//c.n) if c.n else 0 }}%"></div></div>
-  <div class="small muted" style="margin-top:4px;">{{ c.done }}/{{ c.n }} phrases</div>
+  <div class="small muted" style="margin-top:4px;">{{ c.done }}/{{ c.n }} items</div>
 </a>
 {% endfor %}
 </div>

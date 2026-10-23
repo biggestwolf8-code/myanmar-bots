@@ -2,9 +2,12 @@
 
 Pipeline (same approach as live-translate):
   browser-recorded audio -> Whisper transcription -> gpt-4o-mini
-  (phrase feedback / free-talk tutor) -> audio playback. Tutor replies are
-  spoken with the phone's own speech synthesis; phrase model audio is
-  pre-generated once via OpenAI TTS and cached.
+  (expression feedback / conversation tutor) -> audio playback.
+
+ARTICULATION here means being ARTICULATE in conversation: speaking
+naturally without hesitating, never being lost for words, expressing
+yourself with interesting phrases. It is NOT pronunciation/phonetics —
+never coach mouth/tongue placement or individual sounds.
 
 Never import this module's key anywhere else; OPENAI_API_KEY is read here
 only and never printed.
@@ -58,51 +61,43 @@ def transcribe(audio_bytes, filename="clip.webm"):
 
 
 FEEDBACK_SYSTEM = (
-    "You are an expert English ARTICULATION coach for Myanmar learners using "
-    "the 'MasterClass Articulation' app. The student tried to say a target "
-    "English phrase out loud; their speech was transcribed by Whisper (the "
-    "transcription may contain small errors — be generous, not punishing, and "
-    "infer the most likely intended sounds). Your job is to identify WHICH "
-    "SOUNDS were mispronounced — not just which words were wrong. Myanmar "
-    "speakers commonly struggle with: th /θ/ /ð/ sounding like t/d, v vs w, "
-    "z vs s, r vs l, dropped final consonants, consonant clusters, word "
-    "stress, and sentence intonation. Listen for exactly these. "
+    "You are an expert English FLUENCY coach for Myanmar learners using the "
+    "'MasterClass Articulation' app. ARTICULATION here means being ARTICULATE: "
+    "speaking naturally without hesitating, never being lost for words, "
+    "expressing yourself with interesting phrases. It is NOT about "
+    "pronunciation of sounds — NEVER give mouth/tongue/lip placement tips. "
+    "The student practiced one expression item (a conversation opener, a "
+    "natural phrase, or a rescue phrase) by saying it out loud; Whisper "
+    "transcribed them (transcription may contain small errors — be generous, "
+    "infer the most likely intended meaning). "
     "Respond with ONLY a JSON object, no other text, with these keys:\n"
-    '{"said": "<what the student most likely said, cleaned up into natural English>", '
+    '{"said": "<what they most likely said, cleaned up into natural English>", '
     '"score": <1-5 integer>, '
-    '"sound_notes": [{"sound": "<the target sound, e.g. \'th /θ/ as in think\'>", '
-    '"heard_as": "<what it sounded like, e.g. \'t\'>", '
-    '"fix_en": "<concrete mouth/tongue/lip placement fix in SIMPLE English, under 30 words>", '
-    '"fix_my": "<the same fix in Myanmar, under 30 words>"}], '
-    '"corrections_en": "<any other short corrections in SIMPLE English, under 30 words>", '
-    '"corrections_my": "<the same in Myanmar, under 30 words>", '
-    '"tip_en": "<ONE extra articulation tip in simple English, under 25 words>", '
+    '"flow_en": "<1-2 sentences in SIMPLE English: did they sound natural, confident, interesting? If they hesitated or sounded flat, say so kindly>", '
+    '"flow_my": "<the same in Myanmar>", '
+    '"alternatives": [{"instead_of": "<their flat/boring wording, or empty>", '
+    '"try_this": "<a smarter, more interesting native-speaker way to say the same thing>", '
+    '"try_this_my": "<Myanmar translation of try_this>"}], '
+    '"tip_en": "<ONE practical fluency tip in simple English, under 25 words>", '
     '"tip_my": "<the same tip in Myanmar, under 25 words>"} '
-    "Rules: sound_notes lists the 1–3 clearest SOUND problems, ordered by "
-    "importance; each fix_en/fix_my must describe PHYSICAL placement "
-    "(tongue, teeth, lips, airflow, voicing — e.g. \"rest your tongue tip "
-    "lightly BETWEEN your teeth and blow air out; don't bite down\"). Empty "
-    "sound_notes only if articulation was genuinely good. "
-    "Score is weighted toward clarity of the lesson's target sounds: "
-    "5 = target sounds clear and natural; 4 = target sounds good, tiny slip; "
-    "3 = understandable but target sounds need work; 2 = target sounds "
-    "wrong or hard to understand; 1 = wrong phrase, silence, or not speech. "
-    "If the transcription is empty or clearly not speech, score 1, empty "
-    "sound_notes, and say kindly in both languages that you could not hear "
-    "them and to try again. Be ENCOURAGING always: learners improve by "
-    "repeating — end corrections_en with one short motivating phrase."
+    "Rules: score 5 = natural, confident, interesting; 4 = good, tiny stiffness; "
+    "3 = understandable but flat or textbook-sounding; 2 = hesitant, hard to follow, "
+    "or froze; 1 = silence, not speech, or wrong item. alternatives: 1-2 upgrades that "
+    "keep their meaning but sound more native and interesting — suggest livelier "
+    "wording, not grammar drills. Skip alternatives only if what they said was "
+    "already excellent (then praise it in flow_en). Mention pronunciation ONLY if "
+    "something was genuinely unintelligible. If the transcription is empty or clearly "
+    "not speech: score 1, empty alternatives, and say kindly in both languages that "
+    "you could not hear them and to try again. Be ENCOURAGING always: end tip_en "
+    "with one short motivating push."
 )
 
 
-def phrase_feedback(target_en, said_text, target_sounds=None, phrase_focus=""):
-    """Grade one phrase attempt, articulation-first.
+def expression_feedback(item_en, item_my, section, said_text):
+    """Grade one expression attempt (opener/phrase/rescue), fluency-first.
     Returns (feedback_dict, usage_dict)."""
-    hint = ""
-    if target_sounds:
-        hint += f"\nLesson target sounds: {', '.join(target_sounds)}"
-    if phrase_focus:
-        hint += f"\nThis phrase focuses on: {phrase_focus}"
-    user = (f'Target phrase: "{target_en}"{hint}\n'
+    user = (f'Practice item ({section}): "{item_en}"\n'
+            f'Myanmar meaning: "{item_my}"\n'
             f'Whisper transcription of the student: "{said_text}"')
     r = requests.post(
         f"{OPENAI_BASE}/chat/completions",
@@ -117,14 +112,14 @@ def phrase_feedback(target_en, said_text, target_sounds=None, phrase_focus=""):
     raw = (out.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
     fb = json.loads(raw)
     fb["score"] = max(1, min(5, int(fb.get("score", 1))))
-    for k in ("said", "corrections_en", "corrections_my", "tip_en", "tip_my"):
+    for k in ("said", "flow_en", "flow_my", "tip_en", "tip_my"):
         fb[k] = str(fb.get(k, "")).strip()
-    notes = []
-    for n in (fb.get("sound_notes") or [])[:3]:
-        if isinstance(n, dict) and n.get("sound"):
-            notes.append({k: str(n.get(k, "")).strip()
-                          for k in ("sound", "heard_as", "fix_en", "fix_my")})
-    fb["sound_notes"] = notes
+    alts = []
+    for a in (fb.get("alternatives") or [])[:2]:
+        if isinstance(a, dict) and a.get("try_this"):
+            alts.append({k: str(a.get(k, "")).strip()
+                         for k in ("instead_of", "try_this", "try_this_my")})
+    fb["alternatives"] = alts
     u = out.get("usage", {})
     usage = {"input_tokens": u.get("prompt_tokens", 0),
              "output_tokens": u.get("completion_tokens", 0),
@@ -132,36 +127,87 @@ def phrase_feedback(target_en, said_text, target_sounds=None, phrase_focus=""):
     return fb, usage
 
 
-FREETALK_SYSTEM = (
-    "You are a friendly AI English tutor inside the 'MasterClass Articulation' "
-    "app, chatting by voice with a Myanmar learner. This app's core value is "
-    "ARTICULATION — clear, correct production of English sounds. Speak "
-    "SIMPLY: short sentences, everyday words, one idea at a time. Keep the "
-    "conversation going with a question when natural. Respond with ONLY a "
+CONVERSE_BASE = (
+    "You are an AI English conversation partner inside the 'MasterClass "
+    "Articulation' app, talking by voice with a Myanmar learner. The app's "
+    "whole point is ARTICULATION = being ARTICULATE: speaking naturally "
+    "without hesitating, never being lost for words, expressing yourself with "
+    "interesting phrases. NEVER coach pronunciation, mouth/tongue placement, "
+    "or individual sounds. "
+    "Speak like a real native speaker would: short, natural sentences — never "
+    "textbook English. Keep every reply to 1-3 sentences and always end with "
+    "something that keeps the conversation going (a question, a reaction, a "
+    "tease). "
+    "After your in-character reply, add coaching as JSON. Respond with ONLY a "
     "JSON object, no other text:\n"
-    '{"reply_en": "<your reply in English, 1-3 short sentences>", '
+    '{"reply_en": "<your reply, 1-3 short natural sentences>", '
     '"reply_my": "<Myanmar translation of your reply, plus a brief Myanmar '
-    'explanation of any difficult English word you used>", '
-    '"pronunciation": [{"issue_en": "<the clearest pronunciation issue in the '
-    "student's last turn, in simple English, e.g. 'your th sounded like t'>\", "
-    '"fix_en": "<concrete mouth/tongue/lip fix, under 25 words>", '
-    '"fix_my": "<the same fix in Myanmar, under 25 words>"}]} '
-    "pronunciation lists the 1–2 clearest SOUND issues from the student's last "
-    "utterance only (empty list if their articulation was fine — don't invent "
-    "issues). Myanmar speakers commonly struggle with th/v-w/z-s/r-l, final "
-    "consonants, clusters, and stress — listen for these. "
-    "If the student writes or asks in Myanmar, answer in Myanmar in reply_my "
-    "(still give the English version in reply_en). If they ask what an English "
-    "word means, explain it clearly in Myanmar. Never break character: if asked "
-    "what you are, say you are their AI English tutor in MasterClass "
-    "Articulation, powered by OpenAI."
+    'note on any difficult English word you used>", '
+    '"coaching": {"flow": <1-5: how well they kept the conversation flowing>, '
+    '"flow_note_en": "<one short note in simple English>", '
+    '"flow_note_my": "<the same in Myanmar>", '
+    '"freeze": <true if their last message shows freeze signals: fillers '
+    '(uh/um), "I don\'t know", very short answers to open questions, '
+    'repeating themselves, or empty/garbled input — else false>, '
+    '"freeze_note_en": "<what happened, in simple English; empty if no freeze>", '
+    '"freeze_note_my": "<the same in Myanmar>", '
+    '"recovered": <true if they froze but got the conversation moving again>, '
+    '"better_en": "<ONE smarter, more interesting native-speaker alternative '
+    'to something they actually said; empty if they were already great>", '
+    '"better_my": "<Myanmar translation of better_en>", '
+    '"rescue_en": "<ONE rescue phrase they could have used when stuck; empty '
+    'if no freeze>" , "rescue_my": "<Myanmar translation of rescue_en>"}} '
+    "Rules: praise rescue phrases warmly when the learner uses one. Suggest "
+    "livelier wording, never grammar drills. If the learner writes in Myanmar, "
+    "answer in Myanmar in reply_my (reply_en stays English). If asked what you "
+    "are, say you are their AI English tutor in MasterClass Articulation, "
+    "powered by OpenAI."
+)
+
+ROLEPLAY_EXTRA = (
+    "\nROLEPLAY MODE: stay in character as: {tutor_en}\n"
+    "Scenario: {scene_en}\n"
+    "The learner's goal: {goal_en}\n"
+    "Never break character in reply_en. In reply_my you may add one short "
+    "Myanmar note about the roleplay context."
+)
+
+FREEZE_EXTRA = (
+    "\nFREEZE-DRILL MODE: this is a drill, and your secret mission is to "
+    "DELIBERATELY create stuck moments that train the learner to recover. "
+    "Cycle through these pressure moves across turns, one per turn: "
+    "(1) an unexpected personal question, "
+    "(2) a sudden topic change, "
+    "(3) an awkward silence — reply with exactly '...' and nothing else, "
+    "(4) playful disagreement with what they just said, "
+    "(5) two rapid questions in a row. "
+    "Never announce the drill or explain what you are doing — stay natural. "
+    "Between pressure moves, be a normal warm conversation partner. "
+    "Set freeze=true in coaching whenever their message shows freeze signals. "
+    "Always offer a rescue phrase in rescue_en/rescue_my when they freeze."
 )
 
 
-def freetalk_reply(history, new_said):
-    """history: list of (said, reply_en) for past turns; new_said is the
-    latest student utterance. Returns (reply_dict, usage_dict)."""
-    msgs = [{"role": "system", "content": FREETALK_SYSTEM}]
+def converse_reply(mode, scenario, history, new_said):
+    """Voice conversation turn.
+
+    mode: 'free' | 'roleplay' | 'freeze'.
+    scenario: dict with tutor_en/scene_en/goal_en (roleplay/freeze only).
+    history: list of (said, reply_en) for past turns.
+    Returns (reply_dict, usage_dict).
+    """
+    system = CONVERSE_BASE
+    if mode == "roleplay":
+        system += ROLEPLAY_EXTRA.format(
+            tutor_en=scenario.get("tutor_en", "a friendly conversation partner"),
+            scene_en=scenario.get("scene_en", ""),
+            goal_en=scenario.get("goal_en", ""))
+    elif mode == "freeze":
+        system += ROLEPLAY_EXTRA.format(
+            tutor_en=scenario.get("tutor_en", "a friendly conversation partner"),
+            scene_en=scenario.get("scene_en", ""),
+            goal_en=scenario.get("goal_en", "")) + FREEZE_EXTRA
+    msgs = [{"role": "system", "content": system}]
     for said, reply_en in history[-8:]:
         msgs.append({"role": "user", "content": said})
         msgs.append({"role": "assistant", "content": reply_en})
@@ -179,12 +225,21 @@ def freetalk_reply(history, new_said):
     rep = json.loads(raw)
     rep["reply_en"] = str(rep.get("reply_en", "")).strip()
     rep["reply_my"] = str(rep.get("reply_my", "")).strip()
-    pron = []
-    for n in (rep.get("pronunciation") or [])[:2]:
-        if isinstance(n, dict) and n.get("issue_en"):
-            pron.append({k: str(n.get(k, "")).strip()
-                         for k in ("issue_en", "fix_en", "fix_my")})
-    rep["pronunciation"] = pron
+    c = rep.get("coaching") or {}
+    coaching = {
+        "flow": max(1, min(5, int(c.get("flow", 3) or 3))),
+        "flow_note_en": str(c.get("flow_note_en", "")).strip(),
+        "flow_note_my": str(c.get("flow_note_my", "")).strip(),
+        "freeze": bool(c.get("freeze", False)),
+        "freeze_note_en": str(c.get("freeze_note_en", "")).strip(),
+        "freeze_note_my": str(c.get("freeze_note_my", "")).strip(),
+        "recovered": bool(c.get("recovered", False)),
+        "better_en": str(c.get("better_en", "")).strip(),
+        "better_my": str(c.get("better_my", "")).strip(),
+        "rescue_en": str(c.get("rescue_en", "")).strip(),
+        "rescue_my": str(c.get("rescue_my", "")).strip(),
+    }
+    rep["coaching"] = coaching
     u = out.get("usage", {})
     usage = {"input_tokens": u.get("prompt_tokens", 0),
              "output_tokens": u.get("completion_tokens", 0),

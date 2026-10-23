@@ -33,7 +33,7 @@
   <div class="card"><h3>Lessons</h3><div id="lessonlist"><p class="muted">Loading…</p></div></div>
   <div class="card" id="editor" style="display:none;">
     <h3 id="edtitle">Edit lesson</h3>
-    <p class="small muted">Edit as JSON. Every phrase needs <b>en</b>, <b>my</b>, <b>focus</b>. Every lesson needs <b>target_sounds</b>, <b>tip_en</b>, <b>tip_my</b>. Saved as an override — Reset restores the built-in version.</p>
+    <p class="small muted">Edit as JSON. Each lesson needs <b>openers</b>, <b>phrases</b>, <b>rescue</b> (arrays of {en, my}) and a <b>roleplay</b> object (scene_en, scene_my, tutor_en, goal_en, goal_my). Saved as an override — Reset restores the built-in version.</p>
     <div class="err" id="ederr"></div>
     <textarea id="edjson" rows="18" style="font-family:monospace; font-size:13px;"></textarea>
     <div class="row">
@@ -81,7 +81,7 @@ async function load(){
   let lh = '<table><tr><th>ID</th><th>Title</th><th>Phrases</th><th></th></tr>';
   DATA.lessons.forEach(l => {
     lh += "<tr><td><b>"+esc(l.id)+"</b> <span class='small muted'>"+esc(l.level)+"</span>"+
-      (l.overridden?" ✏️":"")+"</td><td>"+esc(l.title)+"</td><td>"+l.n_phrases+"</td>"
+      (l.overridden?" ✏️":"")+"</td><td>"+esc(l.title)+"</td><td>"+l.n_items+"</td>"
       + "<td><button class='btn secondary' style='padding:6px 10px; font-size:13px; width:auto;' data-edit='"+esc(l.id)+"'>Edit</button></td></tr>";
   });
   document.getElementById("lessonlist").innerHTML = lh + "</table>";
