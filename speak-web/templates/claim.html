@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="text-align:center; padding:28px 18px;">
+  <div style="font-size:52px;">🎟️</div>
+  <h1>You're invited!</h1>
+  <p class="muted">This invite link gives you access to <b>{{ app_name }}</b>. Tap below to claim it — the link works only once.</p>
+  <div class="err" id="err"></div>
+  <button class="btn" id="claim">Claim my invite →</button>
+  <p class="small muted" style="margin-top:14px;">No sign-ups, no surprise charges, ever.</p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById("claim").addEventListener("click", async () => {
+  const err = document.getElementById("err");
+  const btn = document.getElementById("claim");
+  btn.disabled = true; btn.textContent = "Claiming…";
+  try {
+    const r = await fetch("/api/redeem", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({code: {{ code|tojson }}})});
+    const j = await r.json();
+    if (j.ok) location.href = "/";
+    else { err.textContent = j.error || "That didn't work."; err.classList.add("show");
+           btn.disabled = false; btn.textContent = "Claim my invite →"; }
+  } catch(e){ err.textContent = "Connection problem — try again."; err.classList.add("show");
+              btn.disabled = false; btn.textContent = "Claim my invite →"; }
+});
+</script>
+{% endblock %}

@@ -405,14 +405,11 @@ def index():
 
 @app.route("/i/<code>")
 def redeem_link(code):
+    # NOTE: GET must not redeem — link previews and chat unfurlers fetch URLs
+    # and would burn single-use codes. Claiming happens via POST /api/redeem.
     from flask import render_template
-    sid = redeem_code(code)
-    if not sid:
-        return render_template("index.html", logged_in=False, app_name=APP_NAME, nav="home",
-                               error="This invite link is invalid or already used."), 410
-    session["sid"] = sid
-    session.permanent = True
-    return redirect(url_for("index"))
+    return render_template("claim.html", app_name=APP_NAME, nav="home",
+                           logged_in=False, code=(code or "").strip().upper())
 
 
 @app.route("/lesson/<lesson_id>")
