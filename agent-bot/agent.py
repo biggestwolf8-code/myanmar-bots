@@ -340,21 +340,45 @@ def _describe_step(name, inp):
     return name
 
 
+def _sanitize_messages(messages):
+    """Make the message list safe to send to the Anthropic API.
+
+    - Drops stale thinking/redacted_thinking blocks. Thinking is never
+      enabled for this agent, so any such block in the replayed history
+      (e.g. from a corrupted volume file) is junk — and Anthropic rejects
+      the whole request with HTTP 400 when a thinking block doesn't belong
+      to the current conversation. Stripping them is always safe here.
+      Messages left with no content blocks are dropped too.
+    - Drops leading non-user messages: the API requires the first message
+      to use the user role, and a crash mid-turn can leave saved history
+      starting on an assistant message.
+    """
+    clean = []
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, list):
+            content = [b for b in content
+                       if not (isinstance(b, dict) and b.get("type")
+                               in ("thinking", "redacted_thinking"))]
+            if not content:
+                continue
+            m = {"role": m.get("role"), "content": content}
+        clean.append(m)
+    while clean and clean[0].get("role") != "user":
+        clean.pop(0)
+    return clean
+
+
 def run_agent(history, max_steps=None):
     """Run the agent loop. history is a list of {role, content} (mutated in
     place with the new turns). Returns (reply_text, usage, steps)."""
     max_steps = max_steps or config.MAX_AGENT_STEPS
     total_in, total_out, steps = 0, 0, []
-    messages = [{"role": m["role"], "content": m["content"]} for m in history]
-    # Guard: the API requires the first message to use the user role and
-    # rejects the request with HTTP 400 otherwise. A crash mid-turn can
-    # leave saved history with an odd count, and the load slice can then
-    # start on an assistant message — drop those so the request is valid.
-    while messages and messages[0].get("role") != "user":
-        messages.pop(0)
+    messages = _sanitize_messages(
+        [{"role": m["role"], "content": m["content"]} for m in history])
     text = ""
     for _ in range(max_steps):
-        out, usage = _api_call(messages, TOOLS)
+        out, usage = _api_call(_sanitize_messages(messages), TOOLS)
         total_in += usage["input_tokens"]
         total_out += usage["output_tokens"]
         assistant_blocks = [b for b in out.get("content", [])
