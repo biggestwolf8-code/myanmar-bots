@@ -99,11 +99,26 @@ def _ssh(host, command, timeout=30):
 
 
 def _next_ip(server):
+    """Next free client IP in the server's subnet.
+
+    Consults the server's LIVE peer list (via SSH) as well as the bot's own
+    customer file: vpn-api sales and manual provisioning allocate from the
+    same subnets, and their allocations are invisible to this file. Without
+    the live check, the bot could hand out an IP another peer already owns
+    (e.g. Singapore 10.8.0.3 = customer Nyi) and WireGuard would steal it.
+    """
     used = set(RESERVED.get(server, set()))
     for cust in _load().values():
         ip = (cust.get("ips") or {}).get(server)
         if ip:
             used.add(ip)
+    ok, out = _ssh(SERVERS[server]["host"], "wg show wg0 allowed-ips")
+    if ok:
+        for line in out.splitlines():
+            parts = line.split()
+            for p in parts[1:]:
+                for ip in p.split(","):
+                    used.add(ip.split("/")[0].strip())
     base = SERVERS[server]["subnet"]
     for i in range(3, 255):
         cand = f"{base}.{i}"
