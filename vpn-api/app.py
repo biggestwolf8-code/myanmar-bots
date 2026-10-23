@@ -33,6 +33,32 @@ SERVERS = {
     "usa":       {"host": "149.248.11.196", "country": "USA",       "subnet": "10.11.0", "server_ip": "10.11.0.1"},
 }
 WG_PORT = 443
+# Shadowsocks obfuscation for MPT DPI bypass (TCP 443, aes-256-gcm)
+# Passwords set via Railway env vars: SS_PASSWORD_SINGAPORE, SS_PASSWORD_JAPAN, etc.
+SS_PORT = 443
+SS_METHOD = "aes-256-gcm"
+def _ss_passwords():
+    return {
+        "singapore": os.environ.get("SS_PASSWORD_SINGAPORE", ""),
+        "japan": os.environ.get("SS_PASSWORD_JAPAN", ""),
+        "uk": os.environ.get("SS_PASSWORD_UK", ""),
+        "usa": os.environ.get("SS_PASSWORD_USA", ""),
+    }
+
+def _ss_configs():
+    """Build Shadowsocks configs for MPT users (obfuscated, bypasses DPI)."""
+    pw = _ss_passwords()
+    configs = {}
+    for srv, info in SERVERS.items():
+        if pw.get(srv):
+            configs[srv] = {
+                "server": info["host"],
+                "server_port": SS_PORT,
+                "password": pw[srv],
+                "method": SS_METHOD,
+                "country": info["country"],
+            }
+    return configs
 # .1 = server, .2 = Arkar's phone (Singapore only); customers start at .3
 RESERVED_IPS = {"singapore": {"10.8.0.1", "10.8.0.2"}}
 
@@ -233,6 +259,7 @@ def login():
     latest = announcements[-1] if announcements else None
     return jsonify(ok=True, name=c.get("name"), expires_at=c["expires_at"],
                    days_left=days_left, configs=c.get("configs", {}),
+                   ss_configs=_ss_configs(),
                    servers={k: v["country"] for k, v in SERVERS.items()},
                    announcement=latest)
 
