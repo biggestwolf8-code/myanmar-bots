@@ -49,6 +49,16 @@
   <div class="muted small" style="margin-top:8px;">{{ lesson.roleplay.goal_en }}</div>
   {% if lesson.roleplay.goal_my %}<div class="muted small">{{ lesson.roleplay.goal_my }}</div>{% endif %}
 </div>
+
+<div class="card" style="text-align:center; margin-top:12px;">
+  <div class="fb-label">🎯 Practice drills · လေ့ကျင့်ခန်းများ</div>
+  <div class="small muted" style="margin:6px 0 10px;">5 rounds each — new phrases every session.</div>
+  <div style="display:flex; gap:10px;">
+    <a href="/drill/{{ lesson.id }}?mode=upgrade" class="btn" style="flex:1; text-decoration:none; text-align:center; padding:14px;">🎨 Boring → Brilliant</a>
+    <a href="/drill/{{ lesson.id }}?mode=variations" class="btn" style="flex:1; text-decoration:none; text-align:center; padding:14px;">🔀 Fresh variations</a>
+  </div>
+  <div class="muted small" style="margin-top:8px;">Turn dull phrases into vivid ones · ပြောပုံအမျိုးမျိုးလေ့ကျင့်ပါ</div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>

@@ -445,6 +445,31 @@ def freeze_page(lesson_id):
     return converse_page("freeze", lesson_id)
 
 
+DRILL_MODES = ("upgrade", "variations")
+DRILL_TITLES = {"upgrade": "🎨 Boring → Brilliant",
+                "variations": "🔀 Fresh Variations"}
+
+
+@app.route("/drill/<lesson_id>")
+def drill_page(lesson_id):
+    from flask import render_template
+    sid = current_sid()
+    if not sid:
+        return redirect(url_for("index"))
+    if not LESSON_ID_RE.match(lesson_id or ""):
+        return "Not found", 404
+    lesson = get_lesson(lesson_id)
+    if not lesson:
+        return "Not found", 404
+    code = code_for_sid(sid)
+    mode = (request.args.get("mode") or "").strip()
+    if mode not in DRILL_MODES:
+        mode = ""
+    return render_template("drill.html", app_name=APP_NAME, nav="home",
+                           lesson=lesson, stats=get_stats(code),
+                           start_mode=mode, drill_titles=DRILL_TITLES)
+
+
 MODE_TITLES = {"free": "💬 Free Talk",
                "roleplay": "🎭 Roleplay",
                "freeze": "🥶 Freeze Drill"}
@@ -759,6 +784,118 @@ def api_converse():
                     "reply_my": rep["reply_my"], "coaching": rep["coaching"],
                     "streak": streak,
                     "total_xp": get_stats(code)["xp"]})
+
+
+@app.route("/api/drill/start", methods=["POST"])
+def api_drill_start():
+    """Start a 5-round practice drill. One LLM call generates the items.
+
+    JSON body: {lesson_id, mode} where mode is "upgrade" or "variations".
+    Returns {ok, mode, items}.
+    """
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False, "error": "Not signed in."}), 401
+    code = code_for_sid(sid)
+    err = _guard_voice(code)
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    mode = (data.get("mode") or "").strip()
+    if mode not in DRILL_MODES:
+        return jsonify({"ok": False, "error": "Bad drill mode."}), 400
+    lesson_id = (data.get("lesson_id") or "").strip()
+    lesson = get_lesson(lesson_id) if LESSON_ID_RE.match(lesson_id or "") else None
+    if not lesson:
+        return jsonify({"ok": False, "error": "Unknown lesson."}), 400
+    try:
+        items, usage = brain.drill_items(lesson, mode)
+    except Exception as e:
+        print("Drill generation failed:", type(e).__name__)
+        return jsonify({"ok": False,
+                        "error": "Couldn't build the drill — try again."}), 502
+    record_cost(code, in_tok=usage["input_tokens"],
+                out_tok=usage["output_tokens"], chat=usage["cost"])
+    return jsonify({"ok": True, "mode": mode, "items": items,
+                    "lesson_id": lesson["id"]})
+
+
+@app.route("/api/drill/turn", methods=["POST"])
+def api_drill_turn():
+    """One drill round: audio + the current item -> fluency feedback.
+
+    Form fields: audio (required), lesson_id, mode, item (JSON string:
+    upgrade -> {boring_en, boring_my};
+    variations -> {base_en, base_my, section, variant_en, variant_my}).
+    """
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False, "error": "Not signed in."}), 401
+    code = code_for_sid(sid)
+    err = _guard_voice(code)
+    if err:
+        return err
+    mode = (request.form.get("mode") or "").strip()
+    if mode not in DRILL_MODES:
+        return jsonify({"ok": False, "error": "Bad drill mode."}), 400
+    lesson_id = (request.form.get("lesson_id") or "").strip()
+    lesson = get_lesson(lesson_id) if LESSON_ID_RE.match(lesson_id or "") else None
+    if not lesson:
+        return jsonify({"ok": False, "error": "Unknown lesson."}), 400
+    try:
+        item = json.loads(request.form.get("item") or "{}")
+    except (ValueError, TypeError):
+        item = {}
+    if not isinstance(item, dict):
+        item = {}
+    audio, aerr = _read_audio()
+    if aerr:
+        return jsonify({"ok": False, "error": aerr}), 400
+    try:
+        said = brain.transcribe(audio, "drill.webm")
+    except Exception as e:
+        print("Whisper failed:", type(e).__name__)
+        return jsonify({"ok": False,
+                        "error": "Couldn't understand the audio — try again."}), 502
+    record_cost(code, whisper=brain.whisper_cost(len(audio) / 16000))
+    if not said:
+        return jsonify({"ok": True, "said": "", "score": 1,
+                        "flow_en": "I couldn't hear anything — check your mic and try again.",
+                        "flow_my": "အသံကိုမကြားရပါ — မိုက်ကိုစစ်ပြီး ထပ်ကြိုးစားကြည့်ပါ။",
+                        "tip_en": "Hold the phone a little closer and speak a bit louder.",
+                        "tip_my": "ဖုန်းကိုအနည်းငယ်နီးကပ်ထားပြီး အသံကျယ်ကျယ်ပြောကြည့်ပါ။",
+                        "xp": 0, "total_xp": get_stats(code)["xp"],
+                        "streak": touch_streak(code)})
+    try:
+        if mode == "upgrade":
+            fb, usage = brain.upgrade_feedback(
+                item.get("boring_en", ""), item.get("boring_my", ""),
+                said, lesson.get("topic", ""))
+        else:
+            fb, usage = brain.expression_feedback(
+                item.get("variant_en", ""), item.get("variant_my", ""),
+                item.get("section", "phrases"), said)
+    except Exception as e:
+        print("Drill feedback failed:", type(e).__name__)
+        return jsonify({"ok": False,
+                        "error": "Couldn't grade that attempt — try again."}), 502
+    record_cost(code, in_tok=usage["input_tokens"], out_tok=usage["output_tokens"],
+                chat=usage["cost"])
+    bump_voice_turn(code)
+    score = fb["score"]
+    gained = 10 if score >= 3 else 2
+    total_xp = add_xp(code, gained)
+    streak = touch_streak(code)
+    resp = {"ok": True, "said": fb["said"], "score": score,
+            "flow_en": fb["flow_en"], "flow_my": fb["flow_my"],
+            "tip_en": fb["tip_en"], "tip_my": fb["tip_my"],
+            "xp": gained, "total_xp": total_xp, "streak": streak}
+    if mode == "upgrade":
+        resp["brilliant_en"] = fb["brilliant_en"]
+        resp["brilliant_my"] = fb["brilliant_my"]
+    else:
+        resp["alternatives"] = fb["alternatives"]
+    return jsonify(resp)
 
 
 # ------------------------------------------------------------------ admin ---

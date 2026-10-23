@@ -256,3 +256,175 @@ def tts(text):
         timeout=60)
     r.raise_for_status()
     return r.content
+
+
+# ------------------------------------------------------- practice drills ---
+DRILL_SYSTEM = (
+    "You are the content engine for the 'MasterClass Articulation' app, which "
+    "teaches Myanmar learners to be ARTICULATE in English conversation: "
+    "speaking naturally without hesitating, never lost for words, using "
+    "interesting phrases instead of boring ones. It is NOT about "
+    "pronunciation — never mention mouth/tongue/sounds. "
+    "You generate items for a 5-round practice drill tied to one situation "
+    "lesson. Respond with ONLY a JSON object, no other text."
+)
+
+DRILL_UPGRADE_SPEC = (
+    'MODE: "upgrade" (Boring -> Brilliant). Write exactly 5 dull, plain, '
+    'flat English phrases that a shy Myanmar learner would ACTUALLY say by '
+    "default in this situation — the boring versions they need to upgrade "
+    "(e.g. 'This coffee is good.', 'Nice to meet you.', 'I like music.'). "
+    "Ground each one in the lesson's situation/topic. IMPORTANT: do NOT copy "
+    "or rephrase the lesson's openers/phrases/rescue items listed below — "
+    "those are the GOOD versions; write the PLAIN versions learners default "
+    "to. Each item also needs a natural Myanmar translation.\n"
+    'JSON: {"items": [{"boring_en": "<plain English phrase>", '
+    '"boring_my": "<Myanmar translation>"}]} (exactly 5 items)'
+)
+
+DRILL_VARIATIONS_SPEC = (
+    'MODE: "variations" (Say it another way). From the lesson\'s '
+    "openers/phrases/rescue items below, pick 5 diverse items and write 3 "
+    "FRESH alternative ways to say each one — different wording from the "
+    "lesson, natural native-speaker English, same meaning. The alternatives "
+    "must sound different from each other (not tiny word swaps). Each item "
+    "and each variant needs a natural Myanmar translation.\n"
+    'JSON: {"items": [{"base_en": "<lesson item English>", '
+    '"base_my": "<its Myanmar translation>", "section": "<openers|phrases|'
+    'rescue>", "variants": [{"en": "<fresh alternative 1>", "my": "<Myanmar>"}, '
+    '{"en": "<fresh alternative 2>", "my": "<Myanmar>"}, '
+    '{"en": "<fresh alternative 3>", "my": "<Myanmar>"}]}]} (exactly 5 items)'
+)
+
+
+def drill_items(lesson, mode):
+    """Generate 5 drill items for a lesson. One LLM call per session start.
+
+    mode="upgrade" -> 5 x {boring_en, boring_my}: dull default phrases.
+    mode="variations" -> 5 x {base_en, base_my, section,
+        variants: [{en, my} x 3]}: fresh alternatives to lesson items.
+    Returns (items, usage_dict).
+    """
+    if mode == "upgrade":
+        spec = DRILL_UPGRADE_SPEC
+    elif mode == "variations":
+        spec = DRILL_VARIATIONS_SPEC
+    else:
+        raise ValueError("bad drill mode")
+    lesson_items_text = []
+    for section in ("openers", "phrases", "rescue"):
+        for p in lesson.get(section) or []:
+            if p.get("en"):
+                lesson_items_text.append(f'- [{section}] "{p["en"]}" / {p.get("my", "")}')
+    user = (f'Lesson: "{lesson.get("title", "")}" (level {lesson.get("level", "")}, '
+            f'topic: {lesson.get("topic", "")})\n'
+            f'Situation: {lesson.get("situation_en", "")}\n'
+            f"Lesson's good openers/phrases/rescue items:\n" +
+            "\n".join(lesson_items_text) + "\n\n" + spec)
+    r = requests.post(
+        f"{OPENAI_BASE}/chat/completions",
+        headers=_headers(),
+        json={"model": MODEL, "temperature": 0.8,
+              "response_format": {"type": "json_object"},
+              "messages": [{"role": "system", "content": DRILL_SYSTEM},
+                           {"role": "user", "content": user}]},
+        timeout=60)
+    r.raise_for_status()
+    out = r.json()
+    raw = (out.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+    data = json.loads(raw)
+    items = []
+    for it in (data.get("items") or [])[:5]:
+        if not isinstance(it, dict):
+            continue
+        if mode == "upgrade":
+            boring_en = str(it.get("boring_en", "")).strip()
+            boring_my = str(it.get("boring_my", "")).strip()
+            if boring_en:
+                items.append({"boring_en": boring_en, "boring_my": boring_my})
+        else:
+            base_en = str(it.get("base_en", "")).strip()
+            base_my = str(it.get("base_my", "")).strip()
+            section = str(it.get("section", "phrases")).strip()
+            if section not in ("openers", "phrases", "rescue"):
+                section = "phrases"
+            variants = []
+            for v in (it.get("variants") or [])[:3]:
+                if isinstance(v, dict) and str(v.get("en", "")).strip():
+                    variants.append({"en": str(v["en"]).strip(),
+                                     "my": str(v.get("my", "")).strip()})
+            if base_en and variants:
+                items.append({"base_en": base_en, "base_my": base_my,
+                              "section": section, "variants": variants})
+    if not items:
+        raise ValueError("drill generation returned no usable items")
+    u = out.get("usage", {})
+    usage = {"input_tokens": u.get("prompt_tokens", 0),
+             "output_tokens": u.get("completion_tokens", 0),
+             "cost": cost_for(u.get("prompt_tokens", 0), u.get("completion_tokens", 0))}
+    return items, usage
+
+
+UPGRADE_FEEDBACK_SYSTEM = (
+    "You are an expert English FLUENCY coach for Myanmar learners using the "
+    "'MasterClass Articulation' app. ARTICULATION here means being ARTICULATE: "
+    "speaking naturally without hesitating, never being lost for words, "
+    "expressing yourself with interesting phrases. It is NOT about "
+    "pronunciation of sounds — NEVER give mouth/tongue/lip placement tips. "
+    "This is the 'Boring -> Brilliant' drill: the student saw a dull, plain "
+    "phrase and had to say a MORE INTERESTING, vivid, natural version of it "
+    "out loud. Whisper transcribed them (transcription may contain small "
+    "errors — be generous, infer the most likely intended meaning). "
+    "Grade the UPGRADE: is what they said livelier, more specific, more "
+    "natural, more interesting than the boring original? "
+    "Respond with ONLY a JSON object, no other text, with these keys:\n"
+    '{"said": "<what they most likely said, cleaned up into natural English>", '
+    '"score": <1-5 integer>, '
+    '"flow_en": "<1-2 sentences in SIMPLE English: did their version sound more interesting and natural than the boring original? Be kind and specific>", '
+    '"flow_my": "<the same in Myanmar>", '
+    '"brilliant_en": "<ONE model brilliant version — the vivid, natural, native-speaker way to say it>", '
+    '"brilliant_my": "<Myanmar translation of brilliant_en>", '
+    '"tip_en": "<ONE practical tip in simple English, under 25 words, about making phrases more interesting (add a detail, a feeling, a specific word)>", '
+    '"tip_my": "<the same tip in Myanmar, under 25 words>"} '
+    "Rules: score 5 = clearly livelier, more specific and natural than the "
+    "boring phrase; 4 = better, with a nice touch; 3 = slightly better or just "
+    "as flat; 2 = barely changed, hesitant, or hard to follow; 1 = silence, "
+    "not speech, or off-topic. Suggest livelier wording, never grammar "
+    "drills. If their version is already great, praise it warmly in flow_en "
+    "and make brilliant_en an equally-good alternative. Mention pronunciation "
+    "ONLY if something was genuinely unintelligible. If the transcription is "
+    "empty or clearly not speech: score 1, empty brilliant_en, and say kindly "
+    "in both languages that you could not hear them and to try again. Be "
+    "ENCOURAGING always: end tip_en with one short motivating push."
+)
+
+
+def upgrade_feedback(boring_en, boring_my, said_text, topic):
+    """Grade one Boring->Brilliant upgrade attempt, fluency-first.
+
+    Returns (feedback_dict, usage_dict)."""
+    user = (f'Situation topic: "{topic}"\n'
+            f'The boring phrase they had to upgrade: "{boring_en}"\n'
+            f'Myanmar meaning: "{boring_my}"\n'
+            f'Whisper transcription of their more interesting version: "{said_text}"')
+    r = requests.post(
+        f"{OPENAI_BASE}/chat/completions",
+        headers=_headers(),
+        json={"model": MODEL, "temperature": 0.5,
+              "response_format": {"type": "json_object"},
+              "messages": [{"role": "system", "content": UPGRADE_FEEDBACK_SYSTEM},
+                           {"role": "user", "content": user}]},
+        timeout=60)
+    r.raise_for_status()
+    out = r.json()
+    raw = (out.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+    fb = json.loads(raw)
+    fb["score"] = max(1, min(5, int(fb.get("score", 1))))
+    for k in ("said", "flow_en", "flow_my", "brilliant_en", "brilliant_my",
+              "tip_en", "tip_my"):
+        fb[k] = str(fb.get(k, "")).strip()
+    u = out.get("usage", {})
+    usage = {"input_tokens": u.get("prompt_tokens", 0),
+             "output_tokens": u.get("completion_tokens", 0),
+             "cost": cost_for(u.get("prompt_tokens", 0), u.get("completion_tokens", 0))}
+    return fb, usage

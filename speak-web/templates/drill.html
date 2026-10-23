@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block content %}
+<a href="/lesson/{{ lesson.id }}" style="text-decoration:none; color:var(--accent); font-weight:700;">← {{ lesson.title }}</a>
+<h1 style="margin-top:8px;">🎯 Practice drills</h1>
+<div class="muted small">လေ့ကျင့်ခန်းများ · {{ lesson.title }} · 5 rounds per session · အလှည့် ၅ လှည့်</div>
+
+<!-- mode picker -->
+<div id="picker">
+  <div class="card" style="text-align:center; cursor:pointer;" id="pick-upgrade">
+    <div style="font-size:44px;">🎨</div>
+    <h2>Boring → Brilliant</h2>
+    <div class="muted" style="font-size:14px;">ပျင်းစရာစကားကို စိတ်ဝင်စားစရာဖြစ်အောင် ပြောင်းပါ</div>
+    <p class="small muted" style="margin-top:8px;">You get a dull, plain phrase. Say it in a <b>more interesting, vivid</b> way — the AI grades your upgrade and shows you a brilliant version.</p>
+    <button class="btn" style="margin-top:6px;">Start →</button>
+  </div>
+  <div class="card" style="text-align:center; cursor:pointer;" id="pick-variations">
+    <div style="font-size:44px;">🔀</div>
+    <h2>Fresh Variations</h2>
+    <div class="muted" style="font-size:14px;">စကားအမျိုးမျိုးပြောကြည့်ပါ</div>
+    <p class="small muted" style="margin-top:8px;">Brand-new ways to say this lesson's phrases — different every session. Say them out loud and get fluency feedback.</p>
+    <button class="btn" style="margin-top:6px;">Start →</button>
+  </div>
+</div>
+
+<!-- session -->
+<div id="session" style="display:none;">
+  <div class="card" style="border-left:4px solid var(--accent);">
+    <div class="row" style="align-items:center;">
+      <div><b id="round-label">အလှည့် ၁ / ၅</b></div>
+      <div class="muted small" id="mode-label" style="margin-left:auto;"></div>
+    </div>
+    <div class="pbar"><div id="pbar" style="width:20%;"></div></div>
+  </div>
+  <div class="card" id="item-card" style="text-align:center;"></div>
+  <div class="card" style="text-align:center;">
+    <button class="micbig" id="mic">🎤</button>
+    <div class="status" id="status">Tap the mic and speak</div>
+    <div class="muted small">မိုက်ခလုတ်ကိုနှိပ်ပြီး ပြောပါ</div>
+  </div>
+  <div class="feedback" id="feedback"></div>
+  <div style="margin-top:10px; display:none;" id="nextwrap">
+    <button class="btn" id="nextbtn">နောက်တစ်လှည့် →</button>
+  </div>
+</div>
+
+<div id="debrief"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const LESSON_ID = {{ lesson.id|tojson }};
+const START_MODE = {{ start_mode|tojson }};
+const MODE_LABEL = {{ drill_titles|tojson }};
+const picker = document.getElementById("picker");
+const sessionBox = document.getElementById("session");
+const itemCard = document.getElementById("item-card");
+const mic = document.getElementById("mic");
+const status = document.getElementById("status");
+const feedback = document.getElementById("feedback");
+const nextwrap = document.getElementById("nextwrap");
+const nextbtn = document.getElementById("nextbtn");
+let MODE = "", items = [], round = 0, results = [], selVariant = 0;
+let rec = null, stream = null, chunks = [];
+
+function esc(s){ const d=document.createElement("div"); d.textContent=s||""; return d.innerHTML; }
+function stars(n){
+  let h = '<div class="stars">';
+  for (let i=1;i<=5;i++) h += '<span class="'+(i<=n?"on":"off")+'">★</span>';
+  return h + "</div>";
+}
+const SCORE_LABEL = {
+  5: "Brilliant — natural and confident! 🌟", 4: "Great flow! 👏", 3: "Good — keep it lively! 💪",
+  2: "Nice try — say it like you mean it 🔁", 1: "Let's try that again 🐢"
+};
+
+async function beginSession(mode){
+  MODE = mode;
+  picker.style.display = "none";
+  document.getElementById("mode-label").textContent = MODE_LABEL[mode] || mode;
+  status.textContent = "🔄 Building your drill…";
+  try {
+    const r = await fetch("/api/drill/start", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({lesson_id: LESSON_ID, mode: mode})});
+    const j = await r.json();
+    if (!j.ok) {
+      picker.style.display = "";
+      status.textContent = "⚠ " + (j.error || "Error");
+      return;
+    }
+    items = j.items; round = 0; results = [];
+    sessionBox.style.display = "";
+    renderRound();
+    window.scrollTo(0, 0);
+  } catch(e){
+    picker.style.display = "";
+    status.textContent = "⚠ Connection problem — try again.";
+  }
+}
+
+function renderRound(){
+  const it = items[round];
+  feedback.classList.remove("show"); feedback.innerHTML = "";
+  nextwrap.style.display = "none";
+  document.getElementById("round-label").textContent = "အလှည့် " + (round+1) + " / " + items.length;
+  document.getElementById("pbar").style.width = ((round+1)/items.length*100) + "%";
+  status.textContent = "Tap the mic and speak";
+  if (MODE === "upgrade") {
+    itemCard.innerHTML =
+      '<div class="fb-label">👇 Make this MORE interesting · ပိုစိတ်ဝင်စားစရာကောင်းအောင် ပြောပါ</div>' +
+      '<div style="font-size:22px; font-weight:800; margin:10px 0 4px;">“' + esc(it.boring_en) + '”</div>' +
+      (it.boring_my ? '<div class="muted" style="font-size:15px;">' + esc(it.boring_my) + '</div>' : '') +
+      '<div class="small muted" style="margin-top:10px;">Say a livelier, more vivid version out loud — add a detail, a feeling, a specific word.</div>';
+  } else {
+    selVariant = 0;
+    let h = '<div class="fb-label" style="text-align:left;">From the lesson · သင်ခန်းစာထဲက</div>' +
+      '<div style="font-size:17px; font-weight:700; text-align:left; margin:6px 0;">“' + esc(it.base_en) + '”</div>' +
+      (it.base_my ? '<div class="muted" style="font-size:14px; text-align:left;">' + esc(it.base_my) + '</div>' : '') +
+      '<div class="fb-label" style="text-align:left; margin-top:10px;">👇 Say one out loud — tap to choose · တစ်ခုရွေးပြောပါ</div><div id="variants">';
+    it.variants.forEach((v, i) => {
+      h += '<div class="phrase variant" data-i="' + i + '" style="cursor:pointer; text-align:left; margin:8px 0;">' +
+        '<div class="en" style="font-size:17px;">“' + esc(v.en) + '”</div>' +
+        (v.my ? '<div class="my">' + esc(v.my) + '</div>' : '') + '</div>';
+    });
+    itemCard.innerHTML = h + "</div>";
+    const cards = itemCard.querySelectorAll(".variant");
+    const mark = () => cards.forEach((c,i) => c.style.borderColor = i===selVariant ? "var(--accent)" : "var(--line)");
+    cards.forEach(c => c.addEventListener("click", () => { selVariant = +c.dataset.i; mark(); }));
+    mark();
+  }
+  window.scrollTo(0, 0);
+}
+
+function currentItemPayload(){
+  const it = items[round];
+  if (MODE === "upgrade") return {boring_en: it.boring_en, boring_my: it.boring_my};
+  const v = it.variants[selVariant];
+  return {base_en: it.base_en, base_my: it.base_my, section: it.section,
+          variant_en: v.en, variant_my: v.my};
+}
+
+function roundSummary(){
+  const it = items[round];
+  return MODE === "upgrade" ? it.boring_en : it.variants[selVariant].en;
+}
+
+function feedbackHTML(j){
+  let h = stars(j.score) + '<div style="font-weight:800;">' + esc(SCORE_LABEL[j.score]||"") + '</div>';
+  h += '<div class="fb-label">🎤 You said · သင်ပြောခဲ့တာ</div><div>“' + esc(j.said) + '”</div>';
+  if (j.flow_en) {
+    h += '<div class="fb-label">Flow</div><div>' + esc(j.flow_en) + '</div>';
+    if (j.flow_my) h += '<div class="muted" style="font-size:14px;">' + esc(j.flow_my) + '</div>';
+  }
+  if (j.brilliant_en) {
+    h += '<div class="fb-label">🌟 Brilliant version · ပိုကောင်းတဲ့ပုံစံ</div>' +
+         '<div style="font-weight:700;">“' + esc(j.brilliant_en) + '”</div>';
+    if (j.brilliant_my) h += '<div class="muted" style="font-size:14px;">' + esc(j.brilliant_my) + '</div>';
+  }
+  (j.alternatives || []).forEach(a => {
+    h += '<div class="fb-label">💡 Say it like this</div>';
+    if (a.instead_of) h += '<div class="muted small">instead of “' + esc(a.instead_of) + '”</div>';
+    h += '<div style="font-weight:700;">“' + esc(a.try_this) + '”</div>';
+    if (a.try_this_my) h += '<div class="muted" style="font-size:14px;">' + esc(a.try_this_my) + '</div>';
+  });
+  if (j.tip_en) {
+    h += '<div class="fb-label">🚀 Tip · အကြံပြုချက်</div><div>' + esc(j.tip_en) + '</div>';
+    if (j.tip_my) h += '<div class="muted" style="font-size:14px;">' + esc(j.tip_my) + '</div>';
+  }
+  h += '<div class="small muted" style="margin-top:8px;">+' + j.xp + ' XP · 🔥 ' + j.streak + ' day streak</div>';
+  return h;
+}
+
+mic.addEventListener("click", async () => {
+  if (rec && rec.state === "recording") { rec.stop(); return; }
+  try { stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ status.textContent = "⚠ Microphone permission denied."; return; }
+  chunks = [];
+  rec = new MediaRecorder(stream, {mimeType:"audio/webm"});
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = async () => {
+    mic.classList.remove("rec");
+    stream.getTracks().forEach(t=>t.stop());
+    const blob = new Blob(chunks, {type:"audio/webm"});
+    if (blob.size < 800) { status.textContent = "Tap the mic and speak"; return; }
+    status.textContent = "🔄 Thinking…";
+    const fd = new FormData();
+    fd.append("audio", blob, "drill.webm");
+    fd.append("lesson_id", LESSON_ID);
+    fd.append("mode", MODE);
+    fd.append("item", JSON.stringify(currentItemPayload()));
+    try {
+      const r = await fetch("/api/drill/turn", {method:"POST", body:fd});
+      const j = await r.json();
+      if (!j.ok) { status.textContent = "⚠ " + (j.error || "Error"); return; }
+      status.textContent = "Tap the mic and speak";
+      results.push({summary: roundSummary(), score: j.score, xp: j.xp || 0,
+                    said: j.said, brilliant_en: j.brilliant_en || "",
+                    flow_en: j.flow_en || ""});
+      feedback.innerHTML = feedbackHTML(j);
+      feedback.classList.add("show");
+      nextbtn.textContent = (round+1 >= items.length) ? "See my results 🏁" : "နောက်တစ်လှည့် →";
+      nextwrap.style.display = "";
+      window.scrollTo(0, document.body.scrollHeight);
+    } catch(e){ status.textContent = "⚠ Connection problem — try again."; }
+  };
+  rec.start();
+  mic.classList.add("rec");
+  status.textContent = "🎤 Listening… tap again to send";
+});
+
+nextbtn.addEventListener("click", () => {
+  if (round+1 >= items.length) showDebrief();
+  else { round++; renderRound(); }
+});
+
+function showDebrief(){
+  sessionBox.style.display = "none";
+  const d = document.getElementById("debrief");
+  const avg = results.reduce((a,r)=>a+r.score,0) / Math.max(1,results.length);
+  const totalXp = results.reduce((a,r)=>a+(r.xp||0),0);
+  let verdict, emoji, verdict_my;
+  if (avg >= 4.5) { emoji="🏆"; verdict="Outstanding — you're speaking like a natural!"; verdict_my="အထူးကောင်းပါတယ် — သဘာဝကျကျပြောတတ်နေပြီ!"; }
+  else if (avg >= 3.5) { emoji="💪"; verdict="Strong session — your English is getting more interesting every round."; verdict_my="ကောင်းမွန်တဲ့လေ့ကျင့်ခန်းပါ — တစ်လှည့်ပြီးတစ်လှည့် ပိုစိတ်ဝင်စားစရာကောင်းလာပါတယ်။"; }
+  else if (avg >= 2.5) { emoji="🔁"; verdict="Good reps — keep pushing for the vivid, specific version."; verdict_my="ကောင်းပါတယ် — ပိုရှင်းလင်းစိတ်ဝင်စားစရာကောင်းတဲ့ပုံစံကို ဆက်ကြိုးစားပါ။"; }
+  else { emoji="🌱"; verdict="Every attempt counts — study the brilliant versions and try again tomorrow."; verdict_my="ကြိုးစားမှုတိုင်းက အရေးပါတယ် — ပိုကောင်းတဲ့ပုံစံတွေကို လေ့လာပြီး မနက်ဖြန်ထပ်ကြိုးစားပါ။"; }
+  let h = '<div class="card" style="border-left:4px solid var(--accent); margin-top:12px;">' +
+    '<div class="fb-label">🏁 Drill debrief</div>' +
+    '<div style="font-size:17px; font-weight:800; margin:6px 0;">' + emoji + ' ' + esc(verdict) + '</div>' +
+    '<div class="muted" style="font-size:14px;">' + esc(verdict_my) + '</div>' +
+    '<div class="muted small" style="margin-top:6px;">Average: ' + stars(Math.round(avg)) +
+    ' · ⭐ +' + totalXp + ' XP total</div><div style="margin-top:10px;">';
+  results.forEach((r, i) => {
+    h += '<div style="border-top:1px solid var(--line); padding:8px 0;">' +
+      '<div class="small"><b>Round ' + (i+1) + '</b> · ' + stars(r.score) + '</div>' +
+      '<div class="small muted">“' + esc(r.summary) + '”</div></div>';
+  });
+  h += '</div><div style="margin-top:12px;" class="row">' +
+    '<button class="btn secondary" id="againbtn">🔁 New drill</button>' +
+    '<a href="/lesson/' + esc(LESSON_ID) + '" class="btn" style="text-decoration:none;">← Back to lesson</a></div></div>';
+  d.innerHTML = h;
+  document.getElementById("againbtn").addEventListener("click", () => {
+    d.innerHTML = ""; picker.style.display = ""; sessionBox.style.display = "none";
+    window.scrollTo(0, 0);
+  });
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+document.getElementById("pick-upgrade").addEventListener("click", () => beginSession("upgrade"));
+document.getElementById("pick-variations").addEventListener("click", () => beginSession("variations"));
+if (START_MODE) beginSession(START_MODE);
+</script>
+{% endblock %}
