@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clone Studio — Admin</title>
+<style>
+  body { font-family:-apple-system,system-ui,sans-serif; background:#0f1220; color:#eef0ff;
+         margin:0; padding:20px; }
+  .wrap { max-width:720px; margin:0 auto; }
+  .card { background:#1a1e33; border:1px solid #2a2f4d; border-radius:14px; padding:16px; margin-bottom:14px; }
+  input, button { font-size:15px; padding:10px 12px; border-radius:10px; border:1px solid #2a2f4d; }
+  input { background:#10142a; color:#eef0ff; width:220px; }
+  button { background:#7c8cff; color:#fff; border:0; font-weight:700; cursor:pointer; }
+  button.ghost { background:#10142a; color:#eef0ff; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+  td, th { padding:8px 6px; border-bottom:1px solid #2a2f4d; text-align:left; }
+  a { color:#7c8cff; word-break:break-all; }
+  .err { color:#f87171; }
+  .stat { display:inline-block; background:#10142a; border:1px solid #2a2f4d; border-radius:10px;
+          padding:8px 14px; margin:0 8px 8px 0; font-size:14px; }
+  .stat b { font-size:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 Clone Studio — Admin</h1>
+  <div id="login" class="card" style="display:none">
+    <h3>Admin login</h3>
+    <input type="password" id="pw" placeholder="Admin password">
+    <button onclick="login()">Log in</button>
+    <div class="err" id="lerr"></div>
+  </div>
+  <div id="panel" style="display:none">
+    <div class="card"><h3>Overview</h3><div id="stats"></div></div>
+    <div class="card">
+      <h3>Invite codes</h3>
+      <input type="number" id="n" value="10" min="1" max="50" style="width:80px">
+      <button onclick="newcodes()">Create codes</button>
+      <div id="fresh"></div>
+      <table><thead><tr><th>Code</th><th>Link</th><th>Used</th><th>Clone</th><th>Jobs</th><th></th></tr></thead>
+      <tbody id="rows"></tbody></table>
+    </div>
+  </div>
+</div>
+<script>
+const api = (u,o) => fetch(u,o).then(r=>r.json());
+async function login(){
+  const r = await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({password:document.getElementById('pw').value})});
+  if(r.ok) location.reload(); else document.getElementById('lerr').textContent = r.error||'Wrong password.';
+}
+async function load(){
+  const r = await api('/api/admin/data');
+  if(!r.ok){ document.getElementById('login').style.display='block'; return; }
+  document.getElementById('panel').style.display='block';
+  const t=r.totals;
+  document.getElementById('stats').innerHTML =
+    `<span class="stat"><b>${t.codes}</b> codes</span><span class="stat"><b>${t.used}</b> used</span>`+
+    `<span class="stat"><b>${t.clones}</b> clones</span><span class="stat"><b>${t.jobs}</b> jobs</span>`+
+    `<span class="stat"><b>${t.queued}</b> queued</span>`;
+  document.getElementById('rows').innerHTML = r.codes.map(c=>`
+    <tr><td><b>${c.code}</b></td><td><a href="${c.link}">${c.link}</a></td>
+    <td>${c.used?'✓':'—'}</td><td>${c.has_clone?('✓ '+c.clone_name):'—'}</td><td>${c.jobs}</td>
+    <td><button class="ghost" onclick="revoke('${c.code}')">revoke</button></td></tr>`).join('');
+}
+async function newcodes(){
+  const r = await api('/api/admin/newcodes',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({n:parseInt(document.getElementById('n').value||'10')})});
+  if(r.ok){ document.getElementById('fresh').innerHTML = r.codes.map(c=>
+    `<div><a href="${c.link}">${c.link}</a></div>`).join(''); load(); }
+}
+async function revoke(code){
+  if(!confirm('Revoke '+code+'?')) return;
+  await api('/api/admin/revoke',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({code})});
+  load();
+}
+load();
+</script>
+</body>
+</html>

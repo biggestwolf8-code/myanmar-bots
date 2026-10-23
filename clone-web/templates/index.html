@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Clone Studio — Make your AI clone</title>
+<style>
+  :root { --bg:#0f1220; --card:#1a1e33; --line:#2a2f4d; --txt:#eef0ff; --dim:#9aa0c3;
+          --acc:#7c8cff; --acc2:#5a67d8; --ok:#34d399; --warn:#fbbf24; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;
+         -webkit-text-size-adjust:100%; }
+  .wrap { max-width:560px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:24px; margin:6px 0 2px; }
+  .sub { color:var(--dim); font-size:14px; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
+          padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:17px; margin:0 0 10px; }
+  label { display:block; font-size:13px; color:var(--dim); margin:12px 0 6px; }
+  input[type=text], textarea, select {
+    width:100%; background:#10142a; border:1px solid var(--line); color:var(--txt);
+    border-radius:10px; padding:12px; font-size:15px; }
+  textarea { min-height:140px; resize:vertical; }
+  input[type=file] { width:100%; font-size:14px; color:var(--dim); }
+  .btn { display:block; width:100%; border:0; border-radius:12px; padding:14px;
+         font-size:16px; font-weight:700; cursor:pointer; margin-top:14px;
+         background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff; }
+  .btn:disabled { opacity:.5; cursor:wait; }
+  .btn.ghost { background:#10142a; border:1px solid var(--line); color:var(--txt);
+               font-weight:600; }
+  .btn.small { width:auto; display:inline-block; padding:8px 14px; font-size:14px;
+               margin:6px 6px 0 0; }
+  .err { color:#f87171; font-size:14px; margin-top:10px; min-height:20px; }
+  .okmsg { color:var(--ok); font-size:14px; margin-top:10px; }
+  .badge { display:inline-block; font-size:12px; padding:3px 10px; border-radius:999px;
+           font-weight:700; }
+  .b-queued { background:#3b2f10; color:var(--warn); }
+  .b-done { background:#0f3b2a; color:var(--ok); }
+  .b-failed { background:#3b1010; color:#f87171; }
+  .job { border-top:1px solid var(--line); padding:12px 0; font-size:14px; }
+  .job .meta { color:var(--dim); font-size:12px; margin-top:4px; }
+  .row { display:flex; gap:10px; align-items:center; }
+  img.avatar { width:72px; height:72px; object-fit:cover; border-radius:12px;
+               border:1px solid var(--line); }
+  .steps { font-size:14px; color:var(--dim); line-height:1.7; }
+  .steps b { color:var(--txt); }
+  .hidden { display:none !important; }
+  .topbar { display:flex; justify-content:space-between; align-items:center;
+            margin-bottom:8px; }
+  .topbar a { color:var(--dim); font-size:13px; text-decoration:none; }
+  audio { width:100%; margin-top:8px; }
+  .hint { font-size:12px; color:var(--dim); margin-top:4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div><h1>🎬 Clone Studio</h1><div class="sub">Your face + your voice → AI teacher videos</div></div>
+    <a href="#" id="logout" class="hidden">Log out</a>
+  </div>
+
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+
+  <!-- not signed in -->
+  <div id="gate" class="card hidden">
+    <h2>Enter with your invite link</h2>
+    <p class="steps">Ask Arkar for an invite link — it looks like<br>
+    <b>https://…/i/AB12CD34</b><br>Tapping it signs you in instantly. No signup forms.</p>
+    <label>Or paste your invite code</label>
+    <input type="text" id="code" placeholder="AB12CD34" autocapitalize="characters">
+    <button class="btn" id="redeem">Sign in</button>
+    <div class="err" id="gate-err"></div>
+  </div>
+
+  <!-- main app -->
+  <div id="app" class="hidden">
+
+    <!-- onboarding -->
+    <div id="onboard" class="card hidden">
+      <h2>1 · Create your clone</h2>
+      <p class="steps"><b>Photo:</b> one clear front-facing photo, no sunglasses.<br>
+      <b>Voice:</b> ~30 seconds of you talking (any topic). Add a Burmese sample too and your clone speaks Burmese correctly.</p>
+      <label>Your name</label>
+      <input type="text" id="cname" placeholder="e.g. Arkar">
+      <label>Photo</label>
+      <input type="file" id="photo" accept="image/png,image/jpeg,image/webp">
+      <label>Voice sample — English (~30s)</label>
+      <input type="file" id="voice_en" accept="audio/*">
+      <label>Voice sample — Burmese (~30s, optional)</label>
+      <input type="file" id="voice_mm" accept="audio/*">
+      <button class="btn" id="create-clone">Create My Clone</button>
+      <div class="err" id="clone-err"></div>
+      <div class="okmsg" id="clone-ok"></div>
+      <div class="hint" id="clone-busy" style="display:none">Cloning your voice… this takes ~30 seconds.</div>
+    </div>
+
+    <!-- existing clone -->
+    <div id="myclone" class="card hidden">
+      <h2>Your clone</h2>
+      <div class="row">
+        <img class="avatar" id="avatar" alt="clone photo">
+        <div><div id="clone-name" style="font-weight:700"></div>
+        <div class="hint" id="clone-voices"></div></div>
+      </div>
+      <button class="btn ghost small" id="reset-clone">Start over</button>
+    </div>
+
+    <!-- script -->
+    <div class="card">
+      <h2>2 · Write your script</h2>
+      <label>Which voice?</label>
+      <select id="voice"></select>
+      <label>Script</label>
+      <textarea id="script" placeholder="Type what your clone should say…"></textarea>
+      <button class="btn" id="gen">🎥 Generate Video</button>
+      <div class="err" id="gen-err"></div>
+      <div class="hint">The audio is made instantly. The video render runs on GPU and may take a while — you'll see it appear below when it's ready.</div>
+    </div>
+
+    <!-- jobs -->
+    <div class="card">
+      <h2>3 · Your videos</h2>
+      <div id="jobs"><div class="hint">No videos yet.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const api = (u, o) => fetch(u, o).then(r => r.json());
+
+async function boot() {
+  const loggedIn = {{ 'true' if logged_in else 'false' }};
+  $('gate').classList.toggle('hidden', loggedIn);
+  $('app').classList.toggle('hidden', !loggedIn);
+  $('logout').classList.toggle('hidden', !loggedIn);
+  if (loggedIn) { await loadClone(); await loadJobs(); }
+}
+
+async function loadClone() {
+  const r = await api('/api/clone');
+  const c = r.clone;
+  $('onboard').classList.toggle('hidden', !!c);
+  $('myclone').classList.toggle('hidden', !c);
+  const sel = $('voice'); sel.innerHTML = '';
+  (r.voices || []).forEach(v => {
+    const o = document.createElement('option');
+    o.value = v.id; o.textContent = v.label; sel.appendChild(o);
+  });
+  if (!r.voices || !r.voices.length) {
+    const o = document.createElement('option');
+    o.textContent = 'Create your clone first'; sel.appendChild(o);
+  }
+  if (c) {
+    $('clone-name').textContent = c.name;
+    $('avatar').src = '/api/photo?' + Date.now();
+    $('clone-voices').textContent =
+      (c.voice_id_en ? '✓ English voice' : '') +
+      (c.voice_id_mm ? ' · ✓ Burmese voice' : '');
+  }
+}
+
+$('create-clone').onclick = async () => {
+  $('clone-err').textContent = ''; $('clone-ok').textContent = '';
+  const photo = $('photo').files[0], en = $('voice_en').files[0], mm = $('voice_mm').files[0];
+  if (!photo || !en) { $('clone-err').textContent = 'Photo and English voice sample are required.'; return; }
+  const fd = new FormData();
+  fd.append('name', $('cname').value);
+  fd.append('photo', photo); fd.append('voice_en', en);
+  if (mm) fd.append('voice_mm', mm);
+  $('create-clone').disabled = true; $('clone-busy').style.display = 'block';
+  try {
+    const r = await fetch('/api/clone', {method:'POST', body:fd}).then(x => x.json());
+    if (!r.ok) throw new Error(r.error || 'Clone failed');
+    $('clone-ok').textContent = 'Clone created! Now write your script below.';
+    await loadClone();
+  } catch (e) { $('clone-err').textContent = e.message; }
+  finally { $('create-clone').disabled = false; $('clone-busy').style.display = 'none'; }
+};
+
+$('reset-clone').onclick = async () => {
+  if (!confirm('Delete your clone and start over?')) return;
+  await api('/api/clone/reset', {method:'POST'});
+  await loadClone();
+};
+
+$('gen').onclick = async () => {
+  $('gen-err').textContent = '';
+  const script = $('script').value.trim();
+  if (!script) { $('gen-err').textContent = 'Type a script first.'; return; }
+  $('gen').disabled = true; $('gen').textContent = 'Making audio…';
+  try {
+    const r = await api('/api/video', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({script, voice_id: $('voice').value})});
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    $('script').value = '';
+    await loadJobs();
+  } catch (e) { $('gen-err').textContent = e.message; }
+  finally { $('gen').disabled = false; $('gen').textContent = '🎥 Generate Video'; }
+};
+
+function badge(s) {
+  return `<span class="badge b-${s}">${s}</span>`;
+}
+
+async function loadJobs() {
+  const r = await api('/api/jobs');
+  const box = $('jobs');
+  if (!r.jobs || !r.jobs.length) { box.innerHTML = '<div class="hint">No videos yet.</div>'; return; }
+  box.innerHTML = r.jobs.map(j => `
+    <div class="job">
+      <div>${badge(j.status)} <b>${j.created.slice(0,16).replace('T',' ')}</b></div>
+      <div class="meta">${escapeHtml(j.script || '').slice(0,120)}…</div>
+      <div class="meta">${j.note ? escapeHtml(j.note) : ''}</div>
+      <div>
+        <a class="btn small ghost" href="/api/jobs/${j.id}/audio" style="text-decoration:none">🔊 Audio</a>
+        ${j.status === 'done'
+          ? `<a class="btn small ghost" href="/api/jobs/${j.id}/video" style="text-decoration:none">🎬 Video</a>`
+          : ''}
+      </div>
+    </div>`).join('');
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+$('redeem').onclick = async () => {
+  const r = await api('/api/redeem', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({code: $('code').value})});
+  if (r.ok) location.reload();
+  else $('gate-err').textContent = r.error || 'Invalid code.';
+};
+
+$('logout').onclick = async (e) => {
+  e.preventDefault();
+  await api('/api/logout', {method:'POST'});
+  location.reload();
+};
+
+setInterval(() => { if (!$('app').classList.contains('hidden')) loadJobs(); }, 15000);
+boot();
+</script>
+</body>
+</html>
