@@ -513,7 +513,8 @@ def handle_message(msg):
              "/reauth <email> — authorize link (for OAuth mode)\n"
              "/alerts on|off — change alerts on/off\n"
              "/alertshere — send license alerts to this chat too\n"
-             "/alertstop — stop alerts in this chat")
+             "/alertstop — stop alerts in this chat\n\n"
+             "Developed by Arkar Myowin")
     elif cmd == "/check":
         store = load_store()
         oauth_accounts = [e for e, a in store["accounts"].items() if a.get("refresh_token")]

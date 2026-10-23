@@ -118,7 +118,8 @@ def handle_command(chat_id, text):
              "(while the companion program is running there).\n\n"
              "I remember things across conversations. "
              "Ask me to remind you of things — e.g. <i>remind me in 30 minutes to call the supplier</i>.\n\n"
-             "Commands: /usage /tasks /cancel <id> /memory /forget /inbox")
+             "Commands: /usage /tasks /cancel <id> /memory /forget /inbox\n\n"
+             "Developed by Arkar Myowin")
     elif cmd == "/usage":
         send(chat_id, "📊 " + usage_text())
     elif cmd == "/tasks":

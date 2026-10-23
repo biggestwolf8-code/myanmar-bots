@@ -1035,6 +1035,7 @@ START_MSG = (
     "/homework — see your current homework\n"
     "/pause — pause your homework\n"
     "/resume — resume your homework"
+    "\n\nDeveloped by Arkar Myowin"
 )
 
 LIMIT_MSG = (

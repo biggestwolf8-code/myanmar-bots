@@ -438,6 +438,7 @@ START_MSG = (
     "and I'll build it and send it to you.\n\n"
     "Commands:\n"
     "/new — start a fresh conversation"
+    "\n\nDeveloped by Arkar Myowin"
 )
 
 LIMIT_MSG = (

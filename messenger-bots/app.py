@@ -56,6 +56,7 @@ EN_WELCOME = (
     "Tap a topic or just type your question.\n\n"
     "မင်္ဂလာပါ! MasterClass English by Sayar Arkar မှ ကြိုဆိုပါတယ်။ 🙏\n"
     "ခေါင်းစဉ်တစ်ခုရွေးပါ သို့မဟုတ် မေးခွန်းရိုက်ထည့်ပါ။"
+    "\n\nDeveloped by Arkar Myowin"
 )
 EN_FALLBACK = (
     "Thanks! I've passed your message to Sayar Arkar — he'll reply here soon. 🙏\n"
@@ -66,6 +67,7 @@ SUB_WELCOME = (
     "Category ရွေးပါ သို့မဟုတ် နာမည်ရိုက်ရှာပါ (ဥပမာ 'spotify').\n\n"
     "👋 Welcome to Biggest Seller Myanmar!\n"
     "Pick a category or type a product name (e.g. 'spotify')."
+    "\n\nDeveloped by Arkar Myowin"
 )
 SUB_FALLBACK = (
     "Thanks! I've passed your question to the admin — they'll reply here soon. 🙏\n"

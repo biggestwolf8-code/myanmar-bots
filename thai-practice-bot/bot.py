@@ -464,6 +464,7 @@ START_MSG = (
     "/lesson — back to lessons\n"
     "/chat — free Thai conversation\n"
     "/new — fresh start (keeps your mode)"
+    "\n\nDeveloped by Arkar Myowin"
 )
 
 LIMIT_MSG = (

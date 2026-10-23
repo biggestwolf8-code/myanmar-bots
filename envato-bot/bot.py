@@ -270,7 +270,8 @@ def handle_start(chat_id, user_id, args):
                   "<code>/search &lt;keywords&gt;</code> — find assets\n"
                   "<code>/recent</code> — your recent downloads\n"
                   "<code>/status</code> — Envato session health\n"
-                  "<code>/newcodes 5</code> — invite links for your other accounts")
+                  "<code>/newcodes 5</code> — invite links for your other accounts\n\n"
+                  "Developed by Arkar Myowin")
     else:
         send_text(chat_id, GATE_MSG)
 

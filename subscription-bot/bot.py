@@ -48,6 +48,7 @@ WELCOME = (
     "👋 Welcome to Biggest Seller Myanmar!\n"
     "Browse 80+ subscriptions by category, or just type a name "
     "(e.g. 'spotify', 'netflix', 'canva')."
+    "\n\nDeveloped by Arkar Myowin"
 )
 
 FALLBACK = (
