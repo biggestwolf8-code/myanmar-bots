@@ -6,3 +6,5 @@ relay_map.json
 vpn_ssh_key
 worker_secret.txt
 secret.key
+speak-web/speak.db
+*.db
