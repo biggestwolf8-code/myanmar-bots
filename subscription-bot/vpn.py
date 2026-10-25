@@ -51,12 +51,47 @@ RESERVED = {"singapore": {"10.8.0.1", "10.8.0.2"},
             "japan": {"10.9.0.1"}, "uk": {"10.10.0.1"}, "usa": {"10.11.0.1"}}
 
 # plan label -> days
+TRIAL_PLAN = "7-Day Trial / 1 Device"
 PLANS = {
+    TRIAL_PLAN: 7,
     "1 Month / 1 Device": 30,
     "3 Months / 1 Device": 90,
     "6 Months / 1 Device": 180,
     "1 Year / 1 Device": 365,
 }
+
+# One trial per Telegram ID, ever — recorded separately from
+# vpn_customers.json, because revoke() deletes the customer record on
+# expiry. Without this file, an expired trial customer could claim again.
+TRIALS_FILE = os.path.join(BASE_DIR, "vpn_trials.json")
+
+
+def _load_trials():
+    try:
+        with open(TRIALS_FILE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_trials(data):
+    tmp = TRIALS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+    os.replace(tmp, TRIALS_FILE)
+
+
+def has_used_trial(telegram_id):
+    return str(telegram_id) in _load_trials()
+
+
+def mark_trial_used(telegram_id, code, expires_at):
+    trials = _load_trials()
+    trials[str(telegram_id)] = {
+        "code": code, "expires_at": expires_at,
+        "used_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_trials(trials)
 
 
 def _load():
@@ -184,6 +219,7 @@ def provision(name, telegram_id, plan_label):
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(days=days)).isoformat(),
         "ips": ips, "client_pub": client_pub, "active": True,
+        "trial": plan_label == TRIAL_PLAN,
     }
     _save(customers)
     return True, {"code": code, "configs": configs,
@@ -223,6 +259,38 @@ def renew(code, days):
     cust["active"] = True
     _save(customers)
     return True, new_exp.isoformat()
+
+
+def expire_due_trials():
+    """Revoke every trial whose expiry has passed.
+
+    Returns a list of {code, telegram_id, name, errors} for the customers
+    revoked, so the caller can notify them. Paid plans are never touched
+    here — only records flagged trial=True.
+    """
+    now = datetime.now(timezone.utc)
+    due = []
+    for code, cust in _load().items():
+        if not cust.get("trial") or not cust.get("active"):
+            continue
+        try:
+            exp = datetime.fromisoformat(cust["expires_at"])
+        except (ValueError, TypeError):
+            continue
+        if exp <= now:
+            due.append((code, cust))
+    revoked = []
+    for code, cust in due:
+        ok, errors = revoke(code)
+        if ok:
+            revoked.append({"code": code,
+                            "telegram_id": cust.get("telegram_id"),
+                            "name": cust.get("name"), "errors": errors})
+    return revoked
+
+
+def list_trials():
+    return {k: v for k, v in _load().items() if v.get("trial")}
 
 
 def get(code):

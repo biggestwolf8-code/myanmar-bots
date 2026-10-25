@@ -14,6 +14,7 @@ Env vars:
 
 import json
 import os
+import threading
 import time
 import unicodedata
 
@@ -84,7 +85,9 @@ COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
     "\n\n👑 Admin commands\n"
     "/vpnlist — list active VPN customers\n"
     "/vpnrenew CODE days — extend a VPN customer\n"
-    "/vpnrevoke CODE — revoke a VPN customer"
+    "/vpnrevoke CODE — revoke a VPN customer\n"
+    "/vpntrials — list active trial customers\n"
+    "/expiretrials — revoke expired trials now"
 )
 
 # ---------- VPN purchase flow ----------
@@ -238,13 +241,45 @@ def create_app_code(product, plan_label, customer_id):
         return False, str(e), None
 
 
+TRIAL_PLAN = vpn_mod.TRIAL_PLAN  # "7-Day Trial / 1 Device"
+
+
 def kb_vpn_buy(product):
-    """Buy buttons for each VPN plan."""
+    """Buy buttons for each VPN plan, plus the free trial on top."""
     items = [it for it in CATALOG if it["product"] == product]
-    rows = [[{"text": f"🛒 Buy {it['plan']} — {it['price_ks']:,} Ks",
-              "callback_data": f"vpnbuy:{it['plan']}"}] for it in items]
+    rows = [[{"text": "🎁 FREE 7-Day Trial — try it first",
+              "callback_data": "vpntrial"}]]
+    rows += [[{"text": f"🛒 Buy {it['plan']} — {it['price_ks']:,} Ks",
+               "callback_data": f"vpnbuy:{it['plan']}"}] for it in items]
     rows.append([{"text": "⬅️ Back", "callback_data": prod_callback(product)}])
     return {"inline_keyboard": rows}
+
+
+def notify_trial_expired(revoked):
+    """Tell each expired trial customer (and the admin) their trial ended."""
+    for r in revoked:
+        tid = r.get("telegram_id")
+        if tid:
+            api("sendMessage", chat_id=tid,
+                text=("⏰ Your FREE 7-day Biggest VPN trial has ended, "
+                      "so those configs no longer work.\n\n"
+                      "Want to keep going? Open the bot → Biggest VPN "
+                      "and pick a paid plan (from 7,000 Ks/month). 🙏"))
+        if ADMIN_CHAT_ID:
+            api("sendMessage", chat_id=ADMIN_CHAT_ID,
+                text=f"⏰ Trial expired & revoked: {r['code']} ({tid}).")
+
+
+def trial_sweeper():
+    """Background thread: revoke expired trials once an hour."""
+    while True:
+        try:
+            revoked = vpn_mod.expire_due_trials()
+            if revoked:
+                notify_trial_expired(revoked)
+        except Exception as e:
+            print("Trial sweeper error:", e)
+        time.sleep(3600)
 
 
 def send_vpn_configs(chat_id, result):
@@ -552,6 +587,28 @@ def handle_message(msg, fwd_map):
                           + (f" (notes: {res})" if res else ""), msg)
         return
 
+    if is_admin and text.startswith("/vpntrials"):
+        trials = vpn_mod.list_trials()
+        if not trials:
+            send_threaded(chat_id, "No active trial customers.", msg)
+        else:
+            lines = ["🎁 Active trials:"]
+            for code, c in trials.items():
+                exp = c.get("expires_at", "?")[:10]
+                lines.append(f"• {code} — {c.get('telegram_id')} — until {exp}")
+            send_threaded(chat_id, "\n".join(lines), msg)
+        return
+
+    if is_admin and text.startswith("/expiretrials"):
+        revoked = vpn_mod.expire_due_trials()
+        if revoked:
+            notify_trial_expired(revoked)
+            send_threaded(chat_id,
+                          f"✅ Expired {len(revoked)} trial(s).", msg)
+        else:
+            send_threaded(chat_id, "No expired trials to revoke.", msg)
+        return
+
     if text.startswith("/start"):
         send_threaded(chat_id, WELCOME, msg, reply_markup=kb_cats())
         return
@@ -622,6 +679,42 @@ def handle_callback(cb):
                 edit(product_text(product), kb_back(int(ci)))
         except (ValueError, IndexError, KeyError):
             pass
+    elif data == "vpntrial":
+        # Free 7-day trial: auto-delivered, no receipt, one per customer.
+        # Only mark the trial used AFTER provisioning succeeds, so a
+        # failed setup doesn't burn the customer's one trial.
+        if vpn_mod.has_used_trial(chat_id):
+            edit("🎁 You've already used your FREE 7-day trial.\n\n"
+                 "Pick a paid plan below to keep using Biggest VPN:",
+                 kb_vpn_buy("Biggest VPN"))
+            return
+        edit("🎁 Setting up your FREE 7-day trial… ⚡",
+             {"inline_keyboard": []})
+        ok, result = vpn_mod.provision(chat_id, chat_id, TRIAL_PLAN)
+        if ok:
+            result["plan"] = TRIAL_PLAN
+            vpn_mod.mark_trial_used(chat_id, result["code"],
+                                    result["expires_at"])
+            send_vpn_configs(chat_id, result)
+            api("sendMessage", chat_id=chat_id,
+                text=(f"🎁 Your FREE trial is live until "
+                      f"{result['expires_at'][:10]}!\n\n"
+                      "When it ends, those configs stop working. "
+                      "To keep going, open the bot → Biggest VPN "
+                      "and buy a paid plan (from 7,000 Ks/month). 🙏"))
+            if ADMIN_CHAT_ID:
+                api("sendMessage", chat_id=ADMIN_CHAT_ID,
+                    text=(f"🎁 Trial delivered to {chat_id} "
+                          f"(code {result['code']}, "
+                          f"until {result['expires_at'][:10]})."))
+        else:
+            api("sendMessage", chat_id=chat_id,
+                text=("⚠️ Your trial couldn't be set up right now. "
+                      "Please contact @biggestseller1 — "
+                      "your one trial has NOT been used up."))
+            if ADMIN_CHAT_ID:
+                api("sendMessage", chat_id=ADMIN_CHAT_ID,
+                    text=f"❌ Trial provisioning failed for {chat_id}: {result}")
     elif data.startswith("vpnbuy:"):
         plan = data[len("vpnbuy:"):]
         price = next((it["price_ks"] for it in CATALOG
@@ -739,6 +832,9 @@ def handle_callback(cb):
 
 def main():
     print(f"Catalog bot started: {len(CATALOG)} plans, {len(CATS)} categories. Polling…")
+    # Revoke expired trials in the background, once an hour, so a
+    # 7-day trial really ends after 7 days.
+    threading.Thread(target=trial_sweeper, daemon=True).start()
     fwd_map = load_map()
     offset = 0
     while True:
