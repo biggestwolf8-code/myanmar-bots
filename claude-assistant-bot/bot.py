@@ -68,7 +68,11 @@ SYSTEM_PROMPT = (
     "block that starts with ```excel followed by the data as CSV (first row = column "
     "headers, comma-separated, quote fields containing commas). If the user asks for a PDF "
     "document, end your reply with a fenced block that starts with ```pdf whose first line "
-    "is the document title, then a blank line, then the body text. Keep your chat text "
+    "is the document title, then a blank line, then the body text. If the user asks for a "
+    "PowerPoint presentation, end your reply with a fenced block that starts with ```pptx "
+    "whose first line is the presentation title, then each slide starts with a line "
+    "'## Slide title' followed by bullet lines starting with '- ' (indent with two spaces "
+    "for a sub-bullet). Keep your chat text "
     "brief when you attach a file — the file carries the content. Only use these blocks "
     "when the user actually wants a file, never for ordinary answers."
 )
@@ -211,11 +215,11 @@ def send_document(chat_id, filename, data_bytes, mimetype, caption="", reply_to=
 
 # ---------- file building ----------
 
-BLOCK_RE = re.compile(r"```(excel|pdf)\n(.*?)```", re.DOTALL | re.IGNORECASE)
+BLOCK_RE = re.compile(r"```(excel|pdf|pptx)\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
 
 def extract_blocks(text):
-    """Pull ```excel / ```pdf fenced blocks out of a reply.
+    """Pull ```excel / ```pdf / ```pptx fenced blocks out of a reply.
 
     Returns (clean_text, [(kind, content), ...]).
     """
@@ -269,6 +273,113 @@ def make_pdf(title, body_text):
     return bytes(pdf.output())
 
 
+def _is_myanmar(text):
+    return any(0x1000 <= ord(ch) <= 0x109F for ch in text)
+
+
+def parse_pptx(content):
+    """Parse a ```pptx block into (presentation_title, [(slide_title, bullets)]).
+
+    Format: first line = presentation title, then each slide starts with
+    '## Slide title', followed by '- ' bullet lines (two-space indent = sub-bullet).
+    Lines before the first '## ' become the first slide, titled with the
+    presentation title. Bullets are (level, text) tuples.
+    """
+    lines = (content or "").strip().splitlines()
+    if not lines:
+        raise ValueError("empty presentation")
+    pres_title = lines[0].strip("# ").strip() or "Presentation"
+    slides = []
+    current_title = None
+    current_bullets = []
+    pre_bullets = []
+    for raw in lines[1:]:
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("## "):
+            if current_title is not None:
+                slides.append((current_title, current_bullets))
+            elif pre_bullets:
+                slides.append((pres_title, pre_bullets))
+            current_title = line[3:].strip("# ").strip() or "Slide"
+            current_bullets = []
+            pre_bullets = []
+            continue
+        if set(line) == {"-"}:
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        level = 2 if indent >= 4 else (1 if indent >= 2 else 0)
+        text = line
+        if text[:2] in ("- ", "* ") or text[:2] == "• ":
+            text = text[2:].strip()
+        elif text[:1] in ("-", "*"):
+            text = text[1:].strip()
+        if not text:
+            continue
+        if current_title is None:
+            pre_bullets.append((level, text))
+        else:
+            current_bullets.append((level, text))
+    if current_title is not None:
+        slides.append((current_title, current_bullets))
+    elif pre_bullets:
+        slides.append((pres_title, pre_bullets))
+    if not slides:
+        slides = [(pres_title, [])]
+    return pres_title, slides
+
+
+def make_pptx(content):
+    """Build a .pptx file from a ```pptx block. Returns bytes."""
+    import io
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+
+    pres_title, slides = parse_pptx(content)
+    prs = Presentation()
+    prs.slide_width = Inches(13.33)
+    prs.slide_height = Inches(7.5)
+    title_slide_layout = prs.slide_layouts[0]
+    content_layout = prs.slide_layouts[1]
+
+    def style_run(run, text, size):
+        run.text = text
+        run.font.size = Pt(size)
+        # Padauk covers both Myanmar and Latin glyphs, so use it for
+        # Myanmar-containing runs; PowerPoint falls back for other scripts.
+        run.font.name = "Padauk" if _is_myanmar(text) else "Calibri"
+
+    # A cover slide when the presentation title is not already a slide title.
+    if slides[0][0] != pres_title:
+        slide = prs.slides.add_slide(title_slide_layout)
+        style_run(slide.shapes.title.text_frame.paragraphs[0].add_run(),
+                  pres_title, 40)
+    for slide_title, bullets in slides:
+        slide = prs.slides.add_slide(content_layout)
+        style_run(slide.shapes.title.text_frame.paragraphs[0].add_run(),
+                  slide_title, 32)
+        if not bullets:
+            continue
+        tf = None
+        for shape in slide.placeholders:
+            if shape.placeholder_format.type is not None and shape.has_text_frame \
+                    and shape != slide.shapes.title:
+                tf = shape.text_frame
+                break
+        if tf is None:
+            continue
+        tf.word_wrap = True
+        for i, (level, text) in enumerate(bullets):
+            para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            para.level = min(level, 2)
+            style_run(para.add_run(), text,
+                      20 if level == 0 else (18 if level == 1 else 16))
+    bio = io.BytesIO()
+    prs.save(bio)
+    return bio.getvalue()
+
+
 def build_files(blocks):
     """Build each requested file. Returns [(filename, bytes, mimetype, caption)]."""
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -280,7 +391,12 @@ def build_files(blocks):
                 out.append((f"spreadsheet_{ts}.xlsx", data,
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             "📊 Your spreadsheet is ready!"))
-            else:
+            elif kind == "pptx":
+                data = make_pptx(content)
+                out.append((f"presentation_{ts}.pptx", data,
+                            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                            "🎞️ Your PowerPoint is ready!"))
+            elif kind == "pdf":
                 parts = content.split("\n", 1)
                 title = parts[0].strip("# ").strip()
                 body = parts[1].strip() if len(parts) > 1 else ""

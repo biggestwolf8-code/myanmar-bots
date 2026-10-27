@@ -32,10 +32,13 @@ Root directory: `claude-assistant-bot` · start command: `python bot.py`
 
 ## File creation
 
-Ask the bot for an Excel spreadsheet or a PDF document and it builds the file
-and sends it as an attachment. Excel comes from CSV data (via openpyxl);
-PDFs are rendered with the embedded Padauk font so Myanmar text displays
-correctly (via fpdf2 + HarfBuzz shaping).
+Ask the bot for an Excel spreadsheet, a PDF document, or a PowerPoint
+presentation and it builds the file and sends it as an attachment. Excel
+comes from CSV data (via openpyxl); PDFs are rendered with the embedded
+Padauk font so Myanmar text displays correctly (via fpdf2 + HarfBuzz
+shaping); PowerPoint files come from a ```pptx block — first line is the
+presentation title, then each slide starts with `## Slide title` followed
+by `- ` bullet lines (via python-pptx, 16:9 slides).
 
 ## Notes
 
