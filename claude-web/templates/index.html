@@ -198,7 +198,7 @@ function addMsg(who, text, files, steps, wsfiles){
     d.appendChild(document.createElement('br')); d.appendChild(a);
   };
   if (files) for (const f of files){
-    addFileBtn('/files/'+f.id, (f.mime.includes('sheet')||f.name.endsWith('.xlsx') ? '📊 ' : '📄 ') + f.name);
+    addFileBtn('/files/'+f.id, (f.mime.includes('sheet')||f.name.endsWith('.xlsx') ? '📊 ' : (f.name.endsWith('.pptx') ? '🎞️ ' : '📄 ')) + f.name);
   }
   if (wsfiles) for (const f of wsfiles){
     addFileBtn(f.url, '📁 ' + f.name);

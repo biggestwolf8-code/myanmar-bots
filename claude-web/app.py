@@ -233,7 +233,7 @@ def workspace_dir(sid):
 
 
 def _finalize_reply(sid, code, reply_text):
-    """Build downloadable files from ```excel/```pdf blocks. Returns (clean, files)."""
+    """Build downloadable files from ```excel/```pdf/```pptx blocks. Returns (clean, files)."""
     clean, blocks = brain.extract_blocks(reply_text)
     files = []
     if blocks:

@@ -25,9 +25,10 @@ plus a volume mounted at `/data`.
   Share links like `https://<host>/i/AB12CD34` (auto-redeem on open).
 - **Chat** — per-session history (last 10 exchanges), typing indicator,
   `/new` fresh starts, Markdown-ish rendering, Myanmar/Thai/English.
-- **Files** — ask for a spreadsheet or PDF; the assistant builds it and the
+- **Files** — ask for a spreadsheet, PDF, or PowerPoint; the assistant builds it and the
   chat shows a download button (Excel via openpyxl, PDF via fpdf2 with an
-  embedded Myanmar font).
+  embedded Myanmar font, PowerPoint via python-pptx — first line is the presentation
+  title, then each slide starts with `## Slide title` followed by `- ` bullets).
 - **Cost control** — per-code daily message cap; per-code token + cost tracking.
 - **Admin panel** (`/admin`) — generate invite codes, copy invite links,
   see per-code usage and total API cost, revoke access.
