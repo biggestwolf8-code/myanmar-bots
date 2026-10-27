@@ -162,6 +162,36 @@ def extract_pdf_text(data, max_chars=6000):
     return True, text
 
 
+def extract_pptx_text(data, max_chars=20000):
+    """Extract slide text from a .pptx upload. Returns (ok, text_or_error)."""
+    try:
+        from pptx import Presentation
+        prs = Presentation(io.BytesIO(data))
+        slide_texts = []
+        for i, slide in enumerate(prs.slides, start=1):
+            parts = []
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    t = shape.text_frame.text.strip()
+                    if t:
+                        parts.append(t)
+                elif shape.has_table:
+                    for row in shape.table.rows:
+                        cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                        if cells:
+                            parts.append(" | ".join(cells))
+            if parts:
+                slide_texts.append(f"Slide {i}:\n" + "\n".join(parts))
+        text = "\n\n".join(slide_texts).strip()
+    except Exception as e:
+        return False, f"could not read PowerPoint: {e}"
+    if not text:
+        return False, "no readable text found"
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n[...truncated]"
+    return True, text
+
+
 BLOCK_RE = re.compile(r"```(excel|pdf|pptx)\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
 

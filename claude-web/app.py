@@ -32,7 +32,7 @@ import brain
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif",
-                ".pdf", ".txt", ".md", ".markdown", ".csv"}
+                ".pdf", ".txt", ".md", ".markdown", ".csv", ".pptx"}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
@@ -494,7 +494,7 @@ def api_upload_chat():
     ext = os.path.splitext(f.filename or "")[1].lower()
     if ext not in ALLOWED_EXTS:
         return jsonify({"ok": False,
-                         "error": "That file type isn't supported (photos, PDF, TXT, Markdown, CSV)."}), 400
+                         "error": "That file type isn't supported (photos, PDF, TXT, Markdown, CSV, PowerPoint)."}), 400
     data = f.read()
     if len(data) > MAX_UPLOAD_BYTES:
         return jsonify({"ok": False, "error": "File too big (10MB max)."}), 400
@@ -518,6 +518,13 @@ def api_upload_chat():
             ok, pdf_text = brain.extract_pdf_text(data)
             stored_extra = pdf_text if ok else ""
             stored_label = f"[PDF attached: {f.filename}]"
+        elif ext == ".pptx":
+            ok, pptx_text = brain.extract_pptx_text(data)
+            if not ok:
+                return jsonify({"ok": False, "error": f"Couldn't read that file: {pptx_text}"}), 400
+            attachments.append({"kind": "doc", "name": f.filename, "text": pptx_text})
+            stored_extra = pptx_text[:6000]
+            stored_label = f"[PowerPoint attached: {f.filename}]"
         else:
             ok, doc_text = brain.extract_doc_text(f.filename, data)
             if not ok:
