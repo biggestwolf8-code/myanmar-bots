@@ -89,7 +89,16 @@ STORE_PATH = os.path.join(DATA_DIR, "tokens.json")
 
 # Diagnostic / non-fleet records to always ignore
 # (probe@test.com was inserted by a live diagnostic 2026-10-13)
-EXCLUDED_EMAILS = {"probe@test.com"}
+# Removed 2026-10-29 per Arkar: out of the program, also removed from ZOOM_CREDS
+EXCLUDED_EMAILS = {
+    "probe@test.com",
+    "onlineclass.22517+i11@gmail.com",
+    "onlineclass.22517+e04@gmail.com",
+    "onlineclass.22517+e06@gmail.com",
+    "onlineclass.22517+e10@gmail.com",
+    "onlineclass.22517+e14@gmail.com",
+    "onlineclass.22517+c04@gmail.com",
+}
 
 
 def fleet_emails(store):
