@@ -152,6 +152,34 @@ def code_for_sid(sid):
     return sessions[sid]["code"]
 
 
+def _client_info():
+    """IP + device (browser user-agent) for registered-account tracking.
+
+    Railway sits behind a proxy, so the first X-Forwarded-For entry is the
+    client IP; request.remote_addr would only be the proxy. The device is
+    the browser's user-agent string, not a precise device ID — it changes
+    with browser updates and is shared by many phones of the same model.
+    Only recorded for email accounts, and only shown in the admin panel."""
+    fwd = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    return {
+        "ip": fwd or (request.remote_addr or ""),
+        "device": (request.headers.get("User-Agent") or "")[:300],
+    }
+
+
+def _touch_account(email):
+    """Refresh a registered account's last IP/device/seen from this request."""
+    u = users.get(email)
+    if not u:
+        return
+    info = _client_info()
+    if u.get("last_ip") != info["ip"] or u.get("last_device") != info["device"]:
+        u["last_ip"] = info["ip"]
+        u["last_device"] = info["device"]
+    u["last_seen"] = datetime.datetime.now().isoformat(timespec="seconds")
+    _save_json("webusers.json", users)
+
+
 def hist_key(sid):
     """Chat history and images follow the invite code, not the browser
     session — so the same chat survives signup, email login, and device
@@ -337,8 +365,14 @@ def api_signup():
     if email in users:
         return jsonify({"ok": False, "error": "This email is already registered — log in instead."}), 409
     code = code_for_sid(sid)
-    users[email] = {"pw": hash_pw(pw), "code": code,
-                    "created": datetime.datetime.now().isoformat(timespec="seconds")}
+    if any(u.get("code") == code for u in users.values()):
+        return jsonify({"ok": False, "error": "This invite code already has an email account — log in with that email instead."}), 409
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    info = _client_info()
+    users[email] = {"pw": hash_pw(pw), "code": code, "created": now,
+                    "signup_ip": info["ip"], "signup_device": info["device"],
+                    "last_ip": info["ip"], "last_device": info["device"],
+                    "last_seen": now}
     save_all()
     return jsonify({"ok": True})
 
@@ -357,6 +391,10 @@ def api_email_login():
     sid = secrets.token_hex(16)
     sessions[sid] = {"code": code, "created": datetime.datetime.now().isoformat(timespec="seconds"),
                      "via": "email", "email": email}
+    info = _client_info()
+    u["last_ip"] = info["ip"]
+    u["last_device"] = info["device"]
+    u["last_seen"] = datetime.datetime.now().isoformat(timespec="seconds")
     save_all()
     session["sid"] = sid
     session.permanent = True
@@ -368,7 +406,12 @@ def api_me():
     sid = current_sid()
     if not sid:
         return jsonify({"ok": False}), 401
-    return jsonify({"ok": True})
+    code = code_for_sid(sid)
+    has_account = bool(sessions[sid].get("email")) or any(
+        u.get("code") == code for u in users.values())
+    if sessions[sid].get("email"):
+        _touch_account(sessions[sid]["email"])
+    return jsonify({"ok": True, "has_account": has_account})
 
 
 @app.route("/api/logout", methods=["POST"])
@@ -752,7 +795,16 @@ def api_admin_data():
     t_in = sum(u["input"] for u in usage.values())
     t_out = sum(u["output"] for u in usage.values())
     t_cost = sum(u["cost"] for u in usage.values())
-    return jsonify({"ok": True, "codes": rows,
+    user_rows = []
+    for email, u in users.items():
+        user_rows.append({"email": email, "code": u.get("code", ""),
+                          "created": u.get("created", ""),
+                          "signup_ip": u.get("signup_ip", ""),
+                          "last_ip": u.get("last_ip", ""),
+                          "last_device": u.get("last_device", ""),
+                          "last_seen": u.get("last_seen", "")})
+    user_rows.sort(key=lambda r: r["created"], reverse=True)
+    return jsonify({"ok": True, "codes": rows, "users": user_rows,
                     "totals": {"in": t_in, "out": t_out, "cost": round(t_cost, 4),
                                "active_sessions": len(sessions)}})
 

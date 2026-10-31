@@ -124,7 +124,7 @@
     <div class="spacer"></div>
     <div id="usagePill" class="pill" style="cursor:pointer" title="Click for details" onclick="showUsage()">$0.00 today</div>
     <button onclick="newChat()">+ New chat</button>
-    <button onclick="createAccount()" title="Create an email login so you never lose access">👤 Create account</button>
+    <button id="createAccountBtn" onclick="createAccount()" title="Create an email login so you never lose access">👤 Create account</button>
     <button onclick="logout()">Log out</button>
   </header>
   <div id="tabs">
@@ -223,6 +223,7 @@ async function boot(){
   const j = await r.json();
   document.getElementById('login').classList.toggle('hidden', j.ok);
   document.getElementById('chat').classList.toggle('hidden', !j.ok);
+  if (j.ok) document.getElementById('createAccountBtn').style.display = j.has_account ? 'none' : '';
   if (j.ok && !window._welcomed){
     window._welcomed = true;
     addMsg('bot', "👋 Hi! I'm Claude, your AI co-worker.\n\n💬 **Chat** — ask me anything: drafting, writing, translations, planning. Tap 📎 to attach photos or documents.\n\n⚙️ **Agent** — give me a multi-step task and I'll work through it: read files, run code, create documents and spreadsheets.\n\n📁 **Files** — your workspace. Upload files for the agent to use, download what it creates.");
@@ -335,6 +336,7 @@ async function createAccount(){
   if (!password) return;
   const r = await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email, password})});
   const j = await r.json();
+  if (j.ok) document.getElementById('createAccountBtn').style.display = 'none';
   alert(j.ok ? '✅ Account created! You can now log in with your email from any device — your chat carries over.' : '⚠️ ' + (j.error || 'Failed.'));
 }
 async function loadWsFiles(){
