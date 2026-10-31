@@ -77,6 +77,15 @@
       <tbody></tbody>
     </table>
   </div>
+
+  <h2>Registered accounts</h2>
+  <p style="font-size:13px;color:var(--muted)">Email accounts created from an invite code, with the IP and device seen at sign-up and at the last visit. IP is the network address, not a precise location; device is the browser's user-agent string. Only accounts created after this update carry IP/device — older accounts show blank until they sign in again.</p>
+  <div class="card" style="overflow-x:auto">
+    <table id="usersTable">
+      <thead><tr><th>Email</th><th>Code</th><th>Created</th><th>Last IP</th><th>Last device</th><th>Last seen</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </div>
 
 </div>
@@ -115,6 +124,19 @@ function showPanel(j){
       '<td>$'+c.cost.toFixed(4)+'</td>'+
       '<td>'+(c.used?'<button class="danger" onclick="revoke(\''+c.code+'\')">Revoke</button>':'')+'</td>';
     tb.appendChild(tr);
+  }
+  const utb = document.querySelector('#usersTable tbody'); utb.innerHTML='';
+  for (const u of (j.users || [])){
+    const tr = document.createElement('tr');
+    const dev = u.last_device || '';
+    tr.innerHTML =
+      '<td>'+esc(u.email)+'</td>'+
+      '<td><code>'+esc(u.code)+'</code></td>'+
+      '<td>'+esc(u.created)+'</td>'+
+      '<td>'+esc(u.last_ip || '—')+'</td>'+
+      '<td title="'+esc(dev)+'">'+esc(dev.slice(0, 80))+'</td>'+
+      '<td>'+esc(u.last_seen || '—')+'</td>';
+    utb.appendChild(tr);
   }
 }
 async function newCodes(){
