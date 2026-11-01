@@ -93,7 +93,9 @@ COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
     "/vpntrials — list active trial customers\n"
     "/expiretrials — revoke expired trials now\n"
     "/setrate CODE mmk_per_unit — add/update a currency rate\n"
-    "  (e.g. /setrate THB 1500 means 1 THB = 1,500 Ks)"
+    "  (e.g. /setrate THB 1500 means 1 THB = 1,500 Ks)\n"
+    "/updaterates — refresh all rates from online USD rates\n"
+    "  (still anchored at 1 USD = 50,000 Ks)"
 )
 
 # ---------- VPN purchase flow ----------
@@ -431,17 +433,53 @@ def prod_callback(product):
     return "home"
 
 
-def product_text(product):
+def product_text(product, cur="MMK"):
+    """Product price list. cur is the display currency (default Ks);
+    prices are stored in Ks and converted via the currency converter."""
     items = [it for it in CATALOG if it["product"] == product]
     lines = [f"📦 {product}"]
     for it in items:
-        usd = it['price_ks'] / 50000
-        line = f"• {it['plan']} — {it['price_ks']:,} Ks (${usd:,.2f})"
+        if cur == "MMK":
+            line = f"• {it['plan']} — {it['price_ks']:,} Ks (${it['price_ks'] / 50000:,.2f})"
+        else:
+            try:
+                value, _, _ = currency_mod.convert(
+                    it['price_ks'], "MMK", cur)
+                line = f"• {it['plan']} — {currency_mod.fmt(value, cur)} ({it['price_ks']:,} Ks)"
+            except ValueError:
+                line = f"• {it['plan']} — {it['price_ks']:,} Ks"
         if it.get("notes"):
             line += f"\n  ({it['notes']})"
         lines.append(line)
     lines.append(f"\n📩 Order: {CONTACT}")
     return "\n".join(lines)
+
+
+def kb_price(ci, j, cur="MMK"):
+    """Price-section keyboard: a pop-up currency toggle on top, Back below.
+    Tapping the toggle opens the currency menu; tapping a currency
+    re-renders the same product's prices in that currency."""
+    toggle = {"text": f"💱 Price in: {cur} ▾",
+              "callback_data": f"xm:{ci}:{j}"}
+    return {"inline_keyboard": [[toggle],
+                                [{"text": "⬅️ Back",
+                                  "callback_data": f"c:{ci}"}]]}
+
+
+def kb_currency_menu(ci, j):
+    """Grid of all convertible currencies for one product."""
+    codes = sorted(currency_mod.load_rates())
+    rows, row = [], []
+    for code in codes:
+        row.append({"text": code, "callback_data": f"xc:{ci}:{j}:{code}"})
+        if len(row) == 4:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([{"text": "⬅️ Back to product",
+                  "callback_data": f"p:{ci}:{j}"}])
+    return {"inline_keyboard": rows}
 
 
 def search_products(query):
@@ -689,6 +727,24 @@ def handle_message(msg, fwd_map):
                       f"to/from {code}.", msg)
         return
 
+    if is_admin and text.startswith("/updaterates"):
+        try:
+            derived, src_date = currency_mod.fetch_online_rates()
+            rates = currency_mod.load_rates()
+            rates.update(derived)
+            currency_mod.save_rates(rates)
+            lines = [f"✅ Rates refreshed from online USD rates "
+                     f"(feed date {src_date}), anchored at "
+                     f"1 USD = 50,000 Ks:"]
+            for code in sorted(derived):
+                lines.append(f"• 1 {code} = {derived[code]:,.2f} Ks")
+            send_threaded(chat_id, "\n".join(lines), msg)
+        except Exception as e:
+            send_threaded(chat_id,
+                          f"❌ Could not refresh online rates ({e}). "
+                          f"Existing rates are unchanged.", msg)
+        return
+
     faq = find_faq(text)
     if faq:
         if faq.get("photo"):
@@ -747,7 +803,24 @@ def handle_callback(cb):
                      "Instant invite code on approval.",
                      kb_app_buy(product))
             else:
-                edit(product_text(product), kb_back(int(ci)))
+                edit(product_text(product), kb_price(int(ci), int(j)))
+        except (ValueError, IndexError, KeyError):
+            pass
+    elif data.startswith("xm:"):
+        # Currency toggle pop-up: show the currency menu for this product.
+        try:
+            _, ci, j = data.split(":")
+            product = PRODUCTS[CATS[int(ci)]][int(j)]
+            edit(f"📦 {product}\n\n💱 Choose the currency for the prices:",
+                 kb_currency_menu(int(ci), int(j)))
+        except (ValueError, IndexError, KeyError):
+            pass
+    elif data.startswith("xc:"):
+        # A currency was picked: re-render prices in that currency.
+        try:
+            _, ci, j, cur = data.split(":")
+            product = PRODUCTS[CATS[int(ci)]][int(j)]
+            edit(product_text(product, cur), kb_price(int(ci), int(j), cur))
         except (ValueError, IndexError, KeyError):
             pass
     elif data == "vpntrial":
