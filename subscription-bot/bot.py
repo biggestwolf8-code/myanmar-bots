@@ -208,10 +208,17 @@ def save_app_orders(d):
 
 
 def kb_app_buy(product):
-    """Buy buttons for each app plan (Chat GPT Plus / Claude AI Pro)."""
+    """Buy buttons for each app plan (Chat GPT Plus / Claude AI Pro).
+    Callback data must stay under Telegram's 64-byte limit, so buttons
+    carry short indexes (app index + plan index) instead of the full
+    product and plan names — the old full-name form was 65-66 bytes,
+    which made Telegram reject the whole plan screen and the tap
+    looked dead."""
+    app_idx = APP_PRODUCTS.index(product)
     items = [it for it in CATALOG if it["product"] == product]
     rows = [[{"text": f"🛒 Buy {it['plan']} — {it['price_ks']:,} Ks",
-              "callback_data": f"appbuy:{product}:{it['plan']}"}] for it in items]
+              "callback_data": f"appbuy:{app_idx}:{idx}"}]
+            for idx, it in enumerate(items)]
     rows.append([{"text": "⬅️ Back", "callback_data": prod_callback(product)}])
     return {"inline_keyboard": rows}
 
@@ -969,12 +976,14 @@ def handle_callback(cb):
              {"inline_keyboard": [[{"text": "⬅️ Plans",
                                     "callback_data": prod_callback("Biggest VPN")}]]})
     elif data.startswith("appbuy:"):
-        # Customer tapped Buy for Chat GPT Plus / Claude AI Pro
+        # Customer tapped Buy for Chat GPT Plus / Claude AI Pro.
+        # Callback is short indexes: appbuy:<app_idx>:<plan_idx>.
         try:
-            _, product, plan = data.split(":", 2)
-        except ValueError:
-            return
-        if product not in APP_PRODUCTS:
+            _, app_idx, plan_idx = data.split(":")
+            product = APP_PRODUCTS[int(app_idx)]
+            items = [it for it in CATALOG if it["product"] == product]
+            plan = items[int(plan_idx)]["plan"]
+        except (ValueError, IndexError, KeyError):
             return
         price = next((it["price_ks"] for it in CATALOG
                       if it["product"] == product
