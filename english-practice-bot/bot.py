@@ -1567,6 +1567,27 @@ def handle_admin_command(chat_id, user_id, text):
         send_text(chat_id, "\n".join(lines)[:4000])
         return True
 
+    if cmd == "/deleteallcodes":
+        if len(parts) < 2 or parts[1].strip().upper() != "CONFIRM":
+            send_text(chat_id, "Usage: /deleteallcodes CONFIRM — deletes ALL invite codes.")
+            return True
+        codes = load_codes()
+        total = len(codes)
+        activated = sum(1 for e in codes.values() if e.get("used_by"))
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(os.path.join(DATA_DIR, f"codes-deleted-{stamp}.json"),
+                      "w", encoding="utf-8") as f:
+                json.dump({"codes": codes}, f, ensure_ascii=False)
+        except OSError:
+            pass
+        save_codes({})
+        send_text(chat_id, f"🗑️ Deleted all {total} invite code(s) "
+                           f"({activated} activated, {total - activated} unused). "
+                           f"No student can activate or re-activate now.")
+        return True
+
     if cmd == "/revoke":
         if len(parts) < 2:
             send_text(chat_id, "Usage: /revoke CODE  (or /revoke <telegram user id>)")
