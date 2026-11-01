@@ -78,8 +78,9 @@ COMMANDS_KEYBOARD = {
 COMMANDS_TEXT = (
     "📋 Commands — tap a button above or type your question.\n\n"
     "/start — show the main menu again\n"
-    "/convert 10 USD — convert an amount (rate: 1 USD = 50,000 Ks)\n"
-    "/rates — show the current conversion rates\n\n"
+    "🧮 Currency Calculator — tap the button on the main menu or on\n"
+    "any product's price section; tap currency tabs and digits,\n"
+    "no typing needed (rate: 1 USD = 50,000 Ks)\n\n"
     "📋 လုပ်ဆောင်ချက်များ — အပေါ်က ခလုတ်များကို နှိပ်၍ဖြစ်စေ၊ "
     "မေးခွန်းကို ရိုက်၍ဖြစ်စေ မေးနိုင်ပါသည်။\n\n"
     "/start — main menu ကို ပြန်ပြရန်\n"
@@ -412,6 +413,7 @@ def norm(s):
 
 def kb_cats():
     rows = [[{"text": c, "callback_data": f"c:{i}"}] for i, c in enumerate(CATS)]
+    rows.append([{"text": "🧮 Currency Calculator", "callback_data": "calcopen"}])
     return {"inline_keyboard": rows}
 
 
@@ -461,7 +463,10 @@ def kb_price(ci, j, cur="MMK"):
     re-renders the same product's prices in that currency."""
     toggle = {"text": f"💱 Price in: {cur} ▾",
               "callback_data": f"xm:{ci}:{j}"}
+    calc = {"text": "🧮 Currency Calculator",
+            "callback_data": f"calcopen:{ci}:{j}"}
     return {"inline_keyboard": [[toggle],
+                                [calc],
                                 [{"text": "⬅️ Back",
                                   "callback_data": f"c:{ci}"}]]}
 
@@ -479,6 +484,66 @@ def kb_currency_menu(ci, j):
         rows.append(row)
     rows.append([{"text": "⬅️ Back to product",
                   "callback_data": f"p:{ci}:{j}"}])
+    return {"inline_keyboard": rows}
+
+
+# ---------- Currency calculator (tabs + keypad, no typing) ----------
+# Transient per-chat calculator state: chat_id -> {amount, src, show_all,
+# back (callback to return to, e.g. "p:ci:j" or "home")}.
+CALC_STATE = {}
+CALC_TOP = ["USD", "MMK", "THB", "EUR", "SGD", "GBP", "JPY", "CNY", "INR", "AUD"]
+CALC_TABS = ["MMK", "USD", "THB", "EUR", "SGD", "GBP", "JPY", "CNY"]
+
+
+def calc_text(state):
+    amount = float(state["amount"] or 0)
+    src = state["src"]
+    rates = currency_mod.load_rates()
+    lines = [f"🧮 Currency Calculator",
+             f"Amount: {currency_mod.fmt(amount, src)}",
+             "",
+             "Equals:"]
+    codes = CALC_TOP if not state["show_all"] else sorted(rates)
+    for code in codes:
+        if code == src:
+            continue
+        try:
+            value, _, _ = currency_mod.convert(amount, src, code, rates)
+            lines.append(f"• {currency_mod.fmt(value, code)}")
+        except ValueError:
+            pass
+    lines.append("")
+    lines.append("Tap a currency tab to change the input currency, "
+                 "then tap the digits. No typing needed.")
+    lines.append("Rate: 1 USD = 50,000 Ks.")
+    return "\n".join(lines)
+
+
+def kb_calc(state):
+    rows = []
+    # Currency tabs (the input currency)
+    tabs, row = [], []
+    for code in CALC_TABS:
+        label = f"[{code}]" if code == state["src"] else code
+        row.append({"text": label, "callback_data": f"calc:src:{code}"})
+        if len(row) == 4:
+            tabs.append(row)
+            row = []
+    if row:
+        tabs.append(row)
+    rows += tabs
+    # Keypad
+    for digits in ("123", "456", "789"):
+        rows.append([{"text": d, "callback_data": f"calc:d:{d}"}
+                     for d in digits])
+    rows.append([{"text": "C", "callback_data": "calc:clear"},
+                 {"text": "0", "callback_data": "calc:d:0"},
+                 {"text": "⌫", "callback_data": "calc:back"}])
+    rows.append([{"text": "Show all currencies" if not state["show_all"]
+                  else "Show fewer",
+                  "callback_data": "calc:all"}])
+    back = state.get("back") or "home"
+    rows.append([{"text": "⬅️ Done", "callback_data": back}])
     return {"inline_keyboard": rows}
 
 
@@ -806,6 +871,39 @@ def handle_callback(cb):
                 edit(product_text(product), kb_price(int(ci), int(j)))
         except (ValueError, IndexError, KeyError):
             pass
+    elif data.startswith("calcopen"):
+        # Open the tab-and-keypad calculator (no typing at all).
+        parts = data.split(":")
+        if len(parts) == 3:
+            _, ci, j = parts
+            back = f"p:{ci}:{j}"
+        else:
+            back = "home"
+        CALC_STATE[chat_id] = {"amount": "0", "src": "USD",
+                               "show_all": False, "back": back}
+        edit(calc_text(CALC_STATE[chat_id]), kb_calc(CALC_STATE[chat_id]))
+    elif data.startswith("calc:"):
+        state = CALC_STATE.get(chat_id)
+        if not state:
+            state = {"amount": "0", "src": "USD",
+                     "show_all": False, "back": "home"}
+            CALC_STATE[chat_id] = state
+        action = data[len("calc:"):]
+        if action.startswith("d:"):
+            digit = action[2:]
+            if state["amount"] == "0":
+                state["amount"] = digit
+            elif len(state["amount"]) < 12:
+                state["amount"] += digit
+        elif action.startswith("src:"):
+            state["src"] = action[4:]
+        elif action == "clear":
+            state["amount"] = "0"
+        elif action == "back":
+            state["amount"] = state["amount"][:-1] or "0"
+        elif action == "all":
+            state["show_all"] = not state["show_all"]
+        edit(calc_text(state), kb_calc(state))
     elif data.startswith("xm:"):
         # Currency toggle pop-up: show the currency menu for this product.
         try:
