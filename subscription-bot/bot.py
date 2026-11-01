@@ -21,6 +21,7 @@ import unicodedata
 import requests
 
 import vpn as vpn_mod
+import currency as currency_mod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
@@ -76,10 +77,13 @@ COMMANDS_KEYBOARD = {
 }
 COMMANDS_TEXT = (
     "📋 Commands — tap a button above or type your question.\n\n"
-    "/start — show the main menu again\n\n"
+    "/start — show the main menu again\n"
+    "/convert 10 USD — convert an amount (rate: 1 USD = 50,000 Ks)\n"
+    "/rates — show the current conversion rates\n\n"
     "📋 လုပ်ဆောင်ချက်များ — အပေါ်က ခလုတ်များကို နှိပ်၍ဖြစ်စေ၊ "
     "မေးခွန်းကို ရိုက်၍ဖြစ်စေ မေးနိုင်ပါသည်။\n\n"
-    "/start — main menu ကို ပြန်ပြရန်"
+    "/start — main menu ကို ပြန်ပြရန်\n"
+    "/convert 10 USD — ငွေလဲနှုန်း တွက်ရန် (1 USD = 50,000 Ks)"
 )
 COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
     "\n\n👑 Admin commands\n"
@@ -87,7 +91,9 @@ COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
     "/vpnrenew CODE days — extend a VPN customer\n"
     "/vpnrevoke CODE — revoke a VPN customer\n"
     "/vpntrials — list active trial customers\n"
-    "/expiretrials — revoke expired trials now"
+    "/expiretrials — revoke expired trials now\n"
+    "/setrate CODE mmk_per_unit — add/update a currency rate\n"
+    "  (e.g. /setrate THB 1500 means 1 THB = 1,500 Ks)"
 )
 
 # ---------- VPN purchase flow ----------
@@ -429,7 +435,8 @@ def product_text(product):
     items = [it for it in CATALOG if it["product"] == product]
     lines = [f"📦 {product}"]
     for it in items:
-        line = f"• {it['plan']} — {it['price_ks']:,} Ks"
+        usd = it['price_ks'] / 50000
+        line = f"• {it['plan']} — {it['price_ks']:,} Ks (${usd:,.2f})"
         if it.get("notes"):
             line += f"\n  ({it['notes']})"
         lines.append(line)
@@ -616,6 +623,70 @@ def handle_message(msg, fwd_map):
     if text == COMMANDS_BTN:
         send_threaded(chat_id,
                       COMMANDS_TEXT_ADMIN if is_admin else COMMANDS_TEXT, msg)
+        return
+
+    # ---- Currency converter (rate: 1 USD = 50,000 Ks) ----
+    if text.startswith("/convert"):
+        parsed = currency_mod.parse_convert(text)
+        if not parsed:
+            send_threaded(chat_id,
+                          "Usage: /convert <amount> <currency> [to <currency>]\n"
+                          "Examples:\n"
+                          "/convert 10 USD\n"
+                          "/convert 500000 Ks to USD\n"
+                          "/convert 100 USD to THB  (once THB is set)\n"
+                          "Rate: 1 USD = 50,000 Ks.", msg)
+            return
+        amount, src, dst = parsed
+        rates = currency_mod.load_rates()
+        if dst:
+            try:
+                value, s, d = currency_mod.convert(amount, src, dst, rates)
+                send_threaded(chat_id,
+                              f"💱 {currency_mod.fmt(amount, s)} = "
+                              f"{currency_mod.fmt(value, d)}\n"
+                              f"Rate used: 1 USD = 50,000 Ks.", msg)
+            except ValueError as e:
+                send_threaded(chat_id, f"❌ {e}", msg)
+        else:
+            send_threaded(chat_id,
+                          currency_mod.convert_all_text(amount, src, rates), msg)
+        return
+
+    if text.startswith("/rates"):
+        rates = currency_mod.load_rates()
+        lines = ["💱 Current conversion rates (MMK per 1 unit):"]
+        for code in sorted(rates):
+            if code == "MMK":
+                continue
+            lines.append(f"• 1 {code} = {rates[code]:,.0f} Ks")
+        lines.append("\nAdmin: /setrate CODE mmk_per_unit to add a currency.")
+        send_threaded(chat_id, "\n".join(lines), msg)
+        return
+
+    if is_admin and text.startswith("/setrate"):
+        parts = text.split()
+        if len(parts) != 3:
+            send_threaded(chat_id,
+                          "Usage: /setrate CODE mmk_per_unit\n"
+                          "(e.g. /setrate THB 1500 = 1 THB is 1,500 Ks)", msg)
+            return
+        try:
+            value = float(parts[2].replace(",", ""))
+            if value <= 0:
+                raise ValueError
+        except ValueError:
+            send_threaded(chat_id, "Rate must be a positive number.", msg)
+            return
+        rates = currency_mod.load_rates()
+        code = currency_mod.norm_code(parts[1])
+        rates[code] = value
+        currency_mod.save_rates(rates)
+        send_threaded(chat_id,
+                      f"✅ Rate set: 1 {code} = {value:,.0f} Ks.\n"
+                      f"That is ${value / 50000:,.2f} per {code} at "
+                      f"1 USD = 50,000 Ks, and /convert now works "
+                      f"to/from {code}.", msg)
         return
 
     faq = find_faq(text)
