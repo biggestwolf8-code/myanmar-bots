@@ -1272,6 +1272,27 @@ def _report_sweep_to_muse(store, expired):
 
 
 def main():
+    # One-time keyboard clear (2026-11-02): the old Commands button stays
+    # visible in a chat until the bot sends a message there with
+    # remove_keyboard. Send one silent clearing message to the admin DM and
+    # every registered alert chat, then record the flag so this never repeats.
+    try:
+        store = load_store()
+        if not store.get("keyboard_cleared"):
+            targets = [str(ADMIN_CHAT_ID)]
+            for cid in store.get("alert_chats", []):
+                if str(cid) not in targets:
+                    targets.append(str(cid))
+            for cid in targets:
+                try:
+                    send(int(cid) if str(cid).lstrip("-").isdigit() else cid,
+                         "Commands button removed.", silent=True)
+                except Exception:
+                    log.exception(f"keyboard clear failed to {cid}")
+            store["keyboard_cleared"] = True
+            save_store(store)
+    except Exception:
+        log.exception("keyboard clear failed")
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=daily_check_job, daemon=True).start()
     threading.Thread(target=sweep_job, daemon=True).start()
