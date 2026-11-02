@@ -4,10 +4,14 @@ Free conversation with gentle corrections, powered by the Claude API.
 Voice messages supported: students talk, the bot transcribes (Whisper),
 replies as the tutor (Claude), and answers back with voice (TTS).
 
-ACCESS CONTROL: the bot is private. Each student gets a single-use invite
-link (t.me/<bot>?start=CODE). The first Telegram account to open it is bound
-to that code; the code can't be reused or shared. Anyone else gets a polite
-"ask Sayar Arkar" notice and no API calls are made for them.
+ACCESS CONTROL (changed 2026-11-02, owner decision: NO codes/links for
+new users): anyone who opens the bot automatically gets a FREE 1-DAY
+trial, tracked by their own Telegram user id — nothing to share, nothing
+that can already be used, nothing to lie about. After the trial day ends
+the bot asks them to message Sayar Arkar to subscribe. Paid access is
+granted by the admin with /extend <telegram user id> <days> — again, no
+code or link is sent to the student. Old invite links still redeem for
+existing paid students, but no new user needs one.
 
 Deploy as a Railway worker. Env vars:
   BOT_TOKEN          Telegram bot token (from @BotFather)
@@ -22,8 +26,9 @@ Deploy as a Railway worker. Env vars:
   DAILY_LIMIT        Max practice messages per user per day (default: 100)
 
 Admin commands (only ADMIN_CHAT_ID):
-  /newcodes 20 [class]       generate single-use invite links, optionally tagged to a class
-  /trialcodes [n] [days]     generate single-use TRIAL links (default 40, 7 days each)
+  /extend <user id> <days>   grant/extend paid access for a user id (no code sent)
+  /newcodes 20 [class]       (legacy) generate single-use invite links, optionally tagged to a class
+  /trialcodes [n] [days]     (legacy) generate single-use TRIAL links (default 40, 7 days each)
   /users                     list activated students (with class)
   /revoke CODE               deactivate an invite code / student
   /setclass CLASS CODE...    tag students to a class: grammar | level1 | level2
@@ -73,9 +78,20 @@ CODES_FILE = os.path.join(DATA_DIR, "codes.json")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
 TRIAL_DAILY_LIMIT = int(os.environ.get("TRIAL_DAILY_LIMIT", "30"))
 
+PRICE_MSG = (
+    "💰 2 months: 50,000 Ks / 350 baht (about $10).\n"
+    "Message @SirArkar to subscribe — no code or link needed, "
+    "your access is extended directly on your account."
+)
+
 TRIAL_END_MSG = (
-    "🆓 Your free trial has ended — hope you enjoyed the practice!\n\n"
-    "To keep chatting unlimited, message Sayar Arkar to subscribe. 💪"
+    "🆓 Your free 1-day trial has ended — hope you enjoyed the practice!\n\n"
+    + PRICE_MSG
+)
+
+SUBSCRIBE_MSG = (
+    "⏳ Your access has ended — hope you enjoyed the practice!\n\n"
+    + PRICE_MSG
 )
 
 
@@ -306,10 +322,76 @@ GATE_MSG = (
     "Please ask Sayar Arkar for your personal invite link!"
 )
 
+# 1-day auto trial for every new user (owner decision 2026-11-02):
+# no code, no link — the trial is keyed to the user's Telegram id alone.
+AUTO_TRIAL_DAYS = int(os.environ.get("AUTO_TRIAL_DAYS", "1"))
+
+AUTO_TRIAL_MSG = (
+    "🆓 Welcome! You're on a free 1-day trial of the Practice Bot — enjoy! 🎉\n\n"
+    "After your trial day ends, message Sayar Arkar to subscribe and keep practicing. 💪"
+)
+
+def paid_until_for(user_id):
+    """Latest paid_until among the user's non-trial entries, or None if
+    they hold a permanent (no-expiry) paid entry. Returns False if their
+    only paid entries are all expired."""
+    codes = load_codes()
+    permanent = False
+    latest = None
+    found = False
+    for e in codes.values():
+        if e.get("used_by") != user_id or e.get("trial"):
+            continue
+        found = True
+        until = e.get("paid_until")
+        if not until:
+            permanent = True
+        else:
+            try:
+                dt = datetime.datetime.fromisoformat(until)
+                if latest is None or dt > latest:
+                    latest = dt
+            except ValueError:
+                permanent = True
+    if not found:
+        return None
+    if permanent:
+        return None  # None = permanent paid access (legacy invite students)
+    return latest
+
+
+def start_auto_trial(user_id):
+    """Create the user's 1-day trial entry. Idempotent: never resets an
+    existing user's trial or paid access."""
+    codes = load_codes()
+    if any(e.get("used_by") == user_id for e in codes.values()):
+        return False
+    now = datetime.datetime.now()
+    codes[f"AUTO-{user_id}"] = {
+        "used_by": user_id, "label": "", "class": None,
+        "trial": True, "trial_days": AUTO_TRIAL_DAYS, "auto_trial": True,
+        "created": now.isoformat(timespec="seconds"),
+        "trial_until": (now + datetime.timedelta(days=AUTO_TRIAL_DAYS)
+                        ).isoformat(timespec="seconds"),
+    }
+    save_codes(codes)
+    return True
+
 
 def gate_check(chat_id, user_id):
-    """True if the user may use the bot. Sends a (rate-limited) notice otherwise."""
+    """True if the user may use the bot. New users auto-start a 1-day
+    trial (no code needed); expired users get a subscribe notice."""
+    if is_admin(user_id):
+        return True
     if is_activated(user_id):
+        paid = paid_until_for(user_id)
+        if paid is not None and paid is not False \
+                and datetime.datetime.now() >= paid:
+            now = time.time()
+            if now - gate_notices.get(user_id, 0) > 3600:
+                send_text(chat_id, SUBSCRIBE_MSG)
+                gate_notices[user_id] = now
+            return False
         if trial_active(user_id) is False:
             now = time.time()
             if now - gate_notices.get(user_id, 0) > 3600:
@@ -317,12 +399,10 @@ def gate_check(chat_id, user_id):
                 gate_notices[user_id] = now
             return False
         return True
-    now = time.time()
-    if now - gate_notices.get(user_id, 0) > 3600:
-        send_text(chat_id, GATE_MSG)
-        gate_notices[user_id] = now
-
-    return False
+    # Brand-new user: no code, no gate — 1-day trial starts now.
+    if start_auto_trial(user_id):
+        send_text(chat_id, AUTO_TRIAL_MSG)
+    return True
 
 
 # ---------- classes & homework ----------
@@ -803,8 +883,9 @@ COMMANDS_TEXT = (
 
 COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
     "\n\n👑 Admin commands\n"
-    "/newcodes [N] [class] — make N single-use invite links\n"
-    "/trialcodes [N] [days] — make N trial links\n"
+    "/extend <user id> <days> — grant/extend paid access (no code sent)\n"
+    "/newcodes [N] [class] — (legacy) make N single-use invite links\n"
+    "/trialcodes [N] [days] — (legacy) make N trial links\n"
     "/users — list activated students\n"
     "/revoke CODE — revoke an invite or user\n"
     "/setclass CODE class — set a student's class\n"
@@ -1588,6 +1669,49 @@ def handle_admin_command(chat_id, user_id, text):
                            f"No student can activate or re-activate now.")
         return True
 
+    if cmd == "/extend":
+        # /extend <telegram user id> <days> — paid access, no code sent.
+        if len(parts) < 3:
+            send_text(chat_id, "Usage: /extend <telegram user id> <days>")
+            return True
+        try:
+            uid = int(parts[1])
+            days = max(1, min(int(parts[2]), 365))
+        except ValueError:
+            send_text(chat_id, "Usage: /extend <telegram user id> <days>")
+            return True
+        now = datetime.datetime.now()
+        codes = load_codes()
+        entries = [(c, e) for c, e in codes.items() if e.get("used_by") == uid]
+        if not entries:
+            codes[f"AUTO-{uid}"] = {
+                "used_by": uid, "label": "", "class": None,
+                "trial": False, "created": now.isoformat(timespec="seconds"),
+                "paid_until": (now + datetime.timedelta(days=days)
+                               ).isoformat(timespec="seconds"),
+            }
+            until = now + datetime.timedelta(days=days)
+        else:
+            until = now
+            for c, e in entries:
+                e["trial"] = False  # paid beats any trial, even an expired one
+                try:
+                    base = datetime.datetime.fromisoformat(e["paid_until"]) \
+                        if e.get("paid_until") else now
+                except ValueError:
+                    base = now
+                if base < now:
+                    base = now
+                until = base + datetime.timedelta(days=days)
+                e["paid_until"] = until.isoformat(timespec="seconds")
+        save_codes(codes)
+        histories.pop(uid, None)
+        send_text(chat_id,
+                  f"✅ User {uid} now has paid access until "
+                  f"{until.strftime('%d-%m-%Y')} ({days} day(s) added). "
+                  f"No code was sent.")
+        return True
+
     if cmd == "/revoke":
         if len(parts) < 2:
             send_text(chat_id, "Usage: /revoke CODE  (or /revoke <telegram user id>)")
@@ -1919,8 +2043,9 @@ def handle_update(u):
                           thread)
             else:
                 send_text(chat_id,
-                          "😕 This invite link is invalid or was already used.\n"
-                          "Please ask Sayar Arkar for your own personal link!", thread)
+                          "😕 That invite link is invalid or was already used.\n"
+                          "Good news: you don't need a link anymore — just send "
+                          "/start again and you'll get a free 1-day trial. 🎉", thread)
             return
         if not gate_check(chat_id, user_id):
             return
