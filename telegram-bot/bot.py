@@ -5,6 +5,13 @@ MasterClass English - Telegram auto-reply bot.
 Fixed FAQ answers (English + Burmese). Anything it can't answer is
 forwarded to the admin, and the admin's reply is relayed back to the student.
 
+Group behaviour (owner rule, 2026-11-02): in group/supergroup chats the
+bot stays silent unless a command is used (/start or the Commands
+button). Group chatter, FAQ keyword matches, fallback replies and
+photo receipts are all ignored there — the bot must not interject
+into group conversations. Private chats keep the full FAQ + fallback
+behaviour.
+
 Needs env vars:
     BOT_TOKEN     - from @BotFather
     ADMIN_CHAT_ID - your Telegram user id (get it from @userinfobot)
@@ -159,6 +166,18 @@ def handle_update(upd, fwd_map):
         return
     chat_id = str(msg["chat"]["id"])
     is_admin = bool(ADMIN_CHAT_ID) and chat_id == ADMIN_CHAT_ID
+    chat_type = msg["chat"].get("type", "")
+
+    # Groups: commands only. Anything else — chatter, FAQ keywords,
+    # photos — is ignored silently, so the bot never interjects into
+    # a group conversation uninvited. (Admin relay below is a private
+    # chat flow and is unaffected.)
+    if chat_type in ("group", "supergroup"):
+        if "text" not in msg:
+            return
+        if not (msg["text"].startswith("/start")
+                or msg["text"] == COMMANDS_BTN):
+            return
 
     # Photo (e.g. payment receipt screenshot): forward to admin, acknowledge.
     if "photo" in msg:
