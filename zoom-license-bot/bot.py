@@ -321,9 +321,13 @@ def tg(method, **params):
 
 
 COMMANDS_BTN = "📋 Commands"
-COMMANDS_KEYBOARD = {
-    "keyboard": [[{"text": COMMANDS_BTN}]],
-    "resize_keyboard": True,
+# 2026-11-02: Arkar asked for the persistent Commands button to be removed.
+# Every bot message now actively clears any old reply keyboard instead of
+# re-attaching it, so the button disappears from every chat (including group
+# alert chats) on the bot's next message there. Commands still work by typing
+# them (/start, /check, /status, /alerts, ...).
+REMOVE_KEYBOARD = {
+    "remove_keyboard": True,
 }
 COMMANDS_TEXT = (
     "📋 Commands\n\n"
@@ -347,7 +351,8 @@ COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
 
 
 def send(chat_id, text, parse_mode=None, silent=False, keyboard=True):
-    # split long messages; persistent Commands tab goes on the last chunk
+    # split long messages; the last chunk actively clears any old
+    # reply keyboard (Commands button removed 2026-11-02)
     chunks = [text[i:i + 3900] for i in range(0, len(text), 3900)] or [""]
     for i, chunk in enumerate(chunks):
         kw = {"chat_id": chat_id, "text": chunk,
@@ -355,7 +360,7 @@ def send(chat_id, text, parse_mode=None, silent=False, keyboard=True):
         if parse_mode:
             kw["parse_mode"] = parse_mode
         if keyboard and i == len(chunks) - 1:
-            kw["reply_markup"] = COMMANDS_KEYBOARD
+            kw["reply_markup"] = REMOVE_KEYBOARD
         tg("sendMessage", **kw)
 
 
