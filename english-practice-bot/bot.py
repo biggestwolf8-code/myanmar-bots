@@ -79,7 +79,9 @@ DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
 TRIAL_DAILY_LIMIT = int(os.environ.get("TRIAL_DAILY_LIMIT", "30"))
 
 PRICE_MSG = (
-    "💰 2 months: 50,000 Ks / 350 baht (about $10).\n"
+    "💰 Subscription prices:\n"
+    "• 2 months: 50,000 Ks / 350 baht (about $10)\n"
+    "• 6 months: 80,000 Ks / 550 baht (about $18)\n"
     "Message @SirArkar to subscribe — no code or link needed, "
     "your access is extended directly on your account."
 )
