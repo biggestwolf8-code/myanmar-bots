@@ -82,6 +82,7 @@ PRICE_MSG = (
     "💰 Subscription prices:\n"
     "• 2 months: 50,000 Ks / 350 baht (about $10)\n"
     "• 6 months: 80,000 Ks / 550 baht (about $18)\n"
+    "• 1 year: 145,000 Ks / 850 baht (about $34)\n"
     "Message @SirArkar to subscribe — no code or link needed, "
     "your access is extended directly on your account."
 )
