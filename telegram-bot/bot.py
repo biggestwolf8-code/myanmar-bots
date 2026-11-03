@@ -5,16 +5,23 @@ MasterClass English - Telegram auto-reply bot.
 Fixed FAQ answers (English + Burmese). Anything it can't answer is
 forwarded to the admin, and the admin's reply is relayed back to the student.
 
-Group behaviour (owner rule, 2026-11-02): in group/supergroup chats the
-bot stays silent unless a command is used (/start or the Commands
-button). Group chatter, FAQ keyword matches, fallback replies and
-photo receipts are all ignored there — the bot must not interject
-into group conversations. Private chats keep the full FAQ + fallback
-behaviour.
+Group behaviour (owner rule, 2026-11-02, updated 2026-11-03): in
+group/supergroup chats the bot stays silent except when a command is
+used (/start or the Commands button) — and even then it does NOT post
+the menu in the group. Instead it moves the conversation to the
+tapper's private chat (see redirect_to_private): it tries to send the
+menu straight to their private chat, and if Telegram blocks that
+(the user has never started the bot privately), it posts one short
+group message with a tap-to-open private-chat link. Group chatter,
+FAQ keyword matches, fallback replies and photo receipts are all
+ignored there — the bot must not interject into group conversations.
+Private chats keep the full FAQ + fallback behaviour.
 
 Needs env vars:
     BOT_TOKEN     - from @BotFather
     ADMIN_CHAT_ID - your Telegram user id (get it from @userinfobot)
+    BOT_USERNAME  - bot username without @ (default: SayarArkarBot),
+                    used only for the private-chat deep link
 
 Run:  pip install -r requirements.txt
       BOT_TOKEN=... ADMIN_CHAT_ID=... python bot.py
@@ -30,6 +37,7 @@ import requests
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "").strip()
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "SayarArkarBot").strip() or "SayarArkarBot"
 
 if not BOT_TOKEN:
     raise SystemExit("Set the BOT_TOKEN env var (get it from @BotFather).")
@@ -117,6 +125,45 @@ def send_threaded(chat_id, text, msg, reply_markup=None):
     return api("sendMessage", **params)
 
 
+def redirect_to_private(msg):
+    """Move a group command tap into the tapper's private chat.
+
+    Telegram does not let a bot open a user's private chat for them,
+    and it blocks a first private message to anyone who has never
+    started the bot. So: try sending the menu straight to the tapper's
+    private chat (works when they have started the bot before); if
+    that fails, post one short group message with a deep link that
+    opens the private chat when tapped. Either way, the menu and the
+    follow-up conversation stay out of the group.
+    """
+    chat_id = str(msg["chat"]["id"])
+    user_id = str(msg.get("from", {}).get("id", ""))
+    link = f"https://t.me/{BOT_USERNAME}?start=from_group"
+    private_text = COMMANDS_TEXT if msg.get("text") == COMMANDS_BTN else WELCOME
+    inline = {"inline_keyboard": [[{"text": "\U0001f4ac Continue in private chat",
+                                    "url": link}]]}
+    dm_ok = False
+    if user_id:
+        try:
+            dm_ok = bool(api("sendMessage", chat_id=user_id,
+                             text=private_text,
+                             reply_markup=KEYBOARD).get("ok"))
+        except Exception:
+            dm_ok = False
+    if dm_ok:
+        send_threaded(
+            chat_id,
+            "\u2705 I sent the menu to your private chat — please continue "
+            "there, so your questions stay out of the group.",
+            msg, reply_markup=inline)
+    else:
+        send_threaded(
+            chat_id,
+            "Tap below to continue in your private chat — I can't message "
+            "you privately until you have started me there once.",
+            msg, reply_markup=inline)
+
+
 def load_map():
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
@@ -168,16 +215,18 @@ def handle_update(upd, fwd_map):
     is_admin = bool(ADMIN_CHAT_ID) and chat_id == ADMIN_CHAT_ID
     chat_type = msg["chat"].get("type", "")
 
-    # Groups: commands only. Anything else — chatter, FAQ keywords,
-    # photos — is ignored silently, so the bot never interjects into
-    # a group conversation uninvited. (Admin relay below is a private
-    # chat flow and is unaffected.)
+    # Groups: commands only, and commands move to private chat.
+    # Anything else — chatter, FAQ keywords, photos — is ignored
+    # silently, so the bot never interjects into a group conversation
+    # uninvited. (Admin relay below is a private chat flow and is
+    # unaffected.)
     if chat_type in ("group", "supergroup"):
         if "text" not in msg:
             return
-        if not (msg["text"].startswith("/start")
-                or msg["text"] == COMMANDS_BTN):
+        if msg["text"].startswith("/start") or msg["text"] == COMMANDS_BTN:
+            redirect_to_private(msg)
             return
+        return
 
     # Photo (e.g. payment receipt screenshot): forward to admin, acknowledge.
     if "photo" in msg:
