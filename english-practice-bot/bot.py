@@ -175,11 +175,21 @@ CALC_TOP = ["USD", "MMK", "THB", "EUR", "SGD", "GBP", "JPY", "CNY", "INR", "AUD"
 CALC_TABS = ["MMK", "USD", "THB", "EUR", "SGD", "GBP", "JPY", "CNY"]
 
 
+def big_digits(s):
+    """Raw typed digits rendered wide (fullwidth) so they read as a big
+    calculator-screen display. Telegram has no font-size markup, so
+    this is the closest to 'bigger': the digits as typed, on their
+    own line, in wide characters."""
+    return "".join(chr(0xFF10 + int(ch)) if ch.isdigit() else ch
+                   for ch in (s or "0"))
+
+
 def calc_text(state):
     amount = float(state["amount"] or 0)
     src = state["src"]
     rates = currency_mod.load_rates()
     lines = ["🧮 Currency Calculator",
+             big_digits(state["amount"]),
              f"Amount: {currency_mod.fmt(amount, src)}",
              "",
              "Equals:"]
