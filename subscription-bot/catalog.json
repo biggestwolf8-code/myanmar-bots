@@ -558,5 +558,26 @@
     "plan": "Private Access / Unlimited Devices / 1 Year",
     "price_ks": 175000,
     "notes": "Instant invite code delivery on approval"
+  },
+  {
+    "category": "AI Tools",
+    "product": "Masterclass Practice Bot",
+    "plan": "2 Months",
+    "price_ks": 50000,
+    "notes": "Free 1-day trial via @MasterclassPractice_Bot. Admin grants access after payment — no code."
+  },
+  {
+    "category": "AI Tools",
+    "product": "Masterclass Practice Bot",
+    "plan": "6 Months",
+    "price_ks": 80000,
+    "notes": "Free 1-day trial via @MasterclassPractice_Bot. Admin grants access after payment — no code."
+  },
+  {
+    "category": "AI Tools",
+    "product": "Masterclass Practice Bot",
+    "plan": "1 Year",
+    "price_ks": 145000,
+    "notes": "Free 1-day trial via @MasterclassPractice_Bot. Admin grants access after payment — no code."
   }
 ]
