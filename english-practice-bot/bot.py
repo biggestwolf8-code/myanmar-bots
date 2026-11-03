@@ -107,6 +107,7 @@ PAYMENT_BLOCK = (
     "• AYAPay: 09754926216\n"
     "(Account: Arkar Myo Win)\n"
     "• Thai baht: message @SirArkar for Thai QR.\n"
+    "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
     "• USDT (crypto): BSC network (BEP20) only.\n"
     "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
     "  Binance ID: 793685010\n"

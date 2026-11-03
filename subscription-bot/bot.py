@@ -125,6 +125,7 @@ VPN_PAYMENT_MSG = (
     "• KBZPay: 09403720481 (Arkar Myo Win)\n"
     "• WavePay: 09780695959 (Arkar Myo Win)\n"
     "• AYAPay: 09754926216 (Arkar Myowin)\n"
+    "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
     "• USDT (crypto): BSC network (BEP20) only\n"
     "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
     "  Binance ID: 793685010\n"
@@ -136,6 +137,7 @@ VPN_PAYMENT_MSG = (
     "• KBZPay: 09403720481 (Arkar Myo Win)\n"
     "• WavePay: 09780695959 (Arkar Myo Win)\n"
     "• AYAPay: 09754926216 (Arkar Myowin)\n"
+    "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
     "• USDT (crypto): BSC network (BEP20) only\n"
     "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
     "  Binance ID: 793685010\n"
@@ -329,6 +331,7 @@ FAQ = [
     {"keywords": ["how can i pay", "how do i pay", "pay", "payment", "kbzpay",
                   "wavepay", "aya pay", "ayapay", "bank transfer", "qr",
                   "promptpay", "prompt pay", "usdt", "crypto", "tether",
+                  "paypal", "pay pal",
                   "ငွေပေး", "ငွေချေ"],
      "photo": "thai-qr.jpg",
      "answer": (
@@ -337,6 +340,7 @@ FAQ = [
          "• WavePay: 09780695959 (Arkar Myo Win)\n"
          "• AYAPay: 09754926216 (Arkar Myowin)\n"
          "• Thailand: bank QR code (see QR below)\n"
+         "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
          "• USDT (crypto): BSC network (BEP20) only\n"
          "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
          "  Binance ID: 793685010\n"
@@ -348,6 +352,7 @@ FAQ = [
          "• WavePay: 09780695959 (Arkar Myo Win)\n"
          "• AYAPay: 09754926216 (Arkar Myowin)\n"
          "• ထိုင်း: ဘဏ် QR code (အောက် QR ကို scan ဖတ်ပါ)\n"
+         "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
          "• USDT (crypto): BSC network (BEP20) only\n"
          "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
          "  Binance ID: 793685010\n"
@@ -1011,6 +1016,7 @@ def handle_callback(cb):
         edit(f"💳 To order {product} ({plan} — {price:,} Ks):\n\n"
              f"KBZPay: 09403720481\nWavePay: 09780695959\nAYAPay: 09754926216\n"
              f"(Account: Arkar Myo Win)\n"
+             f"PayPal (USD): arkarhlwenmoe@gmail.com\n"
              f"USDT (crypto): BSC network (BEP20) only\n"
              f"Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
              f"Binance ID: 793685010\n"
