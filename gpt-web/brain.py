@@ -148,6 +148,22 @@ def ask_gpt(messages, max_tokens=None, attachments=None):
                   "output_tokens": usage.get("completion_tokens", 0)}
 
 
+# Plain-text file types read as text on upload: documents plus every
+# common coding file type. All are decoded, never executed.
+TEXT_EXTS = {
+    ".txt", ".md", ".markdown", ".csv",
+    ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
+    ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh",
+    ".cs", ".go", ".rs", ".rb", ".php", ".swift", ".kt", ".kts",
+    ".scala", ".sh", ".bash", ".zsh", ".html", ".htm", ".css",
+    ".scss", ".less", ".json", ".jsonc", ".xml", ".yaml", ".yml",
+    ".toml", ".ini", ".cfg", ".conf", ".sql", ".lua", ".pl", ".pm",
+    ".r", ".dart", ".vue", ".svelte", ".elm", ".erl", ".ex", ".exs",
+    ".hs", ".ml", ".clj", ".groovy", ".ps1", ".bat", ".cmd",
+    ".dockerfile", ".ipynb",
+}
+
+
 def extract_doc_text(filename, data, max_chars=20000):
     """Extract readable text from an uploaded document. Returns (ok, text_or_error)."""
     ext = os.path.splitext(filename or "")[1].lower()
@@ -159,7 +175,7 @@ def extract_doc_text(filename, data, max_chars=20000):
             for p in reader.pages[:50]:
                 pages.append(p.extract_text() or "")
             text = "\n".join(pages)
-        elif ext in (".txt", ".md", ".markdown", ".csv", ".py"):
+        elif ext in TEXT_EXTS:
             text = data.decode("utf-8", errors="replace")
         else:
             return False, "unsupported file type"
