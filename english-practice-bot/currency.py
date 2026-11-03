@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Currency converter for the Masterclass Practice Bot.
 
-Same rate structure as the Biggest Seller converter, but anchored to
+Same rate structure as the Biggest Seller converter, anchored to
 THIS bot's own prices (2 months = 50,000 Ks / 350 baht, about $10),
-so 1 USD = 5,000 Ks — NOT the catalogue's 50,000 Ks anchor, which
-would have shown 50,000 Ks as $1 and 33 baht and contradicted the
-price list next to the calculator. Every other currency is the
-catalogue's rate divided by 10, stored as "MMK per 1 unit" and
-converted through MMK as the hub. The Practice Bot has no
-/updaterates command, so these rates only change by editing this file.
+so 1 USD = 5,000 Ks — the same anchor the catalogue uses since the
+owner corrected its 50,000 typo on 2026-11-03. Rates are stored as
+"MMK per 1 unit" and converted through MMK as the hub. The Practice
+Bot has no /updaterates command, so these rates only change by
+editing this file.
 """
 
 import json

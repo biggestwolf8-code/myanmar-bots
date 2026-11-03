@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Currency converter for Biggest Seller Myanmar.
 
-Anchor rate (set by the owner, 2026-11-02): 1 USD = 50,000 MMK.
+Anchor rate: 1 USD = 5,000 MMK (owner-corrected 2026-11-03 — the
+earlier 50,000 figure was a typo, an extra zero).
 That rate lives in code (DEFAULT_RATES) so it survives redeploys.
 
 Every other currency is stored as "MMK per 1 unit of that currency"
 and converts through MMK as the hub, so every currency converts
 to/from every other one. The non-USD rates below were derived from
 live online USD rates (exchangerate-api.com, dated 2026-11-01) by
-MMK_per_unit = 50,000 / (units per 1 USD) — e.g. 1 USD = 33.74 THB
-gives 1 THB = 1,481.92 Ks. The admin can refresh them anytime with
+MMK_per_unit = 5,000 / (units per 1 USD) — e.g. 1 USD = 33.74 THB
+gives 1 THB = 148.19 Ks. The admin can refresh them anytime with
 /updaterates, which re-fetches the online USD rates and re-derives
-all of them from the same 50,000 Ks anchor.
+all of them from the same 5,000 Ks anchor.
 
 Extra rates added by the admin (/setrate) are kept in rates.json next
 to this file and loaded on top of the defaults at startup.
@@ -28,26 +29,26 @@ RATES_FILE = os.path.join(BASE_DIR, "rates.json")
 # MMK per 1 unit. USD is the owner's fixed anchor rate; the rest were
 # derived from online USD rates dated 2026-11-01 (see module docstring).
 DEFAULT_RATES = {
-    "USD": 50000.0,
+    "USD": 5000.0,
     "MMK": 1.0,
-    "THB": 1481.92,
-    "SGD": 39062.50,
-    "EUR": 55803.57,
-    "GBP": 66934.40,
-    "JPY": 317.46,
-    "CNY": 7496.25,
-    "INR": 526.04,
-    "AUD": 35211.27,
-    "KRW": 37.46,
-    "VND": 1.94,
-    "MYR": 12315.27,
-    "PHP": 784.81,
-    "AED": 13623.98,
-    "CAD": 35714.29,
-    "NZD": 28089.89,
-    "HKD": 6369.43,
-    "LAK": 2.24,
-    "KHR": 12.30,
+    "THB": 148.19,
+    "SGD": 3906.25,
+    "EUR": 5580.36,
+    "GBP": 6693.44,
+    "JPY": 31.75,
+    "CNY": 749.63,
+    "INR": 52.60,
+    "AUD": 3521.13,
+    "KRW": 3.75,
+    "VND": 0.19,
+    "MYR": 1231.53,
+    "PHP": 78.48,
+    "AED": 1362.40,
+    "CAD": 3571.43,
+    "NZD": 2808.99,
+    "HKD": 636.94,
+    "LAK": 0.22,
+    "KHR": 1.23,
 }
 
 # Currencies to pull from the online USD feed when refreshing.
@@ -56,7 +57,7 @@ ONLINE_CURRENCIES = [c for c in DEFAULT_RATES if c not in ("USD", "MMK")]
 
 def fetch_online_rates():
     """Fetch live USD rates online and derive MMK per unit from the
-    owner's 50,000 Ks anchor. Returns (rates_dict, source_date)."""
+    owner's 5,000 Ks anchor. Returns (rates_dict, source_date)."""
     with urllib.request.urlopen(
             "https://api.exchangerate-api.com/v4/latest/USD",
             timeout=15) as r:
@@ -66,7 +67,7 @@ def fetch_online_rates():
     for code in ONLINE_CURRENCIES:
         per_usd = usd_rates.get(code)
         if per_usd:
-            derived[code] = round(50000.0 / per_usd, 2)
+            derived[code] = round(5000.0 / per_usd, 2)
     if not derived:
         raise ValueError("Online feed returned no usable rates")
     return derived, data.get("date", "unknown")
@@ -143,7 +144,7 @@ def convert_all_text(amount, from_code, rates=None):
             continue
         value, _, _ = convert(amount, src, code, rates)
         lines.append(f"• {fmt(value, code)}")
-    lines.append("\nRate used: 1 USD = 50,000 Ks.")
+    lines.append("\nRate used: 1 USD = 5,000 Ks.")
     return "\n".join(lines)
 
 

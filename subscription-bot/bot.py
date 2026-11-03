@@ -80,11 +80,11 @@ COMMANDS_TEXT = (
     "/start — show the main menu again\n"
     "🧮 Currency Calculator — tap the button on the main menu or on\n"
     "any product's price section; tap currency tabs and digits,\n"
-    "no typing needed (rate: 1 USD = 50,000 Ks)\n\n"
+    "no typing needed (rate: 1 USD = 5,000 Ks)\n\n"
     "📋 လုပ်ဆောင်ချက်များ — အပေါ်က ခလုတ်များကို နှိပ်၍ဖြစ်စေ၊ "
     "မေးခွန်းကို ရိုက်၍ဖြစ်စေ မေးနိုင်ပါသည်။\n\n"
     "/start — main menu ကို ပြန်ပြရန်\n"
-    "/convert 10 USD — ငွေလဲနှုန်း တွက်ရန် (1 USD = 50,000 Ks)"
+    "/convert 10 USD — ငွေလဲနှုန်း တွက်ရန် (1 USD = 5,000 Ks)"
 )
 COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
     "\n\n👑 Admin commands\n"
@@ -96,7 +96,7 @@ COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
     "/setrate CODE mmk_per_unit — add/update a currency rate\n"
     "  (e.g. /setrate THB 1500 means 1 THB = 1,500 Ks)\n"
     "/updaterates — refresh all rates from online USD rates\n"
-    "  (still anchored at 1 USD = 50,000 Ks)"
+    "  (still anchored at 1 USD = 5,000 Ks)"
 )
 
 # ---------- VPN purchase flow ----------
@@ -449,7 +449,7 @@ def product_text(product, cur="MMK"):
     lines = [f"📦 {product}"]
     for it in items:
         if cur == "MMK":
-            line = f"• {it['plan']} — {it['price_ks']:,} Ks (${it['price_ks'] / 50000:,.2f})"
+            line = f"• {it['plan']} — {it['price_ks']:,} Ks (${it['price_ks'] / 5000:,.2f})"
         else:
             try:
                 value, _, _ = currency_mod.convert(
@@ -522,7 +522,7 @@ def calc_text(state):
     lines.append("")
     lines.append("Tap a currency tab to change the input currency, "
                  "then tap the digits. No typing needed.")
-    lines.append("Rate: 1 USD = 50,000 Ks.")
+    lines.append("Rate: 1 USD = 5,000 Ks.")
     return "\n".join(lines)
 
 
@@ -735,7 +735,7 @@ def handle_message(msg, fwd_map):
                       COMMANDS_TEXT_ADMIN if is_admin else COMMANDS_TEXT, msg)
         return
 
-    # ---- Currency converter (rate: 1 USD = 50,000 Ks) ----
+    # ---- Currency converter (rate: 1 USD = 5,000 Ks) ----
     if text.startswith("/convert"):
         parsed = currency_mod.parse_convert(text)
         if not parsed:
@@ -743,9 +743,9 @@ def handle_message(msg, fwd_map):
                           "Usage: /convert <amount> <currency> [to <currency>]\n"
                           "Examples:\n"
                           "/convert 10 USD\n"
-                          "/convert 500000 Ks to USD\n"
+                          "/convert 50000 Ks to USD\n"
                           "/convert 100 USD to THB  (once THB is set)\n"
-                          "Rate: 1 USD = 50,000 Ks.", msg)
+                          "Rate: 1 USD = 5,000 Ks.", msg)
             return
         amount, src, dst = parsed
         rates = currency_mod.load_rates()
@@ -755,7 +755,7 @@ def handle_message(msg, fwd_map):
                 send_threaded(chat_id,
                               f"💱 {currency_mod.fmt(amount, s)} = "
                               f"{currency_mod.fmt(value, d)}\n"
-                              f"Rate used: 1 USD = 50,000 Ks.", msg)
+                              f"Rate used: 1 USD = 5,000 Ks.", msg)
             except ValueError as e:
                 send_threaded(chat_id, f"❌ {e}", msg)
         else:
@@ -794,8 +794,8 @@ def handle_message(msg, fwd_map):
         currency_mod.save_rates(rates)
         send_threaded(chat_id,
                       f"✅ Rate set: 1 {code} = {value:,.0f} Ks.\n"
-                      f"That is ${value / 50000:,.2f} per {code} at "
-                      f"1 USD = 50,000 Ks, and /convert now works "
+                      f"That is ${value / 5000:,.2f} per {code} at "
+                      f"1 USD = 5,000 Ks, and /convert now works "
                       f"to/from {code}.", msg)
         return
 
@@ -807,7 +807,7 @@ def handle_message(msg, fwd_map):
             currency_mod.save_rates(rates)
             lines = [f"✅ Rates refreshed from online USD rates "
                      f"(feed date {src_date}), anchored at "
-                     f"1 USD = 50,000 Ks:"]
+                     f"1 USD = 5,000 Ks:"]
             for code in sorted(derived):
                 lines.append(f"• 1 {code} = {derived[code]:,.2f} Ks")
             send_threaded(chat_id, "\n".join(lines), msg)
