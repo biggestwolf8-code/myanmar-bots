@@ -33,7 +33,7 @@ import brain
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif",
-                ".pdf", ".txt", ".md", ".markdown", ".csv"}
+                ".pdf", ".txt", ".md", ".markdown", ".csv", ".py"}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
@@ -737,7 +737,7 @@ def api_upload_chat():
             ext = os.path.splitext(f.filename)[1].lower()
             if ext not in ALLOWED_EXTS:
                 return jsonify({"ok": False,
-                                 "error": f"{f.filename}: that file type isn't supported (photos, PDF, TXT, Markdown, CSV)."}), 400
+                                 "error": f"{f.filename}: that file type isn't supported (photos, PDF, TXT, Markdown, CSV, Python)."}), 400
             data = f.read()
             if len(data) > MAX_UPLOAD_BYTES:
                 return jsonify({"ok": False, "error": f"{f.filename}: file too big (10MB max)."}), 400

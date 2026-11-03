@@ -174,10 +174,10 @@
         <button id="plusBtn" onclick="togglePlusMenu(event)" title="Create or attach">+</button>
         <div id="plusMenu" class="hidden">
           <button onclick="startImageCreate()"><span style="font-size:18px;">🎨</span><span>Create image<span class="opt-sub">Generate a picture from a description</span></span></button>
-          <button onclick="document.getElementById('fileInput').click()"><span style="font-size:18px;">📎</span><span>Upload photo or file<span class="opt-sub">PNG, JPG, PDF, TXT, CSV…</span></span></button>
+          <button onclick="document.getElementById('fileInput').click()"><span style="font-size:18px;">📎</span><span>Upload photo or file<span class="opt-sub">PNG, JPG, PDF, TXT, CSV, Python…</span></span></button>
         </div>
       </span>
-      <input type="file" id="fileInput" class="hidden" multiple accept="image/*,.pdf,.txt,.md,.csv" onchange="onFilePicked(this)">
+      <input type="file" id="fileInput" class="hidden" multiple accept="image/*,.pdf,.txt,.md,.csv,.py" onchange="onFilePicked(this)">
       <div class="row" style="margin-bottom:6px;justify-content:flex-end">
         <button id="agentBtn" onclick="toggleAgent()" title="Agent mode: the AI uses tools (Python, files) to do multi-step work">🤖 Agent</button>
       </div>

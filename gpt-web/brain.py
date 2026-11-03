@@ -159,7 +159,7 @@ def extract_doc_text(filename, data, max_chars=20000):
             for p in reader.pages[:50]:
                 pages.append(p.extract_text() or "")
             text = "\n".join(pages)
-        elif ext in (".txt", ".md", ".markdown", ".csv"):
+        elif ext in (".txt", ".md", ".markdown", ".csv", ".py"):
             text = data.decode("utf-8", errors="replace")
         else:
             return False, "unsupported file type"
