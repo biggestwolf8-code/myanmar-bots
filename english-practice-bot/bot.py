@@ -185,13 +185,14 @@ def big_digits(s):
 
 
 def calc_text(state):
+    """Calculator message. The typed display sits at the BOTTOM, right
+    above the buttons — the old layout put it at the top, where it
+    scrolled off-screen behind the tall keyboard."""
     amount = float(state["amount"] or 0)
     src = state["src"]
     rates = currency_mod.load_rates()
     lines = ["🧮 Currency Calculator",
-             big_digits(state["amount"]),
-             f"Amount: {currency_mod.fmt(amount, src)}",
-             "",
+             "Rate: 1 USD = 5,000 Ks.",
              "Equals:"]
     codes = CALC_TOP if not state["show_all"] else sorted(rates)
     for code in codes:
@@ -203,9 +204,8 @@ def calc_text(state):
         except ValueError:
             pass
     lines.append("")
-    lines.append("Tap a currency tab to change the input currency, "
-                 "then tap the digits. No typing needed.")
-    lines.append("Rate: 1 USD = 5,000 Ks.")
+    lines.append(big_digits(state["amount"]))
+    lines.append(f"Amount: {currency_mod.fmt(amount, src)}")
     return "\n".join(lines)
 
 
@@ -213,7 +213,7 @@ def kb_calc(state):
     rows = []
     tabs, row = [], []
     for code in CALC_TABS:
-        label = f"[{code}]" if code == state["src"] else code
+        label = f"✅ {code}" if code == state["src"] else code
         row.append({"text": label, "callback_data": f"pricecalc:src:{code}"})
         if len(row) == 4:
             tabs.append(row)
@@ -227,10 +227,9 @@ def kb_calc(state):
     rows.append([{"text": "C", "callback_data": "pricecalc:clear"},
                  {"text": "0", "callback_data": "pricecalc:d:0"},
                  {"text": "⌫", "callback_data": "pricecalc:back"}])
-    rows.append([{"text": "Show all currencies" if not state["show_all"]
-                  else "Show fewer",
-                  "callback_data": "pricecalc:all"}])
-    rows.append([{"text": "⬅️ Prices", "callback_data": "pricecalc:prices"}])
+    rows.append([{"text": "Show all" if not state["show_all"] else "Show fewer",
+                  "callback_data": "pricecalc:all"},
+                 {"text": "⬅️ Prices", "callback_data": "pricecalc:prices"}])
     return {"inline_keyboard": rows}
 
 
@@ -1613,23 +1612,28 @@ def handle_callback(cq):
             if not state:
                 state = {"amount": "0", "src": "USD", "show_all": False}
                 CALC_STATE[key] = state
-            answer()
             if action.startswith("d:"):
+                # Instant toast with the typed digits: the message edit
+                # itself still takes ~1s through Telegram, so the toast
+                # is the immediate feedback that the tap registered.
                 digit = action[2:]
                 if state["amount"] == "0":
                     state["amount"] = digit
                 elif len(state["amount"]) < 12:
                     state["amount"] += digit
-            elif action.startswith("src:"):
-                state["src"] = action[4:]
-            elif action == "clear":
-                state["amount"] = "0"
-            elif action == "back":
-                state["amount"] = state["amount"][:-1] or "0"
-            elif action == "all":
-                state["show_all"] = not state["show_all"]
+                answer(state["amount"])
             else:
-                return
+                answer()
+                if action.startswith("src:"):
+                    state["src"] = action[4:]
+                elif action == "clear":
+                    state["amount"] = "0"
+                elif action == "back":
+                    state["amount"] = state["amount"][:-1] or "0"
+                elif action == "all":
+                    state["show_all"] = not state["show_all"]
+                else:
+                    return
         try:
             tg("editMessageText", {
                 "chat_id": chat_id, "message_id": msg_id,
