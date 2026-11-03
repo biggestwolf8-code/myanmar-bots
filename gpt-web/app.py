@@ -300,8 +300,38 @@ def new_convo(sid):
 
 
 def api_turns_for(convo):
-    return [{"role": m["role"], "content": m["content"]}
-            for m in convo["messages"][-20:]]
+    """Last 20 turns, with uploaded-file context merged back in.
+
+    Root cause of the 'app doesn't understand my project' report
+    (2026-11-03): upload turns used to store only a label like
+    '[Document attached: main.py]', so follow-up turns sent the API
+    the label and nothing else — the file itself was gone. Upload
+    turns now store the file's text in a separate 'context' field
+    (kept out of the chat bubble the user sees), and this merges it
+    back in front of that turn's question for every later turn.
+    """
+    turns = []
+    for m in convo["messages"][-20:]:
+        content = m["content"]
+        if m.get("context"):
+            content = m["context"] + "\n\n" + content
+        turns.append({"role": m["role"], "content": content})
+    return turns
+
+
+def recent_images(convo, limit=3):
+    """Latest image attachments across the conversation, oldest first.
+
+    Vision models only see images sent on the current turn, so a
+    photo uploaded earlier must be re-attached on follow-up turns
+    or the app 'forgets' it. Bounded to the latest 3, like the
+    Claude app, so follow-up cost stays bounded.
+    """
+    found = []
+    for m in convo["messages"]:
+        for img in m.get("images", []):
+            found.append(img)
+    return found[-limit:]
 
 
 def store_file(sid, fname, fbytes, mime):
@@ -637,7 +667,12 @@ def api_chat():
             if steps:
                 reply += "\n\n⚙️ Steps: " + " → ".join(steps)
         else:
-            reply, api_usage = brain.ask_gpt(api_turns_for(convo))
+            imgs = recent_images(convo)
+            img_attachments = ([{"kind": "image", "mime": i["mime"],
+                                 "b64": i["b64"]} for i in imgs]
+                               if imgs else None)
+            reply, api_usage = brain.ask_gpt(api_turns_for(convo),
+                                             attachments=img_attachments)
             reply = reply.strip()
     except Exception as ex:
         print("OpenAI API failed:", ex)
@@ -732,6 +767,7 @@ def api_upload_chat():
 
     attachments = []
     stored_labels = []
+    stored_docs = []
     try:
         for f in files:
             ext = os.path.splitext(f.filename)[1].lower()
@@ -754,7 +790,13 @@ def api_upload_chat():
                     return jsonify({"ok": False, "error": f"Couldn't read {f.filename}: {doc_text}"}), 400
                 attachments.append({"kind": "doc", "name": f.filename, "text": doc_text})
                 stored_labels.append(f"[Document attached: {f.filename}]")
+                # Persist the content (first 6000 chars per file, like
+                # the Claude app) so follow-up turns still understand
+                # the project — previously only the label was kept.
+                stored_docs.append(
+                    f"[Attached file {f.filename} content:]\n{doc_text[:6000]}")
         stored_label = " ".join(stored_labels)
+        stored_context = "\n\n".join(stored_docs) if stored_docs else ""
     except Exception as e:
         print("upload processing failed:", e)
         return jsonify({"ok": False, "error": "Couldn't process that file."}), 400
@@ -773,7 +815,24 @@ def api_upload_chat():
         return jsonify({"ok": False, "error": "Empty reply — try again."}), 502
 
     stored_content = (stored_label + " " + text).strip()
-    msgs.append({"role": "user", "content": stored_content, "files": []})
+    user_msg = {"role": "user", "content": stored_content, "files": []}
+    if stored_context:
+        user_msg["context"] = stored_context
+    user_msg["images"] = [a for a in attachments if a["kind"] == "image"]
+    msgs.append(user_msg)
+    # Keep only the latest 3 images across the whole conversation.
+    total_images = sum(len(m.get("images", [])) for m in msgs)
+    if total_images > 3:
+        keep = 3
+        for m in reversed(msgs):
+            imgs = m.get("images", [])
+            if keep <= 0:
+                m["images"] = []
+            elif len(imgs) > keep:
+                m["images"] = imgs[-keep:]
+                keep = 0
+            else:
+                keep -= len(imgs)
     if not any(m["role"] == "user" for m in msgs[:-1]):
         convo["title"] = (text or files[0].filename or "Attachment")[:42]
     convo["updated"] = time.time()
