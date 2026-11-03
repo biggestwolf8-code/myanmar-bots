@@ -100,23 +100,72 @@ TRIAL_END_MSG = (
     + "\n\nSee /price for payment methods and a currency calculator."
 )
 
-PAYMENT_MSG = (
-    PRICE_MSG
-    + "\n\n💳 How to pay:\n"
+PAYMENT_BLOCK = (
+    "💳 How to pay:\n"
     "• KBZPay: 09403720481\n"
     "• WavePay: 09780695959\n"
     "• AYAPay: 09754926216\n"
     "(Account: Arkar Myo Win)\n"
-    "• Thai baht: message @SirArkar for Thai QR.\n\n"
-    "📸 After paying, send your receipt screenshot here or message "
+    "• Thai baht: message @SirArkar for Thai QR."
+)
+
+# (months, label, price_ks, price_baht) — mirrors PRICE_MSG.
+BUY_PLANS = [
+    (2, "2 months", 50000, 350),
+    (6, "6 months", 80000, 550),
+    (12, "1 year", 145000, 850),
+]
+
+# user_id -> months of the plan last tapped (so a receipt photo can be
+# matched to a plan when it is forwarded to the admin).
+PRICEBUY_STATE = {}
+
+PAYMENT_MSG = (
+    PRICE_MSG
+    + "\n\n" + PAYMENT_BLOCK
+    + "\n\n📸 After paying, send your receipt screenshot here or message "
     "@SirArkar — admin grants access directly on your account, no code."
 )
 
 
 def price_keyboard():
-    """Inline tab under the price message: opens the currency calculator."""
+    """Inline tab under the price message: calculator + buy buttons."""
     return {"inline_keyboard": [[
         {"text": "🧮 Currency Calculator", "callback_data": "pricecalc:open"},
+        {"text": "🛒 Buy a plan", "callback_data": "pricebuy:open"},
+    ]]}
+
+
+def buy_plans_text():
+    lines = ["🛒 Choose a plan:"]
+    for months, label, ks, baht in BUY_PLANS:
+        lines.append(f"• {label} — {ks:,} Ks / {baht} baht")
+    lines.append("\nTap a plan to see how to pay.")
+    return "\n".join(lines)
+
+
+def buy_plans_keyboard():
+    rows = [[{"text": f"{label} — {ks:,} Ks / {baht} baht",
+              "callback_data": f"pricebuy:plan:{months}"}]
+            for months, label, ks, baht in BUY_PLANS]
+    rows.append([{"text": "⬅️ Prices", "callback_data": "pricecalc:prices"}])
+    return {"inline_keyboard": rows}
+
+
+def buy_plan_text(months):
+    for m, label, ks, baht in BUY_PLANS:
+        if m == months:
+            return (f"🛒 {label} — {ks:,} Ks / {baht} baht\n\n"
+                    + PAYMENT_BLOCK +
+                    "\n\n📸 After paying, send your receipt screenshot here — "
+                    "admin grants access directly on your account, no code.")
+    return buy_plans_text()
+
+
+def buy_plan_keyboard():
+    return {"inline_keyboard": [[
+        {"text": "⬅️ Plans", "callback_data": "pricebuy:open"},
+        {"text": "⬅️ Prices", "callback_data": "pricecalc:prices"},
     ]]}
 
 
@@ -1581,6 +1630,43 @@ def handle_callback(cq):
             print("editMessageText failed:", e)
         return
 
+    # Buy flow — open to everyone, like the calculator.
+    if data.startswith("pricebuy:"):
+        action = data[len("pricebuy:"):]
+        if action == "open":
+            answer()
+            try:
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": buy_plans_text(),
+                    "reply_markup": json.dumps(buy_plans_keyboard()),
+                })
+            except Exception as e:
+                print("editMessageText failed:", e)
+            return
+        if action.startswith("plan:"):
+            try:
+                months = int(action[len("plan:"):])
+            except ValueError:
+                answer("Unknown plan.")
+                return
+            if months not in [m for m, _, _, _ in BUY_PLANS]:
+                answer("Unknown plan.")
+                return
+            PRICEBUY_STATE[user_id] = months
+            answer()
+            try:
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": buy_plan_text(months),
+                    "reply_markup": json.dumps(buy_plan_keyboard()),
+                })
+            except Exception as e:
+                print("editMessageText failed:", e)
+            return
+        answer("Unknown action.")
+        return
+
     if not is_admin(user_id):
         answer("Only the admin can do that.", alert=True)
         return
@@ -2189,6 +2275,29 @@ def handle_update(u):
     if text.startswith(("/price", "/buy", "/subscribe")):
         send_text(chat_id, PAYMENT_MSG, thread,
                   keyboard=json.dumps(price_keyboard()))
+        return
+
+    # Payment receipt photos (private chats only) — forwarded to the
+    # admin so a buyer whose access ended can still pay. Must sit
+    # before the gate, or expired users could never send a receipt.
+    if "photo" in msg and ctype == "private" and not is_admin(user_id):
+        if ADMIN_CHAT_ID:
+            try:
+                tg("forwardMessage", {"chat_id": ADMIN_CHAT_ID,
+                                      "from_chat_id": chat_id,
+                                      "message_id": msg.get("message_id")})
+                plan = PRICEBUY_STATE.get(user_id)
+                note = f"📸 Payment receipt from {name} (id {user_id})"
+                if plan:
+                    note += f" — plan tapped: {plan} months"
+                send_text(ADMIN_CHAT_ID, note)
+            except Exception as e:
+                print("receipt forward failed:", e)
+        send_text(chat_id,
+                  "📸 Receipt received! I've passed it to Sayar Arkar — "
+                  "your access will be granted shortly after payment is "
+                  "confirmed. Thank you! 🙏",
+                  thread)
         return
 
     # Everyone else needs a valid invite before anything (no API cost for strangers).
