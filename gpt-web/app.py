@@ -54,6 +54,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 SUBSCRIPTION_SECRET = os.environ.get("SUBSCRIPTION_SECRET", "")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
 DAILY_COST_LIMIT = float(os.environ.get("DAILY_COST_LIMIT", "1.0"))
+MONTHLY_COST_LIMIT = float(os.environ.get("MONTHLY_COST_LIMIT", "5.0"))
 AGENT_DAILY_LIMIT = int(os.environ.get("AGENT_DAILY_LIMIT", "20"))
 PORT = int(os.environ.get("PORT", "5000"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -212,6 +213,35 @@ def over_daily_cost_limit(code):
     return d.get("cost", 0.0) >= DAILY_COST_LIMIT
 
 
+def current_month():
+    return datetime.date.today().strftime("%Y-%m")
+
+
+def monthly_cost(code):
+    e = codes.get(code, {})
+    m = e.get("monthly") or {}
+    return m.get("cost", 0.0) if m.get("month") == current_month() else 0.0
+
+
+def over_monthly_cost_limit(code):
+    """$5/month cap: a user at the cap is blocked until next month.
+
+    Counts chat token cost (record_usage) plus image cost
+    (track_images), so it reflects real spend, not just chat.
+    """
+    return monthly_cost(code) >= MONTHLY_COST_LIMIT
+
+
+def add_monthly_cost(code, cost):
+    e = codes.setdefault(code, {})
+    m = e.get("monthly") or {}
+    if m.get("month") == current_month():
+        m["cost"] = m.get("cost", 0.0) + cost
+    else:
+        m = {"month": current_month(), "cost": cost}
+    e["monthly"] = m
+
+
 def bump_daily(code):
     today = datetime.date.today().isoformat()
     e = codes.setdefault(code, {})
@@ -264,6 +294,10 @@ def record_usage(code, api_usage):
     if d.get("day") == today:
         d["cost"] = d.get("cost", 0.0) + cost
         e["daily"] = d
+    # And in the monthly counter for the $5/month cap. The bucket
+    # starts empty at deploy: spend before this change is lifetime
+    # usage only, with no month split, so it cannot be counted back.
+    add_monthly_cost(code, cost)
 
 
 def get_convo_store(sid):
@@ -435,6 +469,7 @@ def track_images(code, n=1):
     u = usage.setdefault(code, {"input": 0, "output": 0, "cost": 0.0})
     u["images"] = u.get("images", 0) + n
     u["cost"] += brain.IMAGE_COST * n
+    add_monthly_cost(code, brain.IMAGE_COST * n)
 
 
 def split_blocks(reply, user_text, pending_image=False):
@@ -565,6 +600,8 @@ def api_my_usage():
         "daily_cost": round(daily_cost, 4),
         "daily_count": daily_count,
         "daily_cost_limit": DAILY_COST_LIMIT,
+        "monthly_cost": round(monthly_cost(code), 4),
+        "monthly_cost_limit": MONTHLY_COST_LIMIT,
         "daily_msg_limit": DAILY_LIMIT,
     })
 
@@ -786,6 +823,9 @@ def api_chat():
     if over_daily_cost_limit(code):
         return jsonify({"ok": False,
                          "error": "You've reached today's $1 usage limit — come back tomorrow!"}), 429
+    if over_monthly_cost_limit(code):
+        return jsonify({"ok": False,
+                         "error": "You've reached this month's $5 usage limit — come back next month!"}), 429
 
     agent_mode = bool(data.get("agent"))
     if agent_mode and over_agent_limit(code):
@@ -909,6 +949,9 @@ def api_upload_chat():
     if over_daily_cost_limit(code):
         return jsonify({"ok": False,
                          "error": "You've reached today's $1 usage limit — come back tomorrow!"}), 429
+    if over_monthly_cost_limit(code):
+        return jsonify({"ok": False,
+                         "error": "You've reached this month's $5 usage limit — come back next month!"}), 429
 
     attachments = []
     stored_labels = []
@@ -1105,6 +1148,7 @@ def api_admin_data():
                      "used": bool(e.get("used_by")),
                      "created": e.get("created", ""),
                      "today": d.get("count", 0) if d.get("day") == datetime.date.today().isoformat() else 0,
+                     "monthly_cost": round(monthly_cost(c), 4),
                      "in": u["input"], "out": u["output"], "cost": round(u["cost"], 4),
                      "images": u.get("images", 0)})
     rows.sort(key=lambda r: r["created"], reverse=True)
