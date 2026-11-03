@@ -145,6 +145,15 @@
   <div id="scrim" onclick="document.body.classList.remove('side-open')"></div>
   <aside id="sidebar">
     <div class="side-head"><button id="newChatBtn" onclick="newChat()">+ New chat</button></div>
+    <div style="padding:10px 12px 4px;border-bottom:1px solid var(--line,#e5e5e5)">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px">📁 Project</div>
+      <select id="projectSelect" onchange="selectProject(this.value)" style="width:100%;padding:8px;border:1.5px solid var(--line,#ddd);border-radius:10px;font-size:14px"></select>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="newProjectInput" placeholder="New project name" maxlength="40" style="flex:1;min-width:0;padding:8px;border:1.5px solid var(--line,#ddd);border-radius:10px;font-size:14px">
+        <button onclick="createProject()" style="padding:8px 12px;border:1.5px solid #c9cdf7;background:#f6f6ff;border-radius:10px;font-weight:700;cursor:pointer">Create</button>
+      </div>
+      <div id="projectFiles" style="font-size:12px;color:#666;margin:6px 0 10px;word-break:break-word"></div>
+    </div>
     <div id="convoList"></div>
     <div class="side-foot">Powered by <strong>OpenAI</strong> · Developed by Arkar Myowin</div>
   </aside>
@@ -288,6 +297,7 @@ async function boot(){
   if (j.ok && !window._welcomed){
     window._welcomed = true;
     await loadConvos(true);
+    await loadProjects();
     document.getElementById('msgInput').focus();
   }
   if (j.ok) loadBroadcast();
@@ -341,7 +351,35 @@ async function openConvo(id, skipList){
   if (!j.messages.length) addMsg('bot', WELCOME);
   else for (const m of j.messages) addMsg(m.role === 'user' ? 'user' : 'bot', m.content, m.files);
   document.body.classList.remove('side-open');
+  loadProjects();
   if (!skipList) loadConvos(false);
+}
+async function loadProjects(){
+  try{
+    const r = await fetch('/api/projects'); const j = await r.json(); if(!j.ok) return;
+    const sel = document.getElementById('projectSelect'); sel.innerHTML = '';
+    const names = j.projects.map(p => p.name);
+    if (!names.includes('General')) names.unshift('General');
+    if (!names.includes(j.active)) names.push(j.active);
+    for (const n of names){
+      const o = document.createElement('option'); o.value = n; o.textContent = n;
+      if (n === j.active) o.selected = true; sel.appendChild(o);
+    }
+    const cur = j.projects.find(p => p.name === j.active);
+    document.getElementById('projectFiles').textContent =
+      (cur && cur.files.length) ? 'Files: ' + cur.files.join(', ')
+      : 'No files in this project yet — upload files while this project is selected.';
+  } catch(e){}
+}
+async function selectProject(name){
+  await fetch('/api/projects/select',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  loadProjects();
+}
+async function createProject(){
+  const inp = document.getElementById('newProjectInput'); const name = inp.value.trim(); if(!name) return;
+  const r = await fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  const j = await r.json(); if(!j.ok){ alert(j.error || 'Could not create project'); return; }
+  inp.value = ''; loadProjects();
 }
 async function deleteConvo(id, ev){
   ev.stopPropagation();
@@ -472,6 +510,7 @@ async function newChat(){
   addMsg('bot','✨ Fresh start! What would you like to work on?');
   document.body.classList.remove('side-open');
   loadConvos(false);
+  loadProjects();
 }
 async function logout(){ await fetch('/api/logout',{method:'POST'}); location.reload(); }
 document.getElementById('codeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') redeem(); });

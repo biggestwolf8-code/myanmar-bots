@@ -102,7 +102,9 @@ usage = _load_json("gptusage.json", {})
 filemeta = _load_json("gptfiles.json", {})
 users = _load_json("gptusers.json", {})
 # Ongoing project files, keyed by invite code (so they survive device
-# and login changes, like chats do). {code: {"files": {name: {"text", "updated"}}}}
+# and login changes, like chats do). {code: {"projects": {project:
+# {"files": {name: {"text", "updated"}}}}}}. The pre-named-project flat
+# {"files": ...} format is migrated to a "General" project on first use.
 projects = _load_json("gptprojects.json", {})
 
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -326,19 +328,53 @@ def api_turns_for(convo):
 PROJECT_MAX_CHARS = 24000
 
 
-def update_project(code, filename, text):
-    """Add/replace one file in the user's ongoing project store.
+def get_project_store(code):
+    """Named-project store for a user, migrating the old flat format.
 
-    Re-uploading the same filename replaces the old version, so an
-    evolving project stays current. Oldest files drop out once the
-    store passes PROJECT_MAX_CHARS, so project context stays bounded
-    against the $1/day usage cap.
+    Old format (2026-11-03, before named projects): projects[code] =
+    {"files": {...}}. That becomes a single project called "General",
+    so nothing uploaded before is lost.
     """
-    store = projects.setdefault(code, {"files": {}})
-    store["files"][filename] = {"text": text[:6000], "updated": time.time()}
-    while sum(len(v["text"]) for v in store["files"].values()) > PROJECT_MAX_CHARS:
-        oldest = min(store["files"], key=lambda n: store["files"][n]["updated"])
-        del store["files"][oldest]
+    store = projects.get(code)
+    if not store:
+        store = {"projects": {}}
+        projects[code] = store
+        return store
+    if "files" in store:
+        old_files = store.pop("files")
+        store["projects"] = ({"General": {"files": old_files}}
+                             if old_files else {})
+    store.setdefault("projects", {})
+    return store
+
+
+def active_project(convo):
+    """The project a chat is working on; 'General' unless switched."""
+    return convo.get("project") or "General"
+
+
+def valid_project_name(name):
+    name = (name or "").strip()
+    if not name or len(name) > 40 or "/" in name or "\\" in name:
+        return None
+    return name
+
+
+def update_project(code, project, filename, text):
+    """Add/replace one file in one named project.
+
+    Re-uploading the same filename replaces the old version within
+    that project only — a main.py in Project B no longer overwrites
+    a main.py in Project A. Oldest files drop out once that project
+    passes PROJECT_MAX_CHARS, so context stays bounded against the
+    $1/day usage cap.
+    """
+    store = get_project_store(code)
+    files = store["projects"].setdefault(project, {"files": {}})["files"]
+    files[filename] = {"text": text[:6000], "updated": time.time()}
+    while sum(len(v["text"]) for v in files.values()) > PROJECT_MAX_CHARS:
+        oldest = min(files, key=lambda n: files[n]["updated"])
+        del files[oldest]
 
 
 def convo_file_names(convo):
@@ -351,17 +387,18 @@ def convo_file_names(convo):
     return names
 
 
-def project_context_text(code, exclude=None):
-    """Formatted project files for the system prompt, minus `exclude`.
+def project_context_text(code, project, exclude=None):
+    """Formatted files of one named project, minus `exclude`.
 
     Files already present in the current conversation's turns are
     excluded by callers, so the same file is never sent twice in one
     turn (once in the turns, once in the system prompt).
     """
     exclude = exclude or set()
-    store = projects.get(code, {})
+    store = get_project_store(code)
+    files = store["projects"].get(project, {}).get("files", {})
     parts = []
-    for name, entry in store.get("files", {}).items():
+    for name, entry in files.items():
         if name in exclude:
             continue
         parts.append(f"--- {name} ---\n{entry['text']}")
@@ -676,6 +713,61 @@ def api_convos_delete():
     return jsonify({"ok": True, "active": c["id"], "messages": c["messages"]})
 
 
+@app.route("/api/projects", methods=["GET"])
+def api_projects():
+    """List named projects and the active project's files for this chat."""
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False}), 401
+    code = code_for_sid(sid)
+    store = get_project_store(code)
+    convo = active_convo(sid)
+    active = active_project(convo)
+    out = []
+    for name, proj in store["projects"].items():
+        out.append({"name": name,
+                    "files": sorted(proj.get("files", {}).keys())})
+    return jsonify({"ok": True, "projects": out, "active": active})
+
+
+@app.route("/api/projects", methods=["POST"])
+def api_projects_create():
+    """Create a named project and switch this chat to it."""
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False}), 401
+    code = code_for_sid(sid)
+    data = request.get_json(force=True, silent=True) or {}
+    name = valid_project_name(data.get("name"))
+    if not name:
+        return jsonify({"ok": False,
+                         "error": "Project name must be 1-40 characters, no slashes."}), 400
+    store = get_project_store(code)
+    store["projects"].setdefault(name, {"files": {}})
+    convo = active_convo(sid)
+    convo["project"] = name
+    save_all()
+    return jsonify({"ok": True, "active": name})
+
+
+@app.route("/api/projects/select", methods=["POST"])
+def api_projects_select():
+    """Switch this chat to an existing named project."""
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False}), 401
+    code = code_for_sid(sid)
+    data = request.get_json(force=True, silent=True) or {}
+    name = (data.get("name") or "").strip()
+    store = get_project_store(code)
+    if name not in store["projects"] and name != "General":
+        return jsonify({"ok": False, "error": "Unknown project."}), 404
+    convo = active_convo(sid)
+    convo["project"] = name
+    _save_json("gpthistories.json", histories)
+    return jsonify({"ok": True, "active": name})
+
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     sid = current_sid()
@@ -709,7 +801,8 @@ def api_chat():
     new_agent_files = []
     try:
         project_ctx = project_context_text(
-            code, exclude=convo_file_names(convo)) or None
+            code, active_project(convo),
+            exclude=convo_file_names(convo)) or None
         if agent_mode:
             wsdir = workspace_dir(sid)
             reply, api_usage, steps, new_agent_files = brain.ask_gpt_agent(
@@ -859,10 +952,12 @@ def api_upload_chat():
     # uploaded, which travel as attachments) go in as background, then
     # the new files join the store for every later chat.
     new_doc_names = {a["name"] for a in attachments if a["kind"] == "doc"}
-    old_project_ctx = project_context_text(code, exclude=new_doc_names) or None
+    project_name = active_project(convo)
+    old_project_ctx = project_context_text(
+        code, project_name, exclude=new_doc_names) or None
     for a in attachments:
         if a["kind"] == "doc":
-            update_project(code, a["name"], a["text"])
+            update_project(code, project_name, a["name"], a["text"])
     api_turns = api_turns_for(convo) + [{"role": "user", "content": text}]
     try:
         reply, api_usage = brain.ask_gpt(api_turns, attachments=attachments,
