@@ -53,6 +53,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 SUBSCRIPTION_SECRET = os.environ.get("SUBSCRIPTION_SECRET", "")
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "100"))
 DAILY_COST_LIMIT = float(os.environ.get("DAILY_COST_LIMIT", "1.0"))
+MONTHLY_COST_LIMIT = float(os.environ.get("MONTHLY_COST_LIMIT", "5.0"))
 PORT = int(os.environ.get("PORT", "5000"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -210,6 +211,31 @@ def over_daily_cost_limit(code):
     return d.get("cost", 0.0) >= DAILY_COST_LIMIT
 
 
+def current_month():
+    return datetime.date.today().strftime("%Y-%m")
+
+
+def monthly_cost(code):
+    e = codes.get(code, {})
+    m = e.get("monthly") or {}
+    return m.get("cost", 0.0) if m.get("month") == current_month() else 0.0
+
+
+def over_monthly_cost_limit(code):
+    """$5/month cap: a user at the cap is blocked until next month."""
+    return monthly_cost(code) >= MONTHLY_COST_LIMIT
+
+
+def add_monthly_cost(code, cost):
+    e = codes.setdefault(code, {})
+    m = e.get("monthly") or {}
+    if m.get("month") == current_month():
+        m["cost"] = m.get("cost", 0.0) + cost
+    else:
+        m = {"month": current_month(), "cost": cost}
+    e["monthly"] = m
+
+
 def bump_daily(code, cost=0.0):
     today = datetime.date.today().isoformat()
     e = codes.setdefault(code, {})
@@ -237,6 +263,10 @@ def record_usage(code, api_usage):
     if d.get("day") == today:
         d["cost"] = d.get("cost", 0.0) + cost
         e["daily"] = d
+    # And in the monthly counter for the $5/month cap. The bucket
+    # starts empty at deploy: spend before this change is lifetime
+    # usage only, with no month split, so it cannot be counted back.
+    add_monthly_cost(code, cost)
 
 
 def cleanup_files():
@@ -472,6 +502,9 @@ def api_chat():
     if over_daily_cost_limit(code):
         return jsonify({"ok": False,
                          "error": "You've reached today's $1 usage limit — come back tomorrow!"}), 429
+    if over_monthly_cost_limit(code):
+        return jsonify({"ok": False,
+                         "error": "You've reached this month's $5 usage limit — come back next month!"}), 429
 
     history = histories.setdefault(hk, [])
     hist_len = len(history)
@@ -534,6 +567,9 @@ def api_upload_chat():
     if over_daily_cost_limit(code):
         return jsonify({"ok": False,
                          "error": "You've reached today's $1 usage limit — come back tomorrow!"}), 429
+    if over_monthly_cost_limit(code):
+        return jsonify({"ok": False,
+                         "error": "You've reached this month's $5 usage limit — come back next month!"}), 429
     ext = os.path.splitext(f.filename or "")[1].lower()
     if ext not in ALLOWED_EXTS:
         return jsonify({"ok": False,
@@ -790,6 +826,7 @@ def api_admin_data():
                      "used": bool(e.get("used_by")),
                      "created": e.get("created", ""),
                      "today": d.get("count", 0) if d.get("day") == datetime.date.today().isoformat() else 0,
+                     "monthly_cost": round(monthly_cost(c), 4),
                      "in": u["input"], "out": u["output"], "cost": round(u["cost"], 4)})
     rows.sort(key=lambda r: r["created"], reverse=True)
     t_in = sum(u["input"] for u in usage.values())
