@@ -106,14 +106,24 @@ def _post_with_fallback(payload, max_tokens):
         raise RuntimeError(f"OpenAI API error {e.code}: {err[:300]}")
 
 
-def ask_gpt(messages, max_tokens=None, attachments=None):
+def ask_gpt(messages, max_tokens=None, attachments=None, project_context=None):
     """Returns (reply_text, usage_dict). Raises on API failure.
 
     attachments: optional list applied to the LAST user message:
       {"kind": "image", "mime": "...", "b64": "..."}   (photo/screenshot)
       {"kind": "doc", "name": "...", "text": "..."}     (extracted doc text)
+    project_context: optional formatted text of the user's ongoing
+      project files (persisted across chats by app.py); appended to
+      the system prompt so every chat understands the project.
     """
-    api_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    system = SYSTEM_PROMPT
+    if project_context:
+        system += ("\n\nONGOING PROJECT FILES — these are the user's "
+                   "project files, uploaded in this or earlier chats. "
+                   "Use them as the background for every answer about "
+                   "the project, unless the user says otherwise:\n"
+                   + project_context)
+    api_messages = [{"role": "system", "content": system}]
     for m in messages[:-1]:
         api_messages.append({"role": m["role"], "content": m["content"]})
     last = messages[-1]
@@ -458,12 +468,18 @@ def execute_tool(name, args, workspace_dir):
     return f"ERROR: unknown tool {name}", "Unknown tool"
 
 
-def ask_gpt_agent(history, workspace_dir, max_steps=AGENT_MAX_STEPS):
+def ask_gpt_agent(history, workspace_dir, max_steps=AGENT_MAX_STEPS,
+                  project_context=None):
     """Agentic tool-using loop. history: list of {"role","content"} (mutated
     in place with assistant/tool turns). Returns (final_text, usage, steps, new_files).
     Raises on API failure."""
     os.makedirs(workspace_dir, exist_ok=True)
-    api_messages = [{"role": "system", "content": SYSTEM_PROMPT + AGENT_SYSTEM_ADDENDUM}]
+    system = SYSTEM_PROMPT + AGENT_SYSTEM_ADDENDUM
+    if project_context:
+        system += ("\n\nONGOING PROJECT FILES — the user's project files, "
+                   "uploaded in this or earlier chats. Use them as the "
+                   "background for the task:\n" + project_context)
+    api_messages = [{"role": "system", "content": system}]
     for m in history:
         api_messages.append({"role": m["role"], "content": m.get("content", "")})
 

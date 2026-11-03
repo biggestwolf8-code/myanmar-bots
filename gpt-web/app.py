@@ -101,6 +101,9 @@ histories = _load_json("gpthistories.json", {})
 usage = _load_json("gptusage.json", {})
 filemeta = _load_json("gptfiles.json", {})
 users = _load_json("gptusers.json", {})
+# Ongoing project files, keyed by invite code (so they survive device
+# and login changes, like chats do). {code: {"files": {name: {"text", "updated"}}}}
+projects = _load_json("gptprojects.json", {})
 
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
@@ -112,6 +115,7 @@ def save_all():
     _save_json("gptusage.json", usage)
     _save_json("gptfiles.json", filemeta)
     _save_json("gptusers.json", users)
+    _save_json("gptprojects.json", projects)
 
 
 def hash_pw(pw, salt=None):
@@ -317,6 +321,51 @@ def api_turns_for(convo):
             content = m["context"] + "\n\n" + content
         turns.append({"role": m["role"], "content": content})
     return turns
+
+
+PROJECT_MAX_CHARS = 24000
+
+
+def update_project(code, filename, text):
+    """Add/replace one file in the user's ongoing project store.
+
+    Re-uploading the same filename replaces the old version, so an
+    evolving project stays current. Oldest files drop out once the
+    store passes PROJECT_MAX_CHARS, so project context stays bounded
+    against the $1/day usage cap.
+    """
+    store = projects.setdefault(code, {"files": {}})
+    store["files"][filename] = {"text": text[:6000], "updated": time.time()}
+    while sum(len(v["text"]) for v in store["files"].values()) > PROJECT_MAX_CHARS:
+        oldest = min(store["files"], key=lambda n: store["files"][n]["updated"])
+        del store["files"][oldest]
+
+
+def convo_file_names(convo):
+    """Filenames whose content is already in this conversation's turns."""
+    names = set()
+    for m in convo["messages"][-20:]:
+        for src in (m.get("content", ""), m.get("context", "")):
+            for match in re.finditer(r"\[Attached file (.+?) content:\]", src):
+                names.add(match.group(1))
+    return names
+
+
+def project_context_text(code, exclude=None):
+    """Formatted project files for the system prompt, minus `exclude`.
+
+    Files already present in the current conversation's turns are
+    excluded by callers, so the same file is never sent twice in one
+    turn (once in the turns, once in the system prompt).
+    """
+    exclude = exclude or set()
+    store = projects.get(code, {})
+    parts = []
+    for name, entry in store.get("files", {}).items():
+        if name in exclude:
+            continue
+        parts.append(f"--- {name} ---\n{entry['text']}")
+    return "\n\n".join(parts)
 
 
 def recent_images(convo, limit=3):
@@ -659,10 +708,12 @@ def api_chat():
     convo["updated"] = time.time()
     new_agent_files = []
     try:
+        project_ctx = project_context_text(
+            code, exclude=convo_file_names(convo)) or None
         if agent_mode:
             wsdir = workspace_dir(sid)
             reply, api_usage, steps, new_agent_files = brain.ask_gpt_agent(
-                api_turns_for(convo), wsdir)
+                api_turns_for(convo), wsdir, project_context=project_ctx)
             reply = reply.strip()
             if steps:
                 reply += "\n\n⚙️ Steps: " + " → ".join(steps)
@@ -672,7 +723,8 @@ def api_chat():
                                  "b64": i["b64"]} for i in imgs]
                                if imgs else None)
             reply, api_usage = brain.ask_gpt(api_turns_for(convo),
-                                             attachments=img_attachments)
+                                             attachments=img_attachments,
+                                             project_context=project_ctx)
             reply = reply.strip()
     except Exception as ex:
         print("OpenAI API failed:", ex)
@@ -803,9 +855,18 @@ def api_upload_chat():
 
     convo = active_convo(sid)
     msgs = convo["messages"]
+    # Project store: previous project files (excluding the ones just
+    # uploaded, which travel as attachments) go in as background, then
+    # the new files join the store for every later chat.
+    new_doc_names = {a["name"] for a in attachments if a["kind"] == "doc"}
+    old_project_ctx = project_context_text(code, exclude=new_doc_names) or None
+    for a in attachments:
+        if a["kind"] == "doc":
+            update_project(code, a["name"], a["text"])
     api_turns = api_turns_for(convo) + [{"role": "user", "content": text}]
     try:
-        reply, api_usage = brain.ask_gpt(api_turns, attachments=attachments)
+        reply, api_usage = brain.ask_gpt(api_turns, attachments=attachments,
+                                         project_context=old_project_ctx)
         reply = reply.strip()
     except Exception as ex:
         print("OpenAI API failed:", ex)
