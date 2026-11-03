@@ -100,6 +100,14 @@ TRIAL_END_MSG = (
     + "\n\nSee /price for prices and payment methods."
 )
 
+# USDT deposit address, shown as tappable code + a blue BscScan link and
+# via a one-tap Copy button (copy_text) on every payment screen, so buyers
+# never have to select the long hex string by hand.
+USDT_ADDRESS = "0xffef0a1f5b075ed8763d7e0b13c9e3df04819222"
+USDT_BSCSCAN_URL = "https://bscscan.com/address/" + USDT_ADDRESS
+USDT_COPY_ROW = [{"text": "📋 Copy USDT address",
+                  "copy_text": {"text": USDT_ADDRESS}}]
+
 PAYMENT_BLOCK = (
     "💳 How to pay:\n"
     "• KBZPay: 09403720481\n"
@@ -109,7 +117,8 @@ PAYMENT_BLOCK = (
     "• Thai baht: message @SirArkar for Thai QR.\n"
     "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
     "• USDT (crypto): BSC network (BEP20) only.\n"
-    "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+    "  Address: <code>" + USDT_ADDRESS + "</code>\n"
+    "  🔗 <a href=\"" + USDT_BSCSCAN_URL + "\">View on BscScan</a>\n"
     "  Binance ID: 793685010\n"
     "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment."
 )
@@ -135,10 +144,11 @@ PAYMENT_MSG = (
 
 
 def price_keyboard():
-    """Inline tab under the price message: the buy button."""
-    return {"inline_keyboard": [[
-        {"text": "🛒 Buy a plan", "callback_data": "pricebuy:open"},
-    ]]}
+    """Inline tabs under the price message: copy address, then buy."""
+    return {"inline_keyboard": [
+        [dict(USDT_COPY_ROW[0])],
+        [{"text": "🛒 Buy a plan", "callback_data": "pricebuy:open"}],
+    ]}
 
 
 def plan_price_line(label, ks, baht, usd):
@@ -172,10 +182,11 @@ def buy_plan_text(months):
 
 
 def buy_plan_keyboard():
-    return {"inline_keyboard": [[
-        {"text": "⬅️ Plans", "callback_data": "pricebuy:open"},
-        {"text": "⬅️ Prices", "callback_data": "price:show"},
-    ]]}
+    return {"inline_keyboard": [
+        [dict(USDT_COPY_ROW[0])],
+        [{"text": "⬅️ Plans", "callback_data": "pricebuy:open"},
+         {"text": "⬅️ Prices", "callback_data": "price:show"}],
+    ]}
 
 
 def trial_active(user_id):
@@ -244,8 +255,10 @@ def tg(method, params=None, timeout=30):
         return json.load(r)
 
 
-def send_text(chat_id, text, reply_to=None, keyboard=None):
+def send_text(chat_id, text, reply_to=None, keyboard=None, parse_mode=None):
     params = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        params["parse_mode"] = parse_mode
     if reply_to:
         params["reply_to_message_id"] = reply_to
     # Persistent visible tab: every message carries the Commands keyboard
@@ -1540,7 +1553,7 @@ def handle_callback(cq):
         try:
             tg("editMessageText", {
                 "chat_id": chat_id, "message_id": msg_id,
-                "text": PAYMENT_MSG,
+                "text": PAYMENT_MSG, "parse_mode": "HTML",
                 "reply_markup": json.dumps(price_keyboard()),
             })
         except Exception as e:
@@ -1575,7 +1588,7 @@ def handle_callback(cq):
             try:
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
-                    "text": buy_plan_text(months),
+                    "text": buy_plan_text(months), "parse_mode": "HTML",
                     "reply_markup": json.dumps(buy_plan_keyboard()),
                 })
             except Exception as e:
@@ -2191,7 +2204,7 @@ def handle_update(u):
     # trial-ended users can always see plans and pay.
     if text.startswith(("/price", "/buy", "/subscribe")):
         send_text(chat_id, PAYMENT_MSG, thread,
-                  keyboard=json.dumps(price_keyboard()))
+                  keyboard=json.dumps(price_keyboard()), parse_mode="HTML")
         return
 
     # Payment receipt photos (private chats only) — forwarded to the

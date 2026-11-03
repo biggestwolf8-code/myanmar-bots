@@ -119,6 +119,16 @@ APP_PLAN_DAYS = {
     "1 Month": 30, "3 Months": 90, "6 Months": 180, "1 Year": 365,
 }
 
+# USDT deposit address, shown as tappable code + a blue BscScan link and
+# via a one-tap Copy button (copy_text) on every payment screen, so buyers
+# never have to select the long hex string by hand.
+USDT_ADDRESS = "0xffef0a1f5b075ed8763d7e0b13c9e3df04819222"
+USDT_BSCSCAN_URL = "https://bscscan.com/address/" + USDT_ADDRESS
+USDT_COPY_KEYBOARD = {"inline_keyboard": [
+    [{"text": "📋 Copy USDT address",
+      "copy_text": {"text": USDT_ADDRESS}}],
+]}
+
 VPN_PAYMENT_MSG = (
     "💳 To order Biggest VPN ({plan} — {price:,} Ks):\n\n"
     "1️⃣ Pay to any of these:\n"
@@ -127,7 +137,8 @@ VPN_PAYMENT_MSG = (
     "• AYAPay: 09754926216 (Arkar Myowin)\n"
     "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
     "• USDT (crypto): BSC network (BEP20) only\n"
-    "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+    "  Address: <code>0xffef0a1f5b075ed8763d7e0b13c9e3df04819222</code>\n"
+    "  \U0001f517 <a href=\"https://bscscan.com/address/0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\">View on BscScan</a>\n"
     "  Binance ID: 793685010\n"
     "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
     "2️⃣ Send your payment receipt screenshot HERE.\n\n"
@@ -139,7 +150,8 @@ VPN_PAYMENT_MSG = (
     "• AYAPay: 09754926216 (Arkar Myowin)\n"
     "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
     "• USDT (crypto): BSC network (BEP20) only\n"
-    "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+    "  Address: <code>0xffef0a1f5b075ed8763d7e0b13c9e3df04819222</code>\n"
+    "  \U0001f517 <a href=\"https://bscscan.com/address/0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\">View on BscScan</a>\n"
     "  Binance ID: 793685010\n"
     "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
     "2️⃣ ပြေစာ screenshot ကို ဒီမှာပို့ပေးပါ။\n\n"
@@ -342,7 +354,8 @@ FAQ = [
          "• Thailand: bank QR code (see QR below)\n"
          "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
          "• USDT (crypto): BSC network (BEP20) only\n"
-         "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+         "  Address: <code>0xffef0a1f5b075ed8763d7e0b13c9e3df04819222</code>\n"
+    "  \U0001f517 <a href=\"https://bscscan.com/address/0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\">View on BscScan</a>\n"
          "  Binance ID: 793685010\n"
          "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
          "⚠️ Please confirm the price with @biggestseller1 before paying, "
@@ -354,7 +367,8 @@ FAQ = [
          "• ထိုင်း: ဘဏ် QR code (အောက် QR ကို scan ဖတ်ပါ)\n"
          "• PayPal (USD): arkarhlwenmoe@gmail.com\n"
          "• USDT (crypto): BSC network (BEP20) only\n"
-         "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+         "  Address: <code>0xffef0a1f5b075ed8763d7e0b13c9e3df04819222</code>\n"
+    "  \U0001f517 <a href=\"https://bscscan.com/address/0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\">View on BscScan</a>\n"
          "  Binance ID: 793685010\n"
          "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
          "⚠️ ငွေမလွှဲခင် @biggestseller1 နဲ့ ဈေးနှုန်းအတည်ပြုပါ၊ "
@@ -396,9 +410,14 @@ def api(method, **params):
     return data
 
 
-def send_photo(chat_id, photo_file, caption, msg=None):
+def send_photo(chat_id, photo_file, caption, msg=None, reply_markup=None,
+               parse_mode=None):
     path = os.path.join(BASE_DIR, photo_file)
     params = {"chat_id": chat_id, "caption": caption}
+    if reply_markup is not None:
+        params["reply_markup"] = json.dumps(reply_markup)
+    if parse_mode:
+        params["parse_mode"] = parse_mode
     if msg and msg.get("chat", {}).get("type") in ("group", "supergroup"):
         params["reply_to_message_id"] = msg["message_id"]
     with open(path, "rb") as f:
@@ -410,9 +429,11 @@ def send_photo(chat_id, photo_file, caption, msg=None):
     return data
 
 
-def send_threaded(chat_id, text, msg, reply_markup=None):
+def send_threaded(chat_id, text, msg, reply_markup=None, parse_mode=None):
     """Send a message; in groups, thread it as a reply to the user's message."""
     params = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        params["parse_mode"] = parse_mode
     if msg.get("chat", {}).get("type") in ("group", "supergroup"):
         params["reply_to_message_id"] = msg["message_id"]
     # Persistent visible tab: keep the Commands keyboard on every message
@@ -841,7 +862,18 @@ def handle_message(msg, fwd_map):
 
     faq = find_faq(text)
     if faq:
-        if faq.get("photo"):
+        # Payment FAQ shows the USDT address: make it one-tap copiable
+        # (Copy button) and render its code + blue BscScan link.
+        if "USDT" in faq["answer"]:
+            if faq.get("photo"):
+                send_photo(chat_id, faq["photo"], faq["answer"], msg,
+                           reply_markup=USDT_COPY_KEYBOARD,
+                           parse_mode="HTML")
+            else:
+                send_threaded(chat_id, faq["answer"], msg,
+                              reply_markup=USDT_COPY_KEYBOARD,
+                              parse_mode="HTML")
+        elif faq.get("photo"):
             send_photo(chat_id, faq["photo"], faq["answer"], msg)
         else:
             send_threaded(chat_id, faq["answer"], msg)
@@ -871,9 +903,12 @@ def handle_callback(cb):
     if not chat_id or not msg_id:
         return
 
-    def edit(text, markup):
-        api("editMessageText", chat_id=chat_id, message_id=msg_id,
-            text=text, reply_markup=markup)
+    def edit(text, markup, parse_mode=None):
+        params = {"chat_id": chat_id, "message_id": msg_id,
+                  "text": text, "reply_markup": markup}
+        if parse_mode:
+            params["parse_mode"] = parse_mode
+        api("editMessageText", **params)
 
     if data == "home":
         edit(WELCOME, kb_cats())
@@ -995,8 +1030,12 @@ def handle_callback(cb):
         orders[chat_id] = {"plan": plan, "at": time.time()}
         save_vpn_orders(orders)
         edit(VPN_PAYMENT_MSG.format(plan=plan, price=price),
-             {"inline_keyboard": [[{"text": "⬅️ Plans",
-                                    "callback_data": prod_callback("Biggest VPN")}]]})
+             {"inline_keyboard": [
+                 [{"text": "📋 Copy USDT address",
+                   "copy_text": {"text": USDT_ADDRESS}}],
+                 [{"text": "⬅️ Plans",
+                   "callback_data": prod_callback("Biggest VPN")}]]},
+             parse_mode="HTML")
     elif data.startswith("appbuy:"):
         # Customer tapped Buy for Chat GPT Plus / Claude AI Pro.
         # Callback is short indexes: appbuy:<app_idx>:<plan_idx>.
@@ -1018,12 +1057,17 @@ def handle_callback(cb):
              f"(Account: Arkar Myo Win)\n"
              f"PayPal (USD): arkarhlwenmoe@gmail.com\n"
              f"USDT (crypto): BSC network (BEP20) only\n"
-             f"Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+             f"Address: <code>0xffef0a1f5b075ed8763d7e0b13c9e3df04819222</code>\n"
+             f"\U0001f517 <a href=\"https://bscscan.com/address/0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\">View on BscScan</a>\n"
              f"Binance ID: 793685010\n"
              f"⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
              f"📸 Send your payment receipt screenshot here.",
-             {"inline_keyboard": [[{"text": "⬅️ Plans",
-                                    "callback_data": prod_callback(product)}]]})
+             {"inline_keyboard": [
+                 [{"text": "📋 Copy USDT address",
+                   "copy_text": {"text": USDT_ADDRESS}}],
+                 [{"text": "⬅️ Plans",
+                   "callback_data": prod_callback(product)}]]},
+             parse_mode="HTML")
     elif data.startswith("vpnok:"):
         # Admin approved a VPN order: vpnok:<customer_chat_id>:<plan>
         try:
