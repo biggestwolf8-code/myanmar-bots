@@ -65,7 +65,6 @@ import urllib.request
 import requests
 
 import course as video_course
-import currency as currency_mod
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -81,9 +80,10 @@ TRIAL_DAILY_LIMIT = int(os.environ.get("TRIAL_DAILY_LIMIT", "30"))
 
 PRICE_MSG = (
     "💰 Subscription prices:\n"
-    "• 2 months: 50,000 Ks / 350 baht (about $10)\n"
-    "• 6 months: 80,000 Ks / 550 baht (about $18)\n"
-    "• 1 year: 145,000 Ks / 850 baht (about $34)\n"
+    "• 2 months: 50,000 Ks / 350 baht / $10 / 10 USDT\n"
+    "• 6 months: 80,000 Ks / 550 baht / $18 / 18 USDT\n"
+    "• 1 year: 145,000 Ks / 850 baht / $34 / 34 USDT\n"
+    "USDT (Tether) is $1 = 1 USDT, so the USDT price matches the USD price.\n"
     "Message @SirArkar to subscribe — no code or link needed, "
     "your access is extended directly on your account."
 )
@@ -91,13 +91,13 @@ PRICE_MSG = (
 SUBSCRIBE_MSG = (
     "⏳ Your access has ended — hope you enjoyed the practice!\n\n"
     + PRICE_MSG
-    + "\n\nSee /price for payment methods and a currency calculator."
+    + "\n\nSee /price for prices and payment methods."
 )
 
 TRIAL_END_MSG = (
     "🆓 Your free 1-day trial has ended — hope you enjoyed the practice!\n\n"
     + PRICE_MSG
-    + "\n\nSee /price for payment methods and a currency calculator."
+    + "\n\nSee /price for prices and payment methods."
 )
 
 PAYMENT_BLOCK = (
@@ -106,14 +106,19 @@ PAYMENT_BLOCK = (
     "• WavePay: 09780695959\n"
     "• AYAPay: 09754926216\n"
     "(Account: Arkar Myo Win)\n"
-    "• Thai baht: message @SirArkar for Thai QR."
+    "• Thai baht: message @SirArkar for Thai QR.\n"
+    "• USDT (crypto): BSC network (BEP20) only.\n"
+    "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+    "  Binance ID: 793685010\n"
+    "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment."
 )
 
-# (months, label, price_ks, price_baht) — mirrors PRICE_MSG.
+# (months, label, price_ks, price_baht, price_usd) — mirrors PRICE_MSG.
+# USDT price equals the USD price (1 USDT = $1).
 BUY_PLANS = [
-    (2, "2 months", 50000, 350),
-    (6, "6 months", 80000, 550),
-    (12, "1 year", 145000, 850),
+    (2, "2 months", 50000, 350, 10),
+    (6, "6 months", 80000, 550, 18),
+    (12, "1 year", 145000, 850, 34),
 ]
 
 # user_id -> months of the plan last tapped (so a receipt photo can be
@@ -129,33 +134,36 @@ PAYMENT_MSG = (
 
 
 def price_keyboard():
-    """Inline tab under the price message: calculator + buy buttons."""
+    """Inline tab under the price message: the buy button."""
     return {"inline_keyboard": [[
-        {"text": "🧮 Currency Calculator", "callback_data": "pricecalc:open"},
         {"text": "🛒 Buy a plan", "callback_data": "pricebuy:open"},
     ]]}
 
 
+def plan_price_line(label, ks, baht, usd):
+    return f"• {label} — {ks:,} Ks / {baht} baht / ${usd} / {usd} USDT"
+
+
 def buy_plans_text():
     lines = ["🛒 Choose a plan:"]
-    for months, label, ks, baht in BUY_PLANS:
-        lines.append(f"• {label} — {ks:,} Ks / {baht} baht")
+    for months, label, ks, baht, usd in BUY_PLANS:
+        lines.append(plan_price_line(label, ks, baht, usd))
     lines.append("\nTap a plan to see how to pay.")
     return "\n".join(lines)
 
 
 def buy_plans_keyboard():
-    rows = [[{"text": f"{label} — {ks:,} Ks / {baht} baht",
+    rows = [[{"text": f"{label} — {ks:,} Ks / {baht} baht / ${usd} / {usd} USDT",
               "callback_data": f"pricebuy:plan:{months}"}]
-            for months, label, ks, baht in BUY_PLANS]
-    rows.append([{"text": "⬅️ Prices", "callback_data": "pricecalc:prices"}])
+            for months, label, ks, baht, usd in BUY_PLANS]
+    rows.append([{"text": "⬅️ Prices", "callback_data": "price:show"}])
     return {"inline_keyboard": rows}
 
 
 def buy_plan_text(months):
-    for m, label, ks, baht in BUY_PLANS:
+    for m, label, ks, baht, usd in BUY_PLANS:
         if m == months:
-            return (f"🛒 {label} — {ks:,} Ks / {baht} baht\n\n"
+            return (f"🛒 {plan_price_line(label, ks, baht, usd)[2:]}\n\n"
                     + PAYMENT_BLOCK +
                     "\n\n📸 After paying, send your receipt screenshot here — "
                     "admin grants access directly on your account, no code.")
@@ -165,72 +173,8 @@ def buy_plan_text(months):
 def buy_plan_keyboard():
     return {"inline_keyboard": [[
         {"text": "⬅️ Plans", "callback_data": "pricebuy:open"},
-        {"text": "⬅️ Prices", "callback_data": "pricecalc:prices"},
+        {"text": "⬅️ Prices", "callback_data": "price:show"},
     ]]}
-
-
-# ---------- tap-only currency calculator (ported from Biggest Seller) ----------
-CALC_STATE = {}
-CALC_TOP = ["USD", "MMK", "THB", "EUR", "SGD", "GBP", "JPY", "CNY", "INR", "AUD"]
-CALC_TABS = ["MMK", "USD", "THB", "EUR", "SGD", "GBP", "JPY", "CNY"]
-
-
-def big_digits(s):
-    """Raw typed digits rendered wide (fullwidth) so they read as a big
-    calculator-screen display. Telegram has no font-size markup, so
-    this is the closest to 'bigger': the digits as typed, on their
-    own line, in wide characters."""
-    return "".join(chr(0xFF10 + int(ch)) if ch.isdigit() else ch
-                   for ch in (s or "0"))
-
-
-def calc_text(state):
-    """Calculator message. The typed display sits at the BOTTOM, right
-    above the buttons — the old layout put it at the top, where it
-    scrolled off-screen behind the tall keyboard."""
-    amount = float(state["amount"] or 0)
-    src = state["src"]
-    rates = currency_mod.load_rates()
-    lines = ["🧮 Currency Calculator",
-             "Rate: 1 USD = 5,000 Ks.",
-             "Equals:"]
-    codes = CALC_TOP if not state["show_all"] else sorted(rates)
-    for code in codes:
-        if code == src:
-            continue
-        try:
-            value, _, _ = currency_mod.convert(amount, src, code, rates)
-            lines.append(f"• {currency_mod.fmt(value, code)}")
-        except ValueError:
-            pass
-    lines.append("")
-    lines.append(big_digits(state["amount"]))
-    lines.append(f"Amount: {currency_mod.fmt(amount, src)}")
-    return "\n".join(lines)
-
-
-def kb_calc(state):
-    rows = []
-    tabs, row = [], []
-    for code in CALC_TABS:
-        label = f"✅ {code}" if code == state["src"] else code
-        row.append({"text": label, "callback_data": f"pricecalc:src:{code}"})
-        if len(row) == 4:
-            tabs.append(row)
-            row = []
-    if row:
-        tabs.append(row)
-    rows += tabs
-    for digits in ("123", "456", "789"):
-        rows.append([{"text": d, "callback_data": f"pricecalc:d:{d}"}
-                     for d in digits])
-    rows.append([{"text": "C", "callback_data": "pricecalc:clear"},
-                 {"text": "0", "callback_data": "pricecalc:d:0"},
-                 {"text": "⌫", "callback_data": "pricecalc:back"}])
-    rows.append([{"text": "Show all" if not state["show_all"] else "Show fewer",
-                  "callback_data": "pricecalc:all"},
-                 {"text": "⬅️ Prices", "callback_data": "pricecalc:prices"}])
-    return {"inline_keyboard": rows}
 
 
 def trial_active(user_id):
@@ -1014,7 +958,7 @@ COMMANDS_TEXT = (
     "/homework — see your current homework\n"
     "/pause — pause homework reminders\n"
     "/resume — resume homework\n"
-    "/price — prices, payment & currency calculator\n"
+    "/price — prices & payment\n"
     "/report — your learning report card\n"
     "/askclasses — ask about available classes\n"
     "/start — restart the bot"
@@ -1589,62 +1533,20 @@ def handle_callback(cq):
         answer("Unknown action.")
         return
 
-    # Price calculator — open to everyone, on their own /price message.
-    if data.startswith("pricecalc:"):
-        action = data[len("pricecalc:"):]
-        key = str(chat_id)
-        if action == "open":
-            CALC_STATE[key] = {"amount": "0", "src": "USD", "show_all": False}
-            answer()
-        elif action == "prices":
-            answer()
-            try:
-                tg("editMessageText", {
-                    "chat_id": chat_id, "message_id": msg_id,
-                    "text": PAYMENT_MSG,
-                    "reply_markup": json.dumps(price_keyboard()),
-                })
-            except Exception as e:
-                print("editMessageText failed:", e)
-            return
-        else:
-            state = CALC_STATE.get(key)
-            if not state:
-                state = {"amount": "0", "src": "USD", "show_all": False}
-                CALC_STATE[key] = state
-            if action.startswith("d:"):
-                # Instant toast with the typed digits: the message edit
-                # itself still takes ~1s through Telegram, so the toast
-                # is the immediate feedback that the tap registered.
-                digit = action[2:]
-                if state["amount"] == "0":
-                    state["amount"] = digit
-                elif len(state["amount"]) < 12:
-                    state["amount"] += digit
-                answer(state["amount"])
-            else:
-                answer()
-                if action.startswith("src:"):
-                    state["src"] = action[4:]
-                elif action == "clear":
-                    state["amount"] = "0"
-                elif action == "back":
-                    state["amount"] = state["amount"][:-1] or "0"
-                elif action == "all":
-                    state["show_all"] = not state["show_all"]
-                else:
-                    return
+    # Back to prices — open to everyone, on their own /price message.
+    if data == "price:show":
+        answer()
         try:
             tg("editMessageText", {
                 "chat_id": chat_id, "message_id": msg_id,
-                "text": calc_text(CALC_STATE[key]),
-                "reply_markup": json.dumps(kb_calc(CALC_STATE[key])),
+                "text": PAYMENT_MSG,
+                "reply_markup": json.dumps(price_keyboard()),
             })
         except Exception as e:
             print("editMessageText failed:", e)
         return
 
-    # Buy flow — open to everyone, like the calculator.
+    # Buy flow — open to everyone.
     if data.startswith("pricebuy:"):
         action = data[len("pricebuy:"):]
         if action == "open":
@@ -1664,7 +1566,7 @@ def handle_callback(cq):
             except ValueError:
                 answer("Unknown plan.")
                 return
-            if months not in [m for m, _, _, _ in BUY_PLANS]:
+            if months not in [m for m, _, _, _, _ in BUY_PLANS]:
                 answer("Unknown plan.")
                 return
             PRICEBUY_STATE[user_id] = months

@@ -124,14 +124,22 @@ VPN_PAYMENT_MSG = (
     "1️⃣ Pay to any of these:\n"
     "• KBZPay: 09403720481 (Arkar Myo Win)\n"
     "• WavePay: 09780695959 (Arkar Myo Win)\n"
-    "• AYAPay: 09754926216 (Arkar Myowin)\n\n"
+    "• AYAPay: 09754926216 (Arkar Myowin)\n"
+    "• USDT (crypto): BSC network (BEP20) only\n"
+    "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+    "  Binance ID: 793685010\n"
+    "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
     "2️⃣ Send your payment receipt screenshot HERE.\n\n"
     "⚡ Your VPN configs (4 countries) arrive right after admin confirms. 🙏\n\n"
     "💳 Biggest VPN ({plan} — {price:,} ကျပ်) မှာယူရန်:\n\n"
     "1️⃣ ငွေလွှဲရန်:\n"
     "• KBZPay: 09403720481 (Arkar Myo Win)\n"
     "• WavePay: 09780695959 (Arkar Myo Win)\n"
-    "• AYAPay: 09754926216 (Arkar Myowin)\n\n"
+    "• AYAPay: 09754926216 (Arkar Myowin)\n"
+    "• USDT (crypto): BSC network (BEP20) only\n"
+    "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+    "  Binance ID: 793685010\n"
+    "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
     "2️⃣ ပြေစာ screenshot ကို ဒီမှာပို့ပေးပါ။\n\n"
     "⚡ Admin အတည်ပြုပြီးတာနဲ့ VPN config (၄ နိုင်ငံ) ချက်ချင်းရပါမယ်။ 🙏"
 )
@@ -320,21 +328,30 @@ def send_vpn_configs(chat_id, result):
 FAQ = [
     {"keywords": ["how can i pay", "how do i pay", "pay", "payment", "kbzpay",
                   "wavepay", "aya pay", "ayapay", "bank transfer", "qr",
-                  "promptpay", "prompt pay", "ငွေပေး", "ငွေချေ"],
+                  "promptpay", "prompt pay", "usdt", "crypto", "tether",
+                  "ငွေပေး", "ငွေချေ"],
      "photo": "thai-qr.jpg",
      "answer": (
          "💳 Payment methods:\n"
          "• KBZPay: 09403720481 (Arkar Myo Win)\n"
          "• WavePay: 09780695959 (Arkar Myo Win)\n"
          "• AYAPay: 09754926216 (Arkar Myowin)\n"
-         "• Thailand: bank QR code (see QR below)\n\n"
+         "• Thailand: bank QR code (see QR below)\n"
+         "• USDT (crypto): BSC network (BEP20) only\n"
+         "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+         "  Binance ID: 793685010\n"
+         "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
          "⚠️ Please confirm the price with @biggestseller1 before paying, "
          "then send your receipt here. 🙏\n\n"
          "💳 ပေးချေနည်းများ:\n"
          "• KBZPay: 09403720481 (Arkar Myo Win)\n"
          "• WavePay: 09780695959 (Arkar Myo Win)\n"
          "• AYAPay: 09754926216 (Arkar Myowin)\n"
-         "• ထိုင်း: ဘဏ် QR code (အောက် QR ကို scan ဖတ်ပါ)\n\n"
+         "• ထိုင်း: ဘဏ် QR code (အောက် QR ကို scan ဖတ်ပါ)\n"
+         "• USDT (crypto): BSC network (BEP20) only\n"
+         "  Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+         "  Binance ID: 793685010\n"
+         "  ⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
          "⚠️ ငွေမလွှဲခင် @biggestseller1 နဲ့ ဈေးနှုန်းအတည်ပြုပါ၊ "
          "ပြီးရင် ပြေစာကို ဒီမှာပို့ပေးပါ။ 🙏")},
     {"keywords": ["warranty", "guarantee", "refund", "replacement", "အာမခံ"],
@@ -993,7 +1010,11 @@ def handle_callback(cb):
         save_app_orders(orders)
         edit(f"💳 To order {product} ({plan} — {price:,} Ks):\n\n"
              f"KBZPay: 09403720481\nWavePay: 09780695959\nAYAPay: 09754926216\n"
-             f"(Account: Arkar Myo Win)\n\n"
+             f"(Account: Arkar Myo Win)\n"
+             f"USDT (crypto): BSC network (BEP20) only\n"
+             f"Address: 0xffef0a1f5b075ed8763d7e0b13c9e3df04819222\n"
+             f"Binance ID: 793685010\n"
+             f"⚠️ Send on BSC (BEP20) only — other networks may lose your payment.\n\n"
              f"📸 Send your payment receipt screenshot here.",
              {"inline_keyboard": [[{"text": "⬅️ Plans",
                                     "callback_data": prod_callback(product)}]]})
