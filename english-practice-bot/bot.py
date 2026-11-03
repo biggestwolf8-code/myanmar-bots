@@ -65,6 +65,7 @@ import urllib.request
 import requests
 
 import course as video_course
+import currency as currency_mod
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -87,15 +88,91 @@ PRICE_MSG = (
     "your access is extended directly on your account."
 )
 
-TRIAL_END_MSG = (
-    "🆓 Your free 1-day trial has ended — hope you enjoyed the practice!\n\n"
-    + PRICE_MSG
-)
-
 SUBSCRIBE_MSG = (
     "⏳ Your access has ended — hope you enjoyed the practice!\n\n"
     + PRICE_MSG
+    + "\n\nSee /price for payment methods and a currency calculator."
 )
+
+TRIAL_END_MSG = (
+    "🆓 Your free 1-day trial has ended — hope you enjoyed the practice!\n\n"
+    + PRICE_MSG
+    + "\n\nSee /price for payment methods and a currency calculator."
+)
+
+PAYMENT_MSG = (
+    PRICE_MSG
+    + "\n\n💳 How to pay:\n"
+    "• KBZPay: 09403720481\n"
+    "• WavePay: 09780695959\n"
+    "• AYAPay: 09754926216\n"
+    "(Account: Arkar Myo Win)\n"
+    "• Thai baht: message @SirArkar for Thai QR.\n\n"
+    "📸 After paying, send your receipt screenshot here or message "
+    "@SirArkar — admin grants access directly on your account, no code."
+)
+
+
+def price_keyboard():
+    """Inline tab under the price message: opens the currency calculator."""
+    return {"inline_keyboard": [[
+        {"text": "🧮 Currency Calculator", "callback_data": "pricecalc:open"},
+    ]]}
+
+
+# ---------- tap-only currency calculator (ported from Biggest Seller) ----------
+CALC_STATE = {}
+CALC_TOP = ["USD", "MMK", "THB", "EUR", "SGD", "GBP", "JPY", "CNY", "INR", "AUD"]
+CALC_TABS = ["MMK", "USD", "THB", "EUR", "SGD", "GBP", "JPY", "CNY"]
+
+
+def calc_text(state):
+    amount = float(state["amount"] or 0)
+    src = state["src"]
+    rates = currency_mod.load_rates()
+    lines = ["🧮 Currency Calculator",
+             f"Amount: {currency_mod.fmt(amount, src)}",
+             "",
+             "Equals:"]
+    codes = CALC_TOP if not state["show_all"] else sorted(rates)
+    for code in codes:
+        if code == src:
+            continue
+        try:
+            value, _, _ = currency_mod.convert(amount, src, code, rates)
+            lines.append(f"• {currency_mod.fmt(value, code)}")
+        except ValueError:
+            pass
+    lines.append("")
+    lines.append("Tap a currency tab to change the input currency, "
+                 "then tap the digits. No typing needed.")
+    lines.append("Rate: 1 USD = 5,000 Ks.")
+    return "\n".join(lines)
+
+
+def kb_calc(state):
+    rows = []
+    tabs, row = [], []
+    for code in CALC_TABS:
+        label = f"[{code}]" if code == state["src"] else code
+        row.append({"text": label, "callback_data": f"pricecalc:src:{code}"})
+        if len(row) == 4:
+            tabs.append(row)
+            row = []
+    if row:
+        tabs.append(row)
+    rows += tabs
+    for digits in ("123", "456", "789"):
+        rows.append([{"text": d, "callback_data": f"pricecalc:d:{d}"}
+                     for d in digits])
+    rows.append([{"text": "C", "callback_data": "pricecalc:clear"},
+                 {"text": "0", "callback_data": "pricecalc:d:0"},
+                 {"text": "⌫", "callback_data": "pricecalc:back"}])
+    rows.append([{"text": "Show all currencies" if not state["show_all"]
+                  else "Show fewer",
+                  "callback_data": "pricecalc:all"}])
+    rows.append([{"text": "⬅️ Prices", "callback_data": "pricecalc:prices"}])
+    return {"inline_keyboard": rows}
 
 
 def trial_active(user_id):
@@ -879,6 +956,7 @@ COMMANDS_TEXT = (
     "/homework — see your current homework\n"
     "/pause — pause homework reminders\n"
     "/resume — resume homework\n"
+    "/price — prices, payment & currency calculator\n"
     "/report — your learning report card\n"
     "/askclasses — ask about available classes\n"
     "/start — restart the bot"
@@ -1118,7 +1196,8 @@ START_MSG = (
     "/course — video course (100 speaking topics)\n"
     "/homework — see your current homework\n"
     "/pause — pause your homework\n"
-    "/resume — resume your homework"
+    "/resume — resume your homework\n"
+    "/price — prices & payment details"
     "\n\nDeveloped by Arkar Myowin"
 )
 
@@ -1450,6 +1529,56 @@ def handle_callback(cq):
             send_course_list(chat_id, page)
             return
         answer("Unknown action.")
+        return
+
+    # Price calculator — open to everyone, on their own /price message.
+    if data.startswith("pricecalc:"):
+        action = data[len("pricecalc:"):]
+        key = str(chat_id)
+        if action == "open":
+            CALC_STATE[key] = {"amount": "0", "src": "USD", "show_all": False}
+            answer()
+        elif action == "prices":
+            answer()
+            try:
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": PAYMENT_MSG,
+                    "reply_markup": json.dumps(price_keyboard()),
+                })
+            except Exception as e:
+                print("editMessageText failed:", e)
+            return
+        else:
+            state = CALC_STATE.get(key)
+            if not state:
+                state = {"amount": "0", "src": "USD", "show_all": False}
+                CALC_STATE[key] = state
+            answer()
+            if action.startswith("d:"):
+                digit = action[2:]
+                if state["amount"] == "0":
+                    state["amount"] = digit
+                elif len(state["amount"]) < 12:
+                    state["amount"] += digit
+            elif action.startswith("src:"):
+                state["src"] = action[4:]
+            elif action == "clear":
+                state["amount"] = "0"
+            elif action == "back":
+                state["amount"] = state["amount"][:-1] or "0"
+            elif action == "all":
+                state["show_all"] = not state["show_all"]
+            else:
+                return
+        try:
+            tg("editMessageText", {
+                "chat_id": chat_id, "message_id": msg_id,
+                "text": calc_text(CALC_STATE[key]),
+                "reply_markup": json.dumps(kb_calc(CALC_STATE[key])),
+            })
+        except Exception as e:
+            print("editMessageText failed:", e)
         return
 
     if not is_admin(user_id):
@@ -2053,6 +2182,13 @@ def handle_update(u):
         if not gate_check(chat_id, user_id):
             return
         send_text(chat_id, START_MSG, thread)
+        return
+
+    # Price & payment tab — reachable even after access ends, so
+    # trial-ended users can always see plans and pay.
+    if text.startswith(("/price", "/buy", "/subscribe")):
+        send_text(chat_id, PAYMENT_MSG, thread,
+                  keyboard=json.dumps(price_keyboard()))
         return
 
     # Everyone else needs a valid invite before anything (no API cost for strangers).
