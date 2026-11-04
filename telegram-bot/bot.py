@@ -17,6 +17,12 @@ FAQ keyword matches, fallback replies and photo receipts are all
 ignored there — the bot must not interject into group conversations.
 Private chats keep the full FAQ + fallback behaviour.
 
+Admin block (private chat with the bot only): /block — reply to a
+forwarded student message, or /block <user id> — makes the bot
+silently ignore that user everywhere (no answer, no forward, no
+group redirect). /unblock <user id> reverses it, /blocklist lists
+blocked ids. The list lives in blocked.json next to forward_map.json.
+
 Needs env vars:
     BOT_TOKEN     - from @BotFather
     ADMIN_CHAT_ID - your Telegram user id (get it from @userinfobot)
@@ -177,6 +183,23 @@ def save_map(mapping):
         json.dump(mapping, f)
 
 
+BLOCKED_FILE = os.path.join(BASE_DIR, "blocked.json")
+
+
+def load_blocked():
+    try:
+        with open(BLOCKED_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+            return set(str(x) for x in data) if isinstance(data, list) else set()
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+
+def save_blocked(blocked):
+    with open(BLOCKED_FILE, "w", encoding="utf-8") as f:
+        json.dump(sorted(blocked), f)
+
+
 def norm(s):
     return unicodedata.normalize("NFC", s or "").lower().strip()
 
@@ -207,13 +230,20 @@ def forward_to_admin(chat_id, message_id, fwd_map):
         save_map(fwd_map)
 
 
-def handle_update(upd, fwd_map):
+def handle_update(upd, fwd_map, blocked):
     msg = upd.get("message")
     if not msg:
         return
     chat_id = str(msg["chat"]["id"])
     is_admin = bool(ADMIN_CHAT_ID) and chat_id == ADMIN_CHAT_ID
     chat_type = msg["chat"].get("type", "")
+    user_id = str(msg.get("from", {}).get("id", ""))
+
+    # Blocked users are ignored entirely: no FAQ answer, no forward to
+    # the admin, no group redirect, no receipt acknowledgement. The
+    # admin is never blocked.
+    if not is_admin and user_id and user_id in blocked:
+        return
 
     # Groups: commands only, and commands move to private chat.
     # Anything else — chatter, FAQ keywords, photos — is ignored
@@ -238,6 +268,44 @@ def handle_update(upd, fwd_map):
     if "text" not in msg:
         return
     text = msg["text"]
+
+    # Admin block commands (private chat only). /block with no argument
+    # blocks the student of the forwarded message being replied to.
+    if is_admin:
+        parts = text.split()
+        cmd = parts[0] if parts else ""
+        if cmd in ("/block", "/unblock", "/blocklist"):
+            if cmd == "/blocklist":
+                if blocked:
+                    send_threaded(chat_id,
+                        "🚫 Blocked users:\n" + "\n".join(sorted(blocked)), msg)
+                else:
+                    send_threaded(chat_id, "No users are blocked.", msg)
+                return
+            target = parts[1].strip() if len(parts) > 1 else None
+            if target is None and msg.get("reply_to_message"):
+                target = fwd_map.get(str(msg["reply_to_message"]["message_id"]))
+            if not target:
+                send_threaded(chat_id,
+                    "Usage: /block <user id> — or reply to a forwarded "
+                    "message with /block. /unblock <user id> removes one.",
+                    msg)
+                return
+            if cmd == "/block":
+                if target == ADMIN_CHAT_ID:
+                    send_threaded(chat_id, "You can't block yourself.", msg)
+                    return
+                blocked.add(target)
+                save_blocked(blocked)
+                send_threaded(chat_id, f"🚫 Blocked user {target}. The bot "
+                    "will ignore all their messages from now on.", msg)
+            elif target in blocked:
+                blocked.discard(target)
+                save_blocked(blocked)
+                send_threaded(chat_id, f"✅ Unblocked user {target}.", msg)
+            else:
+                send_threaded(chat_id, f"User {target} was not blocked.", msg)
+            return
 
     # Admin replying to a forwarded student message -> relay it back.
     if is_admin and msg.get("reply_to_message"):
@@ -276,6 +344,7 @@ def handle_update(upd, fwd_map):
 def main():
     print("Bot started. Polling for updates...")
     fwd_map = load_map()
+    blocked = load_blocked()
     offset = 0
     while True:
         try:
@@ -283,7 +352,7 @@ def main():
                        allowed_updates=["message"])
             for upd in data.get("result", []):
                 offset = upd["update_id"] + 1
-                handle_update(upd, fwd_map)
+                handle_update(upd, fwd_map, blocked)
         except Exception as e:  # keep polling through network blips
             print("Polling error:", e)
             time.sleep(5)
