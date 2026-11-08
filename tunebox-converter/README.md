@@ -35,7 +35,7 @@ from Spotify or any other streaming site.
   streaming pages are not. YouTube may block datacenter IPs with its
   "Sign in to confirm you're not a bot" check, in which case the bot
   reports the failure instead of hanging. The bot tries the android,
-  iOS, TV, then web player clients to get past that check; if they all
-  fail, set the YOUTUBE_COOKIES env var to the contents of a Netscape
-  cookies.txt exported from a browser signed in to YouTube, and the
-  bot downloads with that signed-in session.
+  iOS, then TV player clients without cookies first (web cookies can
+  trip those up), then the web client with the signed-in cookies if
+  YOUTUBE_COOKIES is set to the contents of a Netscape cookies.txt
+  exported from a browser signed in to YouTube.
