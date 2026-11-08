@@ -2,12 +2,12 @@
 """
 TuneBox Converter — owner's own videos to MP3.
 
-Send the bot a direct link to one of your own videos (or send the video
-file itself) and it returns the audio as an MP3. Owner-only: only the
-admin's Telegram id may use it.
+Send the bot a YouTube link, a direct link to one of your own videos
+(or send the video file itself) and it returns the audio as an MP3.
+Owner-only: only the admin's Telegram id may use it.
 
-This is a converter for videos you own. It does not search, rip, or fetch
-from YouTube, Spotify, or any streaming site.
+This is a converter for videos you own. It does not search or fetch
+from Spotify or any other streaming site.
 
 Env vars:
     BOT_TOKEN     - from @BotFather
@@ -30,6 +30,7 @@ import traceback
 import urllib.parse
 
 import requests
+import yt_dlp
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
@@ -49,10 +50,11 @@ VIDEO_EXTS = {"mp4", "mov", "webm", "mkv", "avi", "m4v", "mpg", "mpeg",
 
 WELCOME = (
     "🎵 TuneBox Converter\n\n"
-    "Send me a direct link to one of your own videos, or send the video "
-    "file itself, and I'll send back the audio as an MP3.\n\n"
-    "Your videos only — this bot doesn't fetch from YouTube, Spotify, "
-    "or any streaming site.\n\n"
+    "Send me a YouTube link, a direct link to one of your own videos, "
+    "or send the video file itself, and I'll send back the audio as "
+    "an MP3.\n\n"
+    "Your videos only — this bot doesn't fetch from Spotify or any "
+    "other streaming site.\n\n"
     "Developed by Arkar Myowin"
 )
 
@@ -168,6 +170,46 @@ def download_telegram_file(file_path, dest):
     return (total > 0), "" if total > 0 else "That file came back empty."
 
 
+def is_youtube_url(url):
+    """True for youtube.com / youtu.be video links (watch, shorts, live,
+    embed, music)."""
+    try:
+        host = (urllib.parse.urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host == "youtu.be" or host.endswith(".youtube.com") \
+        or host == "youtube.com"
+
+
+def download_youtube_audio(url, tmpdir):
+    """yt-dlp: fetch the best audio stream for one YouTube video.
+    Returns (path, title) on success, (None, error message) on failure."""
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": os.path.join(tmpdir, "input.%(ext)s"),
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "ffmpeg_location": os.path.dirname(ffmpeg_exe()),
+        # "Made for Kids" videos (all of the owner's story videos) come
+        # back as "not available" with the default web client; the
+        # android client fetches them fine. Web stays as fallback.
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    except Exception as e:
+        log("yt-dlp failed:", repr(e)[:500])
+        return None, ("I couldn't get audio from that YouTube link — it "
+                      "may be unavailable, age-restricted, or blocked.")
+    title = ((info or {}).get("title") or "audio")[:120]
+    for name in sorted(os.listdir(tmpdir)):
+        if name.startswith("input."):
+            return os.path.join(tmpdir, name), title
+    return None, "YouTube gave me no audio file for that link."
+
+
 # ---------------------------------------------------------------- convert
 
 def convert_to_mp3(src, dst, bitrate="128k"):
@@ -230,6 +272,19 @@ def handle_update(upd):
         return
     if text.startswith("http://") or text.startswith("https://"):
         url = text.split()[0]
+        if is_youtube_url(url):
+            send_message(chat_id, "Fetching audio from YouTube… ⏬")
+            tmpdir = tempfile.mkdtemp(prefix="tbc_")
+            try:
+                src, title_or_err = download_youtube_audio(url, tmpdir)
+                if not src:
+                    send_message(chat_id, title_or_err)
+                    return
+                send_message(chat_id, "Converting to MP3… 🎵")
+                handle_convert(chat_id, src, title_or_err)
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+            return
         ext = urllib.parse.urlparse(url).path.rsplit(".", 1)[-1].lower() \
             if "." in urllib.parse.urlparse(url).path else ""
         if ext and ext not in VIDEO_EXTS:
@@ -278,8 +333,9 @@ def handle_update(upd):
         return
     if text:
         send_message(chat_id,
-                     "Send me a direct link to one of your videos, or send "
-                     "the video file itself, and I'll return the MP3. 🎵")
+                     "Send me a YouTube link, a direct link to one of your "
+                     "videos, or send the video file itself, and I'll "
+                     "return the MP3. 🎵")
 
 
 def main():

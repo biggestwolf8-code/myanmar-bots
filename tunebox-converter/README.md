@@ -1,10 +1,11 @@
 # TuneBox Converter
 
-Telegram bot (owner-only): send it a direct link to one of your own
-videos, or send the video file itself, and it returns the audio as an MP3.
+Telegram bot (owner-only): send it a YouTube link, a direct link to one
+of your own videos, or send the video file itself, and it returns the
+audio as an MP3.
 
-This is a converter for videos you own. It does not search, rip, or fetch
-from YouTube, Spotify, or any streaming site.
+This is a converter for videos you own. It does not search or fetch
+from Spotify or any other streaming site.
 
 ## Setup
 
@@ -18,9 +19,11 @@ from YouTube, Spotify, or any streaming site.
 ## Use
 
 - `/start` — welcome
+- Paste a YouTube link (youtube.com/watch, youtu.be, Shorts) — the bot
+  fetches the audio with yt-dlp, converts it to MP3 (128 kbps, 64 kbps
+  if the file would exceed Telegram's 50 MB limit) and sends the MP3 back.
 - Paste a direct video link (mp4/mov/webm/mkv/…) — the bot downloads it,
-  converts the audio to MP3 (128 kbps, 64 kbps if the file would exceed
-  Telegram's 50 MB limit) and sends the MP3 back.
+  converts the audio to MP3 and sends the MP3 back.
 - Or send a video/audio file directly to the bot.
 
 ## Limits
@@ -28,4 +31,6 @@ from YouTube, Spotify, or any streaming site.
 - Owner-only: only the admin id may use it.
 - Input files up to 400 MB; output MP3 must fit Telegram's 50 MB
   bot-upload limit.
-- Only direct file links — no YouTube, Spotify, or streaming pages.
+- YouTube links are supported (single videos, no playlists); other
+  streaming pages are not. YouTube may block datacenter IPs, in which
+  case the bot reports the failure instead of hanging.
