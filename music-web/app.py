@@ -12,6 +12,10 @@ Env vars:
                   volume so tracks/users/codes/playlists survive redeploys)
   PORT            Listen port (default: 5000)
   MAX_UPLOAD_MB   Max upload size in MB (default: 300)
+  BOT_INGEST_SECRET  Shared secret for the TuneBox Converter bot's
+                  POST /api/bot-ingest (auto-adds converted MP3s to
+                  the library). Without it the endpoint refuses all
+                  requests.
 
 Deploy (Railway): new service from the myanmar-bots repo, root directory
 `music-web`, plus a volume mounted at `/data`, DATA_DIR=/data.
@@ -582,6 +586,36 @@ def admin_upload():
     if bad:
         url += "&bad=" + str(bad)
     return redirect(url)
+
+
+@app.route("/api/bot-ingest", methods=["POST"])
+def bot_ingest():
+    """Private ingest for the TuneBox Converter bot: every MP3 the bot
+    makes is POSTed here and lands straight in the library.
+    Auth is a shared secret (BOT_INGEST_SECRET env var) in the
+    X-Ingest-Secret header — no admin session needed, and no other
+    caller can use it. Reuses _ingest_upload, the same validation and
+    storage the admin upload uses."""
+    secret = os.environ.get("BOT_INGEST_SECRET", "").strip()
+    if not secret or request.headers.get("X-Ingest-Secret", "") != secret:
+        abort(403)
+    files = [f for f in request.files.getlist("file") if f and f.filename]
+    if not files:
+        return jsonify({"ok": False, "error": "no file"}), 400
+    title = (request.form.get("title") or "").strip()
+    artist = (request.form.get("artist") or "").strip()[:120] or "Arkar Myowin"
+    album = (request.form.get("album") or "").strip()[:120]
+    os.makedirs(TRACKS_DIR, exist_ok=True)
+    ok = 0
+    for f in files:
+        if _ingest_upload(f, title if len(files) == 1 else "", artist, album):
+            ok += 1
+    save_all()
+    if ok == 0:
+        return jsonify({"ok": False, "error": "not audio"}), 400
+    print(f"bot-ingest: added {ok} track(s), title={title!r}",
+          flush=True)
+    return jsonify({"ok": True, "added": ok})
 
 
 def _ingest_upload(f, title, artist, album):

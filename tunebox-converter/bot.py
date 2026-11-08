@@ -24,6 +24,15 @@ Env vars:
                       On Railway this is the provider service over
                       private networking
                       (http://bgutil-pot-provider.railway.internal:4416).
+    TUNEBOX_URL      - optional: base URL of the TuneBox web app
+                      (e.g. https://music-web-production-xxxx
+                      .up.railway.app). When set together with
+                      TUNEBOX_INGEST_SECRET, every finished MP3 is
+                      also POSTed to TuneBox's /api/bot-ingest so it
+                      lands straight in the TuneBox library.
+    TUNEBOX_INGEST_SECRET - optional: shared secret for TuneBox's
+                      /api/bot-ingest (same value as the app's
+                      BOT_INGEST_SECRET env var).
 
 Limits: input files up to 400 MB; output MP3 must fit Telegram's 50 MB
 bot-upload limit (re-encodes at 64 kbps once if the 128 kbps file is too
@@ -47,6 +56,8 @@ import yt_dlp
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "8028025915").strip()
+TUNEBOX_URL = os.environ.get("TUNEBOX_URL", "").strip().rstrip("/")
+TUNEBOX_INGEST_SECRET = os.environ.get("TUNEBOX_INGEST_SECRET", "").strip()
 
 if not BOT_TOKEN:
     raise SystemExit("Set the BOT_TOKEN env var (get it from @BotFather).")
@@ -118,6 +129,35 @@ def get_file_path(file_id):
     data = tg("getFile", {"file_id": file_id}, timeout=30)
     res = data.get("result") or {}
     return res.get("file_path")
+
+
+def push_to_tunebox(path, title):
+    """Send the finished MP3 to the TuneBox library via its private
+    /api/bot-ingest endpoint. Returns (status, error): status is True
+    on success, False on failure, None when TuneBox isn't configured
+    (TUNEBOX_URL / TUNEBOX_INGEST_SECRET missing) — in that case the
+    bot just sends the MP3 in chat and nothing is lost."""
+    if not TUNEBOX_URL or not TUNEBOX_INGEST_SECRET:
+        return None, ""
+    try:
+        with open(path, "rb") as f:
+            r = requests.post(
+                TUNEBOX_URL + "/api/bot-ingest",
+                headers={"X-Ingest-Secret": TUNEBOX_INGEST_SECRET},
+                data={"title": title[:120], "artist": "Arkar Myowin"},
+                files={"file": (os.path.basename(path), f, "audio/mpeg")},
+                timeout=300)
+        try:
+            data = r.json()
+        except ValueError:
+            data = {}
+        if r.status_code == 200 and data.get("ok"):
+            return True, ""
+        log("push_to_tunebox failed: HTTP", r.status_code, r.text[:200])
+        return False, f"TuneBox answered HTTP {r.status_code}"
+    except requests.exceptions.RequestException as e:
+        log("push_to_tunebox error:", repr(e))
+        return False, e.__class__.__name__
 
 
 # ---------------------------------------------------------------- fetching
@@ -388,6 +428,13 @@ def handle_convert(chat_id, src_path, title):
                     "is over Telegram's 50 MB limit. Try a shorter clip.")
                 return
         send_audio(chat_id, out, title)
+        pushed, err = push_to_tunebox(out, title)
+        if pushed is True:
+            send_message(chat_id, "Added to your TuneBox library ✓")
+        elif pushed is False:
+            send_message(chat_id,
+                         "The MP3 is here, but it didn't land in TuneBox "
+                         f"({err}) — the library didn't get this one.")
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

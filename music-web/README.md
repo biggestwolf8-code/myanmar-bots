@@ -15,6 +15,7 @@ plus a volume mounted at `/data`.
 |---|---|---|
 | `ADMIN_PASSWORD` | ✅ | Password for the `/admin` panel |
 | `DATA_DIR` | ✅ | `/data` (volume mount — tracks, codes, playlists survive redeploys) |
+| `BOT_INGEST_SECRET` | — | Shared secret for the TuneBox Converter bot's `POST /api/bot-ingest` (auto-adds converted MP3s to the library). Without it the endpoint refuses all requests. |
 | `MAX_UPLOAD_MB` | — | Max upload size in MB (default: 300) |
 | `PORT` | — | Listen port (Railway sets this automatically) |
 

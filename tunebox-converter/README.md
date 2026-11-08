@@ -26,6 +26,15 @@ from Spotify or any other streaming site.
   converts the audio to MP3 and sends the MP3 back.
 - Or send a video/audio file directly to the bot.
 
+## TuneBox library auto-add
+
+When `TUNEBOX_URL` (the TuneBox web app's address) and
+`TUNEBOX_INGEST_SECRET` (same value as the app's `BOT_INGEST_SECRET`)
+are set, every finished MP3 is also POSTed to TuneBox's
+`/api/bot-ingest` and lands straight in the TuneBox library. The MP3
+still comes to you in the chat as well. If the push fails, the bot
+tells you in the chat so nothing vanishes silently.
+
 ## Limits
 
 - Owner-only: only the admin id may use it.
