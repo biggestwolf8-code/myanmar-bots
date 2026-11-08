@@ -54,9 +54,13 @@ from Spotify or any other streaming site.
   in requirements.txt asks it to mint each token. NOTE: yt-dlp ships
   no built-in token minter — its own debug output says "PO Token
   Providers: none" even with Deno installed — so a JS runtime in
-  this image alone does not fix the web players. Failed passes log
-  the yt-dlp warnings they collected, so the Railway logs show the
-  real reason (e.g. a missing token input) instead of just the final
-  error.
+  this image alone does not fix the web players. Deno IS still in
+  the image, because yt-dlp's signature and "n" challenge solving
+  needs a JS runtime too ("Signature solving failed" without one).
+  The provider URL is passed as a one-element list: yt-dlp splits a
+  bare string into characters and would read just "h" as the URL.
+  Failed passes log the yt-dlp warnings they collected, so the
+  Railway logs show the real reason (e.g. a missing token input)
+  instead of just the final error.
 - The bot only answers its owner (ADMIN_CHAT_ID); everyone else gets
   "Sorry — this bot is private, for its owner only."

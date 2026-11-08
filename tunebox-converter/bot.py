@@ -277,7 +277,13 @@ def _download_with_clients(url, tmpdir, clients, cookies=None):
         "ffmpeg_location": os.path.dirname(ffmpeg_exe()),
         "extractor_args": {
             "youtube": {"player_client": clients},
-            "youtubepot-bgutilhttp": {"base_url": _pot_provider_url()},
+            "youtubepot-bgutilhttp": {"base_url": [_pot_provider_url()]},
+            # NOTE: the value MUST be a one-element list. yt-dlp's
+            # _configuration_arg turns the value into a list and takes
+            # [0]; a bare string would be split into characters and
+            # [0] would be just "h", so the provider would try to
+            # reach "h/ping" ("Unsupported url scheme: ''") and the
+            # token server would never be contacted at all.
         },
     }
     if cookies:
