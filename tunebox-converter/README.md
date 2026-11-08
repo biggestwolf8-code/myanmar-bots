@@ -39,6 +39,9 @@ from Spotify or any other streaming site.
   trip those up), then the web, Safari-web, mobile-web and embedded
   players with the signed-in cookies if YOUTUBE_COOKIES is set to the
   contents of a Netscape cookies.txt exported from a browser signed
-  in to YouTube. Plain web often answers a signed-in request with
-  "Requested format is not available" — its formats need a
-  Proof-of-Origin token, which is why the other web players are tried.
+  in to YouTube, plus the YouTube Music players for music videos.
+  Plain web often answers a signed-in request with "Requested format
+  is not available" — its formats need a Proof-of-Origin token, which
+  is why the other players are tried. GOOGLE_COOKIES holds the same
+  export from google.com (the session cookies live there); the web
+  players may withhold formats without them.

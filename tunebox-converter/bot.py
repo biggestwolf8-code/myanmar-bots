@@ -16,6 +16,9 @@ Env vars:
                       from a browser signed in to YouTube. Needed when
                       YouTube's "Sign in to confirm you're not a bot" check
                       blocks the bot's server (datacenter IPs get flagged).
+    GOOGLE_COOKIES  - optional: the same export from google.com (the
+                      session cookies live there); the web players may
+                      withhold audio formats without them.
 
 Limits: input files up to 400 MB; output MP3 must fit Telegram's 50 MB
 bot-upload limit (re-encodes at 64 kbps once if the 128 kbps file is too
@@ -188,18 +191,26 @@ def is_youtube_url(url):
 def _youtube_cookies_file():
     """Optional cookies for yt-dlp, from the YOUTUBE_COOKIES env var
     (a Netscape cookies.txt exported from a browser signed in to
-    YouTube). YouTube's bot-check ("Sign in to confirm you're not a
-    bot") blocks datacenter IPs like Railway's; a signed-in session
-    gets past it. Returns the temp file path, or None when unset.
-    Only the length is ever logged, never the cookie values."""
-    cookies = os.environ.get("YOUTUBE_COOKIES", "").strip()
-    if not cookies:
+    YouTube) plus GOOGLE_COOKIES (the same export from google.com —
+    the session cookies live there, and the web players may withhold
+    formats without them). YouTube's bot-check ("Sign in to confirm
+    you're not a bot") blocks datacenter IPs like Railway's; a
+    signed-in session gets past it. Returns the temp file path, or
+    None when neither is set. Only lengths are ever logged, never the
+    cookie values."""
+    parts = []
+    for name in ("YOUTUBE_COOKIES", "GOOGLE_COOKIES"):
+        text = os.environ.get(name, "").strip()
+        if text:
+            parts.append(text if text.endswith("\n") else text + "\n")
+    if not parts:
         log("YouTube cookies: not set")
         return None
     path = os.path.join(tempfile.gettempdir(), "youtube-cookies.txt")
     with open(path, "w") as f:
-        f.write(cookies if cookies.endswith("\n") else cookies + "\n")
-    log("YouTube cookies: set (%d chars), file ready" % len(cookies))
+        f.writelines(parts)
+    log("YouTube cookies: set (%d chars in %d part(s)), file ready"
+        % (sum(len(p) for p in parts), len(parts)))
     return path
 
 
@@ -241,7 +252,9 @@ def download_youtube_audio(url, tmpdir):
     (its formats need a Proof-of-Origin token).
     "Made for Kids" videos (all of the owner's story videos) come back
     as "not available" with the default web client; the android client
-    fetches them fine.
+    fetches them fine. Music videos (Vevo etc.) get one last try
+    through the YouTube Music players, which use a different endpoint
+    that sometimes hands over formats the web players withhold.
     Returns (path, title) on success, (None, error message) on failure."""
     cookies = _youtube_cookies_file()
     passes = [
@@ -250,6 +263,8 @@ def download_youtube_audio(url, tmpdir):
         ("web_safari, cookies", ["web_safari"], cookies),
         ("mweb, cookies", ["mweb"], cookies),
         ("web_embedded, cookies", ["web_embedded"], cookies),
+        ("music, cookies", ["android_music", "web_music", "ios_music"],
+         cookies),
     ]
     last_err = ""
     for label, clients, ck in passes:
