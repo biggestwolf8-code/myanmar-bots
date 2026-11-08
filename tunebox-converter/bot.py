@@ -10,8 +10,12 @@ This is a converter for videos you own. It does not search or fetch
 from Spotify or any other streaming site.
 
 Env vars:
-    BOT_TOKEN     - from @BotFather
-    ADMIN_CHAT_ID - Telegram user id of the owner (default: Arkar, 8028025915)
+    BOT_TOKEN       - from @BotFather
+    ADMIN_CHAT_ID   - Telegram user id of the owner (default: Arkar, 8028025915)
+    YOUTUBE_COOKIES - optional: contents of a Netscape cookies.txt exported
+                      from a browser signed in to YouTube. Needed when
+                      YouTube's "Sign in to confirm you're not a bot" check
+                      blocks the bot's server (datacenter IPs get flagged).
 
 Limits: input files up to 400 MB; output MP3 must fit Telegram's 50 MB
 bot-upload limit (re-encodes at 64 kbps once if the 128 kbps file is too
@@ -181,6 +185,21 @@ def is_youtube_url(url):
         or host == "youtube.com"
 
 
+def _youtube_cookies_file():
+    """Optional cookies for yt-dlp, from the YOUTUBE_COOKIES env var
+    (a Netscape cookies.txt exported from a browser signed in to
+    YouTube). YouTube's bot-check ("Sign in to confirm you're not a
+    bot") blocks datacenter IPs like Railway's; a signed-in session
+    gets past it. Returns the temp file path, or None when unset."""
+    cookies = os.environ.get("YOUTUBE_COOKIES", "").strip()
+    if not cookies:
+        return None
+    path = os.path.join(tempfile.gettempdir(), "youtube-cookies.txt")
+    with open(path, "w") as f:
+        f.write(cookies if cookies.endswith("\n") else cookies + "\n")
+    return path
+
+
 def download_youtube_audio(url, tmpdir):
     """yt-dlp: fetch the best audio stream for one YouTube video.
     Returns (path, title) on success, (None, error message) on failure."""
@@ -194,13 +213,26 @@ def download_youtube_audio(url, tmpdir):
         # "Made for Kids" videos (all of the owner's story videos) come
         # back as "not available" with the default web client; the
         # android client fetches them fine. Web stays as fallback.
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        # iOS and TV clients use different YouTube endpoints that often
+        # get past the "Sign in to confirm you're not a bot" check that
+        # datacenter IPs hit — try them before web.
+        "extractor_args": {"youtube": {"player_client":
+                                        ["android", "ios", "tv", "web"]}},
     }
+    cookies = _youtube_cookies_file()
+    if cookies:
+        ydl_opts["cookiefile"] = cookies
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
     except Exception as e:
-        log("yt-dlp failed:", repr(e)[:500])
+        err = repr(e)
+        log("yt-dlp failed:", err[:500])
+        if "Sign in to confirm you're not a bot" in err:
+            return None, ("YouTube blocked the download — it flagged the "
+                          "bot's server as a bot. It's not the video; "
+                          "the bot needs a signed-in session to get past "
+                          "that check.")
         return None, ("I couldn't get audio from that YouTube link — it "
                       "may be unavailable, age-restricted, or blocked.")
     title = ((info or {}).get("title") or "audio")[:120]

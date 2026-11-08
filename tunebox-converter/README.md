@@ -32,5 +32,10 @@ from Spotify or any other streaming site.
 - Input files up to 400 MB; output MP3 must fit Telegram's 50 MB
   bot-upload limit.
 - YouTube links are supported (single videos, no playlists); other
-  streaming pages are not. YouTube may block datacenter IPs, in which
-  case the bot reports the failure instead of hanging.
+  streaming pages are not. YouTube may block datacenter IPs with its
+  "Sign in to confirm you're not a bot" check, in which case the bot
+  reports the failure instead of hanging. The bot tries the android,
+  iOS, TV, then web player clients to get past that check; if they all
+  fail, set the YOUTUBE_COOKIES env var to the contents of a Netscape
+  cookies.txt exported from a browser signed in to YouTube, and the
+  bot downloads with that signed-in session.
