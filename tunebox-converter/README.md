@@ -44,4 +44,9 @@ from Spotify or any other streaming site.
   is not available" — its formats need a Proof-of-Origin token, which
   is why the other players are tried. GOOGLE_COOKIES holds the same
   export from google.com (the session cookies live there); the web
-  players may withhold formats without them.
+  players may withhold formats without them. The Dockerfile installs
+  Deno, the JavaScript runtime yt-dlp needs to mint those Proof-of-
+  Origin tokens itself; without it the web players cannot get formats
+  from a flagged IP even with valid cookies.
+- The bot only answers its owner (ADMIN_CHAT_ID); everyone else gets
+  "Sorry — this bot is private, for its owner only."
