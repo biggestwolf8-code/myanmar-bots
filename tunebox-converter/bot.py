@@ -190,19 +190,22 @@ def _youtube_cookies_file():
     (a Netscape cookies.txt exported from a browser signed in to
     YouTube). YouTube's bot-check ("Sign in to confirm you're not a
     bot") blocks datacenter IPs like Railway's; a signed-in session
-    gets past it. Returns the temp file path, or None when unset."""
+    gets past it. Returns the temp file path, or None when unset.
+    Only the length is ever logged, never the cookie values."""
     cookies = os.environ.get("YOUTUBE_COOKIES", "").strip()
     if not cookies:
+        log("YouTube cookies: not set")
         return None
     path = os.path.join(tempfile.gettempdir(), "youtube-cookies.txt")
     with open(path, "w") as f:
         f.write(cookies if cookies.endswith("\n") else cookies + "\n")
+    log("YouTube cookies: set (%d chars), file ready" % len(cookies))
     return path
 
 
-def download_youtube_audio(url, tmpdir):
-    """yt-dlp: fetch the best audio stream for one YouTube video.
-    Returns (path, title) on success, (None, error message) on failure."""
+def _download_with_clients(url, tmpdir, clients, cookies=None):
+    """One yt-dlp pass with the given player clients. Returns
+    (path, title) on success, (None, error string) on failure."""
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": os.path.join(tmpdir, "input.%(ext)s"),
@@ -210,31 +213,54 @@ def download_youtube_audio(url, tmpdir):
         "quiet": True,
         "no_warnings": True,
         "ffmpeg_location": os.path.dirname(ffmpeg_exe()),
-        # "Made for Kids" videos (all of the owner's story videos) come
-        # back as "not available" with the default web client; the
-        # android client fetches them fine. Web stays as fallback.
-        # iOS and TV clients use different YouTube endpoints that often
-        # get past the "Sign in to confirm you're not a bot" check that
-        # datacenter IPs hit — try them before web.
-        "extractor_args": {"youtube": {"player_client":
-                                        ["android", "ios", "tv", "web"]}},
+        "extractor_args": {"youtube": {"player_client": clients}},
     }
-    cookies = _youtube_cookies_file()
     if cookies:
         ydl_opts["cookiefile"] = cookies
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
     except Exception as e:
-        err = repr(e)
-        log("yt-dlp failed:", err[:500])
-        if "Sign in to confirm you're not a bot" in err:
-            return None, ("YouTube blocked the download — it flagged the "
-                          "bot's server as a bot. It's not the video; "
-                          "the bot needs a signed-in session to get past "
-                          "that check.")
-        return None, ("I couldn't get audio from that YouTube link — it "
-                      "may be unavailable, age-restricted, or blocked.")
+        return None, repr(e)[:300]
+    title = ((info or {}).get("title") or "audio")[:120]
+    for name in sorted(os.listdir(tmpdir)):
+        if name.startswith("input."):
+            return os.path.join(tmpdir, name), title
+    return None, "YouTube gave me no audio file for that link."
+
+
+def download_youtube_audio(url, tmpdir):
+    """yt-dlp: fetch the best audio stream for one YouTube video.
+    Two passes: first the phone/TV clients with NO cookies — they
+    fetch fine without a sign-in, and web cookies can trip them up —
+    then the web client WITH the signed-in cookies if set, since the
+    web player is the one YouTube's bot-check demands a sign-in for.
+    "Made for Kids" videos (all of the owner's story videos) come back
+    as "not available" with the default web client; the android client
+    fetches them fine.
+    Returns (path, title) on success, (None, error message) on failure."""
+    cookies = _youtube_cookies_file()
+    src, title_or_err = _download_with_clients(
+        url, tmpdir, ["android", "ios", "tv"])
+    if src:
+        return src, title_or_err
+    log("yt-dlp pass 1 (phone/TV, no cookies) failed:", title_or_err)
+    src, title_or_err = _download_with_clients(
+        url, tmpdir, ["web"], cookies)
+    if src:
+        return src, title_or_err
+    log("yt-dlp pass 2 (web, cookies) failed:", title_or_err)
+    err = title_or_err
+    if "Sign in to confirm you're not a bot" in err:
+        return None, ("YouTube blocked the download — it flagged the "
+                      "bot's server as a bot. It's not the video; "
+                      "the bot needs a signed-in session to get past "
+                      "that check.")
+    if "The page needs to be reloaded" in err:
+        return None, ("YouTube asked for a reload and the download "
+                      "didn't come through — try sending the link again.")
+    return None, ("I couldn't get audio from that YouTube link — it "
+                  "may be unavailable, age-restricted, or blocked.")
     title = ((info or {}).get("title") or "audio")[:120]
     for name in sorted(os.listdir(tmpdir)):
         if name.startswith("input."):
