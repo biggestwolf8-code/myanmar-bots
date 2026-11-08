@@ -178,12 +178,21 @@ def _url_is_public(url):
 
 
 def download_url(url, dest):
-    """Stream a direct file link to dest. Returns (ok, error)."""
+    """Stream a direct file link to dest. Returns (ok, error).
+    Sends a browser User-Agent: hosts like w3schools answer
+    python-requests' default UA with 403."""
     if not _url_is_public(url):
         return False, "That link doesn't point to a public file."
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+    }
     try:
         with requests.get(url, stream=True, timeout=(10, 120),
-                          allow_redirects=True) as r:
+                          allow_redirects=True,
+                          headers=headers) as r:
             if r.status_code != 200:
                 return False, f"Couldn't fetch the link (HTTP {r.status_code})."
             total = 0
