@@ -1,3 +1,4 @@
 requests
 imageio-ffmpeg
 yt-dlp
+bgutil-ytdlp-pot-provider

@@ -44,9 +44,19 @@ from Spotify or any other streaming site.
   is not available" — its formats need a Proof-of-Origin token, which
   is why the other players are tried. GOOGLE_COOKIES holds the same
   export from google.com (the session cookies live there); the web
-  players may withhold formats without them. The Dockerfile installs
-  Deno, the JavaScript runtime yt-dlp needs to mint those Proof-of-
-  Origin tokens itself; without it the web players cannot get formats
-  from a flagged IP even with valid cookies.
+  players may withhold formats without them. The tokens themselves
+  come from a bgutil provider server (Docker image
+  brainicism/bgutil-ytdlp-pot-provider, port 4416, run as its own
+  Railway service with NO public domain — the bot reaches it over
+  Railway private networking at
+  http://bgutil-pot-provider.railway.internal:4416 via the
+  POT_PROVIDER_URL variable); the bgutil-ytdlp-pot-provider plugin
+  in requirements.txt asks it to mint each token. NOTE: yt-dlp ships
+  no built-in token minter — its own debug output says "PO Token
+  Providers: none" even with Deno installed — so a JS runtime in
+  this image alone does not fix the web players. Failed passes log
+  the yt-dlp warnings they collected, so the Railway logs show the
+  real reason (e.g. a missing token input) instead of just the final
+  error.
 - The bot only answers its owner (ADMIN_CHAT_ID); everyone else gets
   "Sorry — this bot is private, for its owner only."

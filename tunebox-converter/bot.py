@@ -19,6 +19,11 @@ Env vars:
     GOOGLE_COOKIES  - optional: the same export from google.com (the
                       session cookies live there); the web players may
                       withhold audio formats without them.
+    POT_PROVIDER_URL - optional: base URL of the bgutil PO-token
+                      provider server. Default http://127.0.0.1:4416.
+                      On Railway this is the provider service over
+                      private networking
+                      (http://bgutil-pot-provider.railway.internal:4416).
 
 Limits: input files up to 400 MB; output MP3 must fit Telegram's 50 MB
 bot-upload limit (re-encodes at 64 kbps once if the 128 kbps file is too
@@ -214,17 +219,66 @@ def _youtube_cookies_file():
     return path
 
 
+class _WarningCollector:
+    """Collects yt-dlp warnings/errors (and PO-token-related debug lines)
+    so a failed pass can say WHY it failed. yt-dlp calls logger.warning
+    even when quiet/no_warnings are set, so this sees the "Missing
+    required Data Sync ID" / "Missing required Visitor Data" / "No
+    supported JavaScript runtime" warnings that the Railway logs
+    otherwise hide. Only warnings, errors and matching debug lines are
+    kept — download progress is dropped."""
+    _DEBUG_KEEP = ("po token", "visitor", "javascript", "deno", "gvs",
+                   "data sync", "js runtime")
+
+    def __init__(self):
+        self.lines = []
+
+    def debug(self, msg):
+        if any(k in msg.lower() for k in self._DEBUG_KEEP):
+            self.lines.append(msg)
+
+    def warning(self, msg):
+        self.lines.append("WARNING: " + msg)
+
+    def error(self, msg):
+        # Skip tracebacks — the final error line is kept separately.
+        if msg.startswith("Traceback (most recent call last)"):
+            return
+        self.lines.append("ERROR: " + msg)
+
+
+def _pot_provider_url():
+    """Base URL of the bgutil PO-token provider server (see README).
+    The bot and the provider run as separate Railway services, so this
+    points at the provider over Railway private networking by default;
+    http://127.0.0.1:4416 is the local default."""
+    return os.environ.get(
+        "POT_PROVIDER_URL", "http://127.0.0.1:4416").strip()
+
+
 def _download_with_clients(url, tmpdir, clients, cookies=None):
     """One yt-dlp pass with the given player clients. Returns
-    (path, title) on success, (None, error string) on failure."""
+    (path, title) on success, (None, error string) on failure.
+    On failure, the yt-dlp warnings collected for this pass are logged
+    so the Railway logs show the real reason (e.g. a missing PO-token
+    input) instead of just the final error.
+    The bgutil HTTP provider (see README) mints the Proof-of-Origin
+    tokens the web players need; its base URL comes from
+    POT_PROVIDER_URL."""
+    collector = _WarningCollector()
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": os.path.join(tmpdir, "input.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
+        "verbose": True,
+        "logger": collector,
         "ffmpeg_location": os.path.dirname(ffmpeg_exe()),
-        "extractor_args": {"youtube": {"player_client": clients}},
+        "extractor_args": {
+            "youtube": {"player_client": clients},
+            "youtubepot-bgutilhttp": {"base_url": _pot_provider_url()},
+        },
     }
     if cookies:
         ydl_opts["cookiefile"] = cookies
@@ -232,6 +286,8 @@ def _download_with_clients(url, tmpdir, clients, cookies=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
     except Exception as e:
+        for line in collector.lines:
+            log("yt-dlp (%s): %s" % (",".join(clients), line[:300]))
         return None, repr(e)[:300]
     title = ((info or {}).get("title") or "audio")[:120]
     for name in sorted(os.listdir(tmpdir)):
