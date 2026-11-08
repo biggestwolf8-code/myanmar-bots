@@ -231,26 +231,36 @@ def _download_with_clients(url, tmpdir, clients, cookies=None):
 
 def download_youtube_audio(url, tmpdir):
     """yt-dlp: fetch the best audio stream for one YouTube video.
-    Two passes: first the phone/TV clients with NO cookies — they
-    fetch fine without a sign-in, and web cookies can trip them up —
-    then the web client WITH the signed-in cookies if set, since the
-    web player is the one YouTube's bot-check demands a sign-in for.
+    Passes, in order: the phone/TV clients with NO cookies (they fetch
+    fine without a sign-in, and web cookies can trip them up), then
+    the web players WITH the signed-in cookies if set — the web
+    player is the one YouTube's bot-check demands a sign-in for, and
+    the Safari/mobile/embedded web players are the ones yt-dlp's own
+    guidance recommends with cookies, since plain web often answers
+    a signed-in request with "Requested format is not available"
+    (its formats need a Proof-of-Origin token).
     "Made for Kids" videos (all of the owner's story videos) come back
     as "not available" with the default web client; the android client
     fetches them fine.
     Returns (path, title) on success, (None, error message) on failure."""
     cookies = _youtube_cookies_file()
-    src, title_or_err = _download_with_clients(
-        url, tmpdir, ["android", "ios", "tv"])
-    if src:
-        return src, title_or_err
-    log("yt-dlp pass 1 (phone/TV, no cookies) failed:", title_or_err)
-    src, title_or_err = _download_with_clients(
-        url, tmpdir, ["web"], cookies)
-    if src:
-        return src, title_or_err
-    log("yt-dlp pass 2 (web, cookies) failed:", title_or_err)
-    err = title_or_err
+    passes = [
+        ("phone/TV, no cookies", ["android", "ios", "tv"], None),
+        ("web, cookies", ["web"], cookies),
+        ("web_safari, cookies", ["web_safari"], cookies),
+        ("mweb, cookies", ["mweb"], cookies),
+        ("web_embedded, cookies", ["web_embedded"], cookies),
+    ]
+    last_err = ""
+    for label, clients, ck in passes:
+        if ck is None and label != "phone/TV, no cookies":
+            continue
+        src, title_or_err = _download_with_clients(url, tmpdir, clients, ck)
+        if src:
+            return src, title_or_err
+        log("yt-dlp pass (%s) failed:" % label, title_or_err)
+        last_err = title_or_err
+    err = last_err
     if "Sign in to confirm you're not a bot" in err:
         return None, ("YouTube blocked the download — it flagged the "
                       "bot's server as a bot. It's not the video; "
