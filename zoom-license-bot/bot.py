@@ -344,6 +344,8 @@ COMMANDS_TEXT_ADMIN = COMMANDS_TEXT + (
     "/renewed [YYYY-MM-DD] id1 id2 … — stamp just-renewed accounts\n"
     "/backdate YYYY-MM-DD — fallback license start date\n"
     "/billing gp|manual id1 id2 … — Google Play auto-renew marking\n"
+    "/creds <mail|id> … — full creds (email+password) for the accounts\n"
+    "  you name (or just paste the mails/ids; private chat only)\n"
     "/reauth <email> — authorize link (OAuth mode)\n"
     "/alertshere — send license alerts to this chat too\n"
     "/alertstop — stop alerts in this chat"
@@ -485,22 +487,87 @@ def fmt_warnings(warns):
     return "\n".join(lines)
 
 
+def _creds_tokens(text):
+    """Split text into email/id tokens. Returns the list only if EVERY
+    token looks like a fleet email or an account id (c53, e04, i10),
+    otherwise []."""
+    raw = re.split(r"[\s,;]+", (text or "").strip())
+    toks = [t for t in raw if t]
+    if not toks:
+        return []
+    for t in toks:
+        tl = t.lower()
+        if "@" in tl:
+            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", tl):
+                return []
+        elif not re.fullmatch(r"[a-z]{1,2}\d{1,3}", tl):
+            return []
+    return toks
+
+
+def _resolve_creds_email(token):
+    """Full email, or an account id (c53) expanded to its fleet email."""
+    tl = token.lower()
+    if "@" in tl:
+        return tl
+    return f"onlineclass.22517+{tl}@gmail.com"
+
+
+def _send_creds(chat_id, tokens):
+    """Reply with full creds (email | password) for the named accounts.
+    Passwords come from ZOOM_CREDS via sweeper.load_credentials().
+    Admin DM only — the caller enforces that."""
+    if not tokens:
+        send(chat_id, "Usage: /creds <mail|id> [mail|id ...]\n"
+                     "Example: /creds c53 c54 onlineclass.22517+c55@gmail.com\n"
+                     "Or just paste the mails/ids on their own lines.")
+        return
+    if len(tokens) > 20:
+        send(chat_id, "Max 20 accounts at a time — showing the first 20.")
+        tokens = tokens[:20]
+    try:
+        from sweeper import load_credentials
+        pw = load_credentials()
+    except Exception:
+        pw = {}
+    found, missing = [], []
+    for t in tokens:
+        email = _resolve_creds_email(t)
+        p = pw.get(email)
+        if p:
+            found.append(f"{email} | {p}")
+        else:
+            missing.append(t)
+    if found:
+        send(chat_id, "```\n" + "\n".join(found) + "\n```",
+             parse_mode="Markdown")
+    if missing:
+        send(chat_id, "Not found (no password stored): " + ", ".join(missing))
+    if not found and not missing:
+        send(chat_id, "No credentials found.")
+
+
 def handle_message(msg):
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
     if text == COMMANDS_BTN:
         send(chat_id, COMMANDS_TEXT_ADMIN if is_admin(msg) else COMMANDS_TEXT)
         return
-    if not text.startswith("/"):
-        return
-    parts = text.split()
-    cmd = parts[0].split("@")[0].lower()
-    arg = parts[1] if len(parts) > 1 else ""
     admin = is_admin(msg)
     # In groups, any member may use read-only commands; admin-only commands
     # (renewed, backdate, alerts, reauth) stay restricted to the owner.
     # In DMs, everything stays admin-only.
     is_group = isinstance(chat_id, int) and chat_id < 0
+    if not text.startswith("/"):
+        # Admin DM: a message that is only mails/ids is a creds lookup.
+        if admin and not is_group:
+            tokens = _creds_tokens(text)
+            if tokens:
+                _send_creds(chat_id, tokens)
+        return
+    parts = text.split()
+    cmd = parts[0].split("@")[0].lower()
+    arg = parts[1] if len(parts) > 1 else ""
     READONLY = {"/start", "/check", "/status", "/list", "/expiring", "/accounts"}
     if not admin:
         if is_group and cmd in READONLY:
@@ -522,6 +589,8 @@ def handle_message(msg):
              "/accounts — authorization coverage\n"
              "/list licensed|basic|problems — list accounts by status\n"
              "  full=emails, creds=email+password (admin)\n"
+             "/creds <mail|id> … — full creds for the accounts you name\n"
+             "  (or just paste the mails/ids; admin, private chat only)\n"
              "/expiring — licenses expiring within 2 days\n"
              "/backdate YYYY-MM-DD — fallback: set license start date for\n"
              "  currently-Licensed accounts lacking a real expiration date\n"
@@ -638,6 +707,13 @@ def handle_message(msg):
             send(chat_id, "\n".join(lines) if len(lines) > 1 else "\u2705 No problem accounts.")
         else:
             send(chat_id, "Usage: /list licensed|basic|problems [full]")
+    elif cmd == "/creds":
+        # Full creds for exactly the accounts you name — admin DM only.
+        # Passwords never go to a group chat.
+        if is_group:
+            send(chat_id, "Passwords only in my private chat — send this to me directly, not in a group.")
+            return
+        _send_creds(chat_id, _creds_tokens(" ".join(parts[1:])))
     elif cmd == "/expiring":
         store = load_store()
         warns = expiry_warnings(store)
