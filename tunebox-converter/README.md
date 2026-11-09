@@ -1,8 +1,9 @@
 # TuneBox Converter
 
-Telegram bot (owner-only): send it a YouTube link, a direct link to one
-of your own videos, or send the video file itself, and it returns the
-audio as an MP3.
+Telegram bot (owner-only): send it a YouTube, Facebook or Instagram
+link, a direct link to one of your own videos, or send the video
+file itself, and it returns the audio as an MP3 — or the video as
+an MP4.
 
 This is a converter for videos you own. It does not search or fetch
 from Spotify or any other streaming site.
@@ -19,29 +20,34 @@ from Spotify or any other streaming site.
 ## Use
 
 - `/start` — welcome
+- `/mp3` — audio mode (default): links come back as an MP3
+- `/mp4` — video mode: links come back as an MP4 (720p). Sticks
+  until you send /mp3 again; resets to MP3 on a restart/redeploy.
 - Paste a YouTube link (youtube.com/watch, youtu.be, Shorts) — the bot
   fetches the audio with yt-dlp, converts it to MP3 (128 kbps, 64 kbps
   if the file would exceed Telegram's 50 MB limit) and sends the MP3 back.
+  In /mp4 mode it fetches the video at 720p instead, merged to MP4.
+- Paste a Facebook link (facebook.com/watch, fb.watch) or an
+  Instagram link (instagram.com/reel, /p, /reels) — same, one yt-dlp
+  pass. Public Facebook videos usually need no sign-in; Instagram
+  usually asks for one even for public reels, so INSTAGRAM_COOKIES
+  (same Netscape cookies.txt export as YouTube, from instagram.com)
+  is normally needed there. FACEBOOK_COOKIES is the same for
+  facebook.com, for videos that ask for a sign-in.
 - Paste a direct video link (mp4/mov/webm/mkv/…) — the bot downloads it,
-  converts the audio to MP3 and sends the MP3 back.
+  converts the audio to MP3 and sends the MP3 back (in /mp4 mode a
+  video file is sent back as video instead).
 - Or send a video/audio file directly to the bot.
-
-## TuneBox library auto-add
-
-When `TUNEBOX_URL` (the TuneBox web app's address) and
-`TUNEBOX_INGEST_SECRET` (same value as the app's `BOT_INGEST_SECRET`)
-are set, every finished MP3 is also POSTed to TuneBox's
-`/api/bot-ingest` and lands straight in the TuneBox library. The MP3
-still comes to you in the chat as well. If the push fails, the bot
-tells you in the chat so nothing vanishes silently.
 
 ## Limits
 
 - Owner-only: only the admin id may use it.
-- Input files up to 400 MB; output MP3 must fit Telegram's 50 MB
-  bot-upload limit.
-- YouTube links are supported (single videos, no playlists); other
-  streaming pages are not. YouTube may block datacenter IPs with its
+- Input files up to 400 MB; output must fit Telegram's 50 MB
+  bot-upload limit. MP4 is fetched at 720p and re-encoded smaller
+  once if it is still too big; longer clips may still not fit.
+- YouTube links are supported (single videos, no playlists); Facebook
+  and Instagram links are supported the same way (single posts/reels,
+  no feeds or stories). YouTube may block datacenter IPs with its
   "Sign in to confirm you're not a bot" check, in which case the bot
   reports the failure instead of hanging. The bot tries the android,
   iOS, then TV player clients without cookies first (web cookies can

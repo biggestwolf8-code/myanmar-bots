@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-TuneBox Converter — owner's own videos to MP3.
+TuneBox Converter — owner's own videos to MP3 or MP4.
 
-Send the bot a YouTube link, a direct link to one of your own videos
-(or send the video file itself) and it returns the audio as an MP3.
+Send the bot a YouTube, Facebook or Instagram link, a direct link
+to one of your own videos (or send the video file itself) and it
+returns the audio as an MP3, or the video as an MP4.
 Owner-only: only the admin's Telegram id may use it.
+
+Default is MP3 audio. Send /mp4 to switch to video, /mp3 to switch
+back — the choice sticks until you change it.
 
 This is a converter for videos you own. It does not search or fetch
 from Spotify or any other streaming site.
@@ -19,24 +23,22 @@ Env vars:
     GOOGLE_COOKIES  - optional: the same export from google.com (the
                       session cookies live there); the web players may
                       withhold audio formats without them.
+    INSTAGRAM_COOKIES - optional: the same export from instagram.com.
+                      Instagram usually asks for a sign-in even for
+                      public reels; without these most Instagram links
+                      fail with "login required".
+    FACEBOOK_COOKIES - optional: the same export from facebook.com.
+                      Public Facebook videos usually work without it.
     POT_PROVIDER_URL - optional: base URL of the bgutil PO-token
                       provider server. Default http://127.0.0.1:4416.
                       On Railway this is the provider service over
                       private networking
                       (http://bgutil-pot-provider.railway.internal:4416).
-    TUNEBOX_URL      - optional: base URL of the TuneBox web app
-                      (e.g. https://music-web-production-xxxx
-                      .up.railway.app). When set together with
-                      TUNEBOX_INGEST_SECRET, every finished MP3 is
-                      also POSTed to TuneBox's /api/bot-ingest so it
-                      lands straight in the TuneBox library.
-    TUNEBOX_INGEST_SECRET - optional: shared secret for TuneBox's
-                      /api/bot-ingest (same value as the app's
-                      BOT_INGEST_SECRET env var).
 
-Limits: input files up to 400 MB; output MP3 must fit Telegram's 50 MB
-bot-upload limit (re-encodes at 64 kbps once if the 128 kbps file is too
-big, otherwise it tells you the file is too long).
+Limits: input files up to 400 MB; output must fit Telegram's 50 MB
+bot-upload limit. MP3 re-encodes at 64 kbps once if the 128 kbps file
+is too big; MP4 is fetched at 720p and re-encoded smaller once if it
+is still too big, otherwise the bot says the clip is too long.
 """
 
 import ipaddress
@@ -56,8 +58,6 @@ import yt_dlp
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "8028025915").strip()
-TUNEBOX_URL = os.environ.get("TUNEBOX_URL", "").strip().rstrip("/")
-TUNEBOX_INGEST_SECRET = os.environ.get("TUNEBOX_INGEST_SECRET", "").strip()
 
 if not BOT_TOKEN:
     raise SystemExit("Set the BOT_TOKEN env var (get it from @BotFather).")
@@ -70,16 +70,27 @@ MAX_SEND_BYTES = 48 * 1024 * 1024  # under Telegram's 50 MB bot limit
 VIDEO_EXTS = {"mp4", "mov", "webm", "mkv", "avi", "m4v", "mpg", "mpeg",
               "3gp", "flv", "wmv", "m4a", "mp3", "wav", "ogg", "oga",
               "flac", "opus", "aac"}
+AUDIO_EXTS = {"m4a", "mp3", "wav", "ogg", "oga", "flac", "opus", "aac"}
+VIDEO_FILE_EXTS = VIDEO_EXTS - AUDIO_EXTS
 
 WELCOME = (
     "🎵 TuneBox Converter\n\n"
-    "Send me a YouTube link, a direct link to one of your own videos, "
-    "or send the video file itself, and I'll send back the audio as "
-    "an MP3.\n\n"
+    "Send me a YouTube, Facebook or Instagram link, a direct link to "
+    "one of your own videos, or send the video file itself.\n\n"
+    "🎵 /mp3 — send back the audio as an MP3 (default)\n"
+    "🎬 /mp4 — send back the video as an MP4\n\n"
     "Your videos only — this bot doesn't fetch from Spotify or any "
     "other streaming site.\n\n"
     "Developed by Arkar Myowin"
 )
+
+# Per-chat output choice: "mp3" (default) or "mp4". Owner-only bot,
+# so in-memory is fine; it resets to MP3 on a restart/redeploy.
+CHAT_MODES = {}
+
+
+def output_mode(chat_id):
+    return CHAT_MODES.get(str(chat_id), "mp3")
 
 
 def log(*a):
@@ -125,39 +136,27 @@ def send_audio(chat_id, path, title):
     return data
 
 
+def send_video(chat_id, path, title):
+    with open(path, "rb") as f:
+        r = requests.post(
+            f"{TG_API}/sendVideo",
+            data={"chat_id": chat_id, "caption": title[:200],
+                  "supports_streaming": True},
+            files={"video": (os.path.basename(path), f, "video/mp4")},
+            timeout=300)
+    try:
+        data = r.json()
+    except ValueError:
+        data = {}
+    if not data.get("ok"):
+        log("sendVideo failed:", r.status_code, r.text[:300])
+    return data
+
+
 def get_file_path(file_id):
     data = tg("getFile", {"file_id": file_id}, timeout=30)
     res = data.get("result") or {}
     return res.get("file_path")
-
-
-def push_to_tunebox(path, title):
-    """Send the finished MP3 to the TuneBox library via its private
-    /api/bot-ingest endpoint. Returns (status, error): status is True
-    on success, False on failure, None when TuneBox isn't configured
-    (TUNEBOX_URL / TUNEBOX_INGEST_SECRET missing) — in that case the
-    bot just sends the MP3 in chat and nothing is lost."""
-    if not TUNEBOX_URL or not TUNEBOX_INGEST_SECRET:
-        return None, ""
-    try:
-        with open(path, "rb") as f:
-            r = requests.post(
-                TUNEBOX_URL + "/api/bot-ingest",
-                headers={"X-Ingest-Secret": TUNEBOX_INGEST_SECRET},
-                data={"title": title[:120], "artist": "Arkar Myowin"},
-                files={"file": (os.path.basename(path), f, "audio/mpeg")},
-                timeout=300)
-        try:
-            data = r.json()
-        except ValueError:
-            data = {}
-        if r.status_code == 200 and data.get("ok"):
-            return True, ""
-        log("push_to_tunebox failed: HTTP", r.status_code, r.text[:200])
-        return False, f"TuneBox answered HTTP {r.status_code}"
-    except requests.exceptions.RequestException as e:
-        log("push_to_tunebox error:", repr(e))
-        return False, e.__class__.__name__
 
 
 # ---------------------------------------------------------------- fetching
@@ -178,21 +177,12 @@ def _url_is_public(url):
 
 
 def download_url(url, dest):
-    """Stream a direct file link to dest. Returns (ok, error).
-    Sends a browser User-Agent: hosts like w3schools answer
-    python-requests' default UA with 403."""
+    """Stream a direct file link to dest. Returns (ok, error)."""
     if not _url_is_public(url):
         return False, "That link doesn't point to a public file."
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "*/*",
-    }
     try:
         with requests.get(url, stream=True, timeout=(10, 120),
-                          allow_redirects=True,
-                          headers=headers) as r:
+                          allow_redirects=True) as r:
             if r.status_code != 200:
                 return False, f"Couldn't fetch the link (HTTP {r.status_code})."
             total = 0
@@ -242,30 +232,71 @@ def is_youtube_url(url):
         or host == "youtube.com"
 
 
-def _youtube_cookies_file():
-    """Optional cookies for yt-dlp, from the YOUTUBE_COOKIES env var
-    (a Netscape cookies.txt exported from a browser signed in to
-    YouTube) plus GOOGLE_COOKIES (the same export from google.com —
-    the session cookies live there, and the web players may withhold
-    formats without them). YouTube's bot-check ("Sign in to confirm
-    you're not a bot") blocks datacenter IPs like Railway's; a
-    signed-in session gets past it. Returns the temp file path, or
-    None when neither is set. Only lengths are ever logged, never the
+def is_facebook_url(url):
+    """True for facebook.com / fb.watch video links."""
+    try:
+        host = (urllib.parse.urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host == "fb.watch" or host == "facebook.com" \
+        or host.endswith(".facebook.com") or host == "fb.com" \
+        or host.endswith(".fb.com")
+
+
+def is_instagram_url(url):
+    """True for instagram.com post / reel / reels / tv links."""
+    try:
+        host = (urllib.parse.urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host == "instagram.com" or host.endswith(".instagram.com")
+
+
+def site_name(url):
+    """'YouTube', 'Facebook', 'Instagram', or None."""
+    if is_youtube_url(url):
+        return "YouTube"
+    if is_facebook_url(url):
+        return "Facebook"
+    if is_instagram_url(url):
+        return "Instagram"
+    return None
+
+
+def _cookies_file_for(site):
+    """Optional cookies for yt-dlp, from a Netscape cookies.txt export
+    held in an env var. YouTube needs YOUTUBE_COOKIES (+ GOOGLE_COOKIES,
+    the same export from google.com — the session cookies live there);
+    Instagram needs INSTAGRAM_COOKIES (it usually asks for a sign-in
+    even for public reels); Facebook usually works without
+    FACEBOOK_COOKIES. Returns the temp file path, or None when nothing
+    is set for that site. Only lengths are ever logged, never the
     cookie values."""
+    var_names = {
+        "youtube": ("YOUTUBE_COOKIES", "GOOGLE_COOKIES"),
+        "instagram": ("INSTAGRAM_COOKIES",),
+        "facebook": ("FACEBOOK_COOKIES",),
+    }[site]
     parts = []
-    for name in ("YOUTUBE_COOKIES", "GOOGLE_COOKIES"):
+    for name in var_names:
         text = os.environ.get(name, "").strip()
         if text:
             parts.append(text if text.endswith("\n") else text + "\n")
+    label = site.capitalize()
     if not parts:
-        log("YouTube cookies: not set")
+        log("%s cookies: not set" % label)
         return None
-    path = os.path.join(tempfile.gettempdir(), "youtube-cookies.txt")
+    path = os.path.join(tempfile.gettempdir(), "%s-cookies.txt" % site)
     with open(path, "w") as f:
         f.writelines(parts)
-    log("YouTube cookies: set (%d chars in %d part(s)), file ready"
-        % (sum(len(p) for p in parts), len(parts)))
+    log("%s cookies: set (%d chars in %d part(s)), file ready"
+        % (label, sum(len(p) for p in parts), len(parts)))
     return path
+
+
+def _youtube_cookies_file():
+    """Back-compat wrapper: YouTube's cookies (see _cookies_file_for)."""
+    return _cookies_file_for("youtube")
 
 
 class _WarningCollector:
@@ -305,9 +336,13 @@ def _pot_provider_url():
         "POT_PROVIDER_URL", "http://127.0.0.1:4416").strip()
 
 
-def _download_with_clients(url, tmpdir, clients, cookies=None):
+def _download_with_clients(url, tmpdir, clients, cookies=None,
+                           want_video=False):
     """One yt-dlp pass with the given player clients. Returns
     (path, title) on success, (None, error string) on failure.
+    clients=None means no player-client override (Facebook/Instagram
+    — the player_client arg is YouTube-only). want_video fetches the
+    best video at 720p or below, merged to MP4, instead of audio.
     On failure, the yt-dlp warnings collected for this pass are logged
     so the Railway logs show the real reason (e.g. a missing PO-token
     input) instead of just the final error.
@@ -315,8 +350,17 @@ def _download_with_clients(url, tmpdir, clients, cookies=None):
     tokens the web players need; its base URL comes from
     POT_PROVIDER_URL."""
     collector = _WarningCollector()
+    if want_video:
+        fmt = ("bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/"
+               "best[height<=720][ext=mp4]/best[height<=720]/best")
+        # Prefer 720p-or-below MP4, but fall back to plain best: some
+        # sources (Instagram reels) only serve one combined file
+        # above 720p, and a height filter with no fallback fails the
+        # whole download with "Requested format is not available".
+    else:
+        fmt = "bestaudio/best"
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": fmt,
         "outtmpl": os.path.join(tmpdir, "input.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
@@ -324,7 +368,11 @@ def _download_with_clients(url, tmpdir, clients, cookies=None):
         "verbose": True,
         "logger": collector,
         "ffmpeg_location": os.path.dirname(ffmpeg_exe()),
-        "extractor_args": {
+    }
+    if want_video:
+        ydl_opts["merge_output_format"] = "mp4"
+    if clients is not None:
+        ydl_opts["extractor_args"] = {
             "youtube": {"player_client": clients},
             "youtubepot-bgutilhttp": {"base_url": [_pot_provider_url()]},
             # NOTE: the value MUST be a one-element list. yt-dlp's
@@ -333,8 +381,7 @@ def _download_with_clients(url, tmpdir, clients, cookies=None):
             # [0] would be just "h", so the provider would try to
             # reach "h/ping" ("Unsupported url scheme: ''") and the
             # token server would never be contacted at all.
-        },
-    }
+        }
     if cookies:
         ydl_opts["cookiefile"] = cookies
     try:
@@ -342,17 +389,21 @@ def _download_with_clients(url, tmpdir, clients, cookies=None):
             info = ydl.extract_info(url, download=True)
     except Exception as e:
         for line in collector.lines:
-            log("yt-dlp (%s): %s" % (",".join(clients), line[:300]))
+            log("yt-dlp (%s): %s"
+                % (",".join(clients) if clients else "default",
+                   line[:300]))
         return None, repr(e)[:300]
     title = ((info or {}).get("title") or "audio")[:120]
     for name in sorted(os.listdir(tmpdir)):
         if name.startswith("input."):
             return os.path.join(tmpdir, name), title
-    return None, "YouTube gave me no audio file for that link."
+    what = "video" if want_video else "audio"
+    return None, "That link gave me no %s file." % what
 
 
-def download_youtube_audio(url, tmpdir):
-    """yt-dlp: fetch the best audio stream for one YouTube video.
+def download_youtube_media(url, tmpdir, want_video=False):
+    """yt-dlp: fetch the best audio stream (or the best video at 720p,
+    merged to MP4, when want_video) for one YouTube video.
     Passes, in order: the phone/TV clients with NO cookies (they fetch
     fine without a sign-in, and web cookies can trip them up), then
     the web players WITH the signed-in cookies if set — the web
@@ -381,7 +432,8 @@ def download_youtube_audio(url, tmpdir):
     for label, clients, ck in passes:
         if ck is None and label != "phone/TV, no cookies":
             continue
-        src, title_or_err = _download_with_clients(url, tmpdir, clients, ck)
+        src, title_or_err = _download_with_clients(url, tmpdir, clients,
+                                                   ck, want_video)
         if src:
             return src, title_or_err
         log("yt-dlp pass (%s) failed:" % label, title_or_err)
@@ -395,13 +447,45 @@ def download_youtube_audio(url, tmpdir):
     if "The page needs to be reloaded" in err:
         return None, ("YouTube asked for a reload and the download "
                       "didn't come through — try sending the link again.")
-    return None, ("I couldn't get audio from that YouTube link — it "
-                  "may be unavailable, age-restricted, or blocked.")
-    title = ((info or {}).get("title") or "audio")[:120]
-    for name in sorted(os.listdir(tmpdir)):
-        if name.startswith("input."):
-            return os.path.join(tmpdir, name), title
-    return None, "YouTube gave me no audio file for that link."
+    what = "video" if want_video else "audio"
+    return None, ("I couldn't get %s from that YouTube link — it "
+                  "may be unavailable, age-restricted, or blocked." % what)
+
+
+def download_social_media(url, tmpdir, want_video=False):
+    """yt-dlp: fetch one Facebook or Instagram video (audio, or the
+    video at 720p merged to MP4 when want_video). One pass, with that
+    site's cookies when set — Instagram usually asks for a sign-in
+    even for public reels, Facebook usually doesn't.
+    Returns (path, title) on success, (None, error message) on failure."""
+    site = "instagram" if is_instagram_url(url) else "facebook"
+    cookies = _cookies_file_for(site)
+    src, title_or_err = _download_with_clients(url, tmpdir, None,
+                                               cookies, want_video)
+    if src:
+        return src, title_or_err
+    err = title_or_err
+    low = err.lower()
+    if "login" in low or "log in" in low or "sign in" in low:
+        var = "INSTAGRAM_COOKIES" if site == "instagram" \
+            else "FACEBOOK_COOKIES"
+        return None, ("%s needs a sign-in for this one — add %s to the "
+                      "bot (same cookies.txt export as YouTube, from "
+                      "%s.com) and send the link again."
+                      % (site.capitalize(), var, site))
+    what = "video" if want_video else "audio"
+    return None, ("I couldn't get %s from that %s link — it may be "
+                  "unavailable, private, or blocked."
+                  % (what, site.capitalize()))
+
+
+def download_from_site(url, tmpdir, want_video=False):
+    """Fetch one YouTube / Facebook / Instagram link: audio (MP3 path)
+    or video at 720p (MP4 path). Returns (path, title) on success,
+    (None, error message) on failure."""
+    if is_youtube_url(url):
+        return download_youtube_media(url, tmpdir, want_video)
+    return download_social_media(url, tmpdir, want_video)
 
 
 # ---------------------------------------------------------------- convert
@@ -437,13 +521,58 @@ def handle_convert(chat_id, src_path, title):
                     "is over Telegram's 50 MB limit. Try a shorter clip.")
                 return
         send_audio(chat_id, out, title)
-        pushed, err = push_to_tunebox(out, title)
-        if pushed is True:
-            send_message(chat_id, "Added to your TuneBox library ✓")
-        elif pushed is False:
-            send_message(chat_id,
-                         "The MP3 is here, but it didn't land in TuneBox "
-                         f"({err}) — the library didn't get this one.")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _remux_or_compress_video(src, dst, compress=False):
+    """ffmpeg: put src into an MP4 container. compress=True also
+    shrinks it to 720p / crf 28. Returns True on success."""
+    if compress:
+        cmd = [ffmpeg_exe(), "-y", "-v", "error", "-i", src,
+               "-vf", "scale=-2:720", "-c:v", "libx264", "-crf", "28",
+               "-preset", "veryfast", "-c:a", "aac", "-b:a", "128k", dst]
+    else:
+        cmd = [ffmpeg_exe(), "-y", "-v", "error", "-i", src,
+               "-c", "copy", dst]
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    if p.returncode != 0:
+        log("ffmpeg video failed:", p.stderr[:500])
+        return False
+    return os.path.isfile(dst) and os.path.getsize(dst) > 0
+
+
+def handle_video(chat_id, src_path, title):
+    """Send src_path as an MP4 video. Telegram caps bot uploads at
+    50 MB, so a file over the cap is re-encoded smaller once (720p /
+    crf 28); if it is still too big the bot says so instead of
+    failing silently. Cleans up after itself."""
+    tmpdir = tempfile.mkdtemp(prefix="tbc_")
+    try:
+        ext = src_path.rsplit(".", 1)[-1].lower() \
+            if "." in src_path else ""
+        out = src_path
+        if ext != "mp4":
+            out = os.path.join(tmpdir, "video.mp4")
+            if not _remux_or_compress_video(src_path, out):
+                # Stream copy failed (odd codecs) — re-encode instead.
+                if not _remux_or_compress_video(src_path, out, True):
+                    send_message(chat_id,
+                                 "I couldn't read video from that file — "
+                                 "it may not be a video file. 🙏")
+                    return
+        if os.path.getsize(out) > MAX_SEND_BYTES:
+            log("MP4 too big, re-encoding smaller")
+            small = os.path.join(tmpdir, "video-small.mp4")
+            if not _remux_or_compress_video(out, small, True) or \
+                    os.path.getsize(small) > MAX_SEND_BYTES:
+                send_message(
+                    chat_id,
+                    "That video is too long — even compressed, the MP4 "
+                    "is over Telegram's 50 MB limit. Try a shorter clip.")
+                return
+            out = small
+        send_video(chat_id, out, title)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -471,18 +600,37 @@ def handle_update(upd):
     if text.startswith("/start") or text.startswith("/help"):
         send_message(chat_id, WELCOME)
         return
+    if text.startswith("/mp3"):
+        CHAT_MODES[str(chat_id)] = "mp3"
+        send_message(chat_id,
+                     "🎵 MP3 mode — links will come back as audio.")
+        return
+    if text.startswith("/mp4"):
+        CHAT_MODES[str(chat_id)] = "mp4"
+        send_message(chat_id,
+                     "🎬 MP4 mode — links will come back as video. "
+                     "Send /mp3 to go back to audio.")
+        return
     if text.startswith("http://") or text.startswith("https://"):
         url = text.split()[0]
-        if is_youtube_url(url):
-            send_message(chat_id, "Fetching audio from YouTube… ⏬")
+        want_video = output_mode(chat_id) == "mp4"
+        site = site_name(url)
+        if site:
+            what = "video" if want_video else "audio"
+            send_message(chat_id,
+                         "Fetching %s from %s… ⏬" % (what, site))
             tmpdir = tempfile.mkdtemp(prefix="tbc_")
             try:
-                src, title_or_err = download_youtube_audio(url, tmpdir)
+                src, title_or_err = download_from_site(url, tmpdir,
+                                                       want_video)
                 if not src:
                     send_message(chat_id, title_or_err)
                     return
-                send_message(chat_id, "Converting to MP3… 🎵")
-                handle_convert(chat_id, src, title_or_err)
+                if want_video:
+                    handle_video(chat_id, src, title_or_err)
+                else:
+                    send_message(chat_id, "Converting to MP3… 🎵")
+                    handle_convert(chat_id, src, title_or_err)
             finally:
                 shutil.rmtree(tmpdir, ignore_errors=True)
             return
@@ -501,8 +649,11 @@ def handle_update(upd):
             if not ok:
                 send_message(chat_id, err)
                 return
-            send_message(chat_id, "Converting to MP3… 🎵")
-            handle_convert(chat_id, src, guess_title(url))
+            if want_video and ext in VIDEO_FILE_EXTS:
+                handle_video(chat_id, src, guess_title(url))
+            else:
+                send_message(chat_id, "Converting to MP3… 🎵")
+                handle_convert(chat_id, src, guess_title(url))
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
         return
@@ -513,7 +664,12 @@ def handle_update(upd):
         if not (mime.startswith("video/") or mime.startswith("audio/")):
             send_message(chat_id, "Please send a video or audio file.")
             return
-        send_message(chat_id, "Got it — converting to MP3… 🎵")
+        want_video = output_mode(chat_id) == "mp4" \
+            and mime.startswith("video/")
+        if want_video:
+            send_message(chat_id, "Got it — sending it back as video… 🎬")
+        else:
+            send_message(chat_id, "Got it — converting to MP3… 🎵")
         file_path = get_file_path(file_id)
         if not file_path:
             send_message(chat_id, "I couldn't fetch that file — try again.")
@@ -528,15 +684,18 @@ def handle_update(upd):
                 send_message(chat_id, err)
                 return
             title = (video.get("file_name") or "audio").rsplit(".", 1)[0]
-            handle_convert(chat_id, src, title)
+            if want_video:
+                handle_video(chat_id, src, title)
+            else:
+                handle_convert(chat_id, src, title)
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
         return
     if text:
         send_message(chat_id,
-                     "Send me a YouTube link, a direct link to one of your "
-                     "videos, or send the video file itself, and I'll "
-                     "return the MP3. 🎵")
+                     "Send me a YouTube, Facebook or Instagram link, a "
+                     "direct link to one of your videos, or send the "
+                     "video file itself. /mp3 for audio, /mp4 for video. 🎵")
 
 
 def main():
