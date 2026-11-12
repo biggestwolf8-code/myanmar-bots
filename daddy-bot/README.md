@@ -30,4 +30,8 @@ Env vars:
 The bot must be an admin in the target channel with post permission.
 Photos are stored as Telegram file_ids only — Telegram hosts the images.
 
+All messages and photos the bot sends carry `protect_content=True`, so
+customers cannot forward or save them in the Telegram apps. Note: this
+does not block screenshots or screen recording — no bot can do that.
+
 Developed by Arkar Myowin.

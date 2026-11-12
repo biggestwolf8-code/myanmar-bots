@@ -80,14 +80,14 @@ def api(method, payload=None, files=None, timeout=60):
 
 
 def send_message(chat_id, text, reply_markup=None):
-    payload = {"chat_id": chat_id, "text": text}
+    payload = {"chat_id": chat_id, "text": text, "protect_content": True}
     if reply_markup:
         payload["reply_markup"] = reply_markup
     return api("sendMessage", payload)
 
 
 def send_photo(chat_id, file_id, caption=None):
-    payload = {"chat_id": chat_id, "photo": file_id}
+    payload = {"chat_id": chat_id, "photo": file_id, "protect_content": True}
     if caption:
         payload["caption"] = caption
     return api("sendPhoto", payload)
