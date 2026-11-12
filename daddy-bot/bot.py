@@ -1,14 +1,20 @@
 """Daddy3.0 — interactive game-board bot for Arkar's channel.
 
 A board is a post: a text message with inline buttons. Each button is
-tied to one photo. A user taps a button in the channel and the photo is
-sent to their PRIVATE chat (never to the channel).
+tied to one photo or one video. A user taps a button in the channel and
+the photo is sent to their PRIVATE chat (never to the channel).
+
+Photos are free tabs. Videos are PAID tabs: one-time access, either
+100 Telegram Stars (native Stars invoice) or 1 USDT on BSC (BEP20),
+verified on-chain via a public BSC node from the transaction hash the
+user pastes. Paid videos are sent with protect_content (no forward/save);
+photos additionally carry a per-user watermark.
 
 Admin (Arkar) designs boards from the bot's DM:
   /newboard          start a draft (bot asks for the board title)
   <title text>       sets the draft title
-  <photo + caption>  adds a button; the caption IS the button label
-                     (e.g. caption "Show his balls")
+  <photo + caption>  adds a FREE photo button; caption IS the label
+  <video + caption>  adds a PAID video button; caption IS the label
   /done              save the draft, show a preview
   /post <id>         post the board to the channel
   /setchannel <@ch>  set the target channel (bot must be admin there)
@@ -19,10 +25,12 @@ Admin (Arkar) designs boards from the bot's DM:
 
 Users:
   /start             welcome (or /start board_<id> via deep link)
-  tap a button       the photo lands in their private chat
+  tap a button       the photo/video lands in their private chat
+                     (video tabs ask for payment first)
 
-Photos are stored as Telegram file_ids only — Telegram hosts the images.
-Boards live in boards.json under DATA_DIR (Railway volume).
+Photos/videos are stored as Telegram file_ids only — Telegram hosts them.
+Boards live in boards.json under DATA_DIR (Railway volume); unlocks in
+unlocked.json, spent USDT transaction hashes in used_tx.json.
 """
 
 import json
@@ -42,24 +50,72 @@ ADMIN_IDS = {
 }
 DATA_DIR = os.environ.get("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
 BOARDS_PATH = os.path.join(DATA_DIR, "boards.json")
+UNLOCKED_PATH = os.path.join(DATA_DIR, "unlocked.json")
+USED_TX_PATH = os.path.join(DATA_DIR, "used_tx.json")
 API = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else ""
+
+# Paid video tabs: 100 Telegram Stars, or 1 USDT on BSC (BEP20).
+STARS_PRICE = 100
+USDT_ADDRESS = "0xffef0a1f5b075ed8763d7e0b13c9e3df04819222"  # Arkar's BSC address
+USDT_CONTRACT = "0x55d398326f99059ff775485246999027b3197955"  # USDT on BSC
+TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+BSC_RPC = [
+    "https://bsc-dataseed.binance.org/",
+    "https://bsc-dataseed1.bnbchain.org/",
+    "https://bsc-dataseed2.bnbchain.org/",
+]
+USDT_MIN = 1_000_000  # 1 USDT = 1,000,000 units (6 decimals)
 
 FOOTER = "Developed by Arkar Myowin"
 
 
-def load_boards():
+def load_json_file(path, default):
     try:
-        with open(BOARDS_PATH, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8") as fh:
             return json.load(fh)
     except Exception:
-        return {"channel": "", "boards": {}, "draft": None, "seq": 0}
+        return default
+
+
+def save_json_file(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
+
+def load_boards():
+    return load_json_file(
+        BOARDS_PATH, {"channel": "", "boards": {}, "draft": None, "seq": 0}
+    )
 
 
 def save_boards(state):
-    tmp = BOARDS_PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(state, fh, ensure_ascii=False, indent=2)
-    os.replace(tmp, BOARDS_PATH)
+    save_json_file(BOARDS_PATH, state)
+
+
+def is_unlocked(user_id, bid, idx):
+    data = load_json_file(UNLOCKED_PATH, {})
+    return f"{bid}:{idx}" in data.get(str(user_id), [])
+
+
+def mark_unlocked(user_id, bid, idx):
+    data = load_json_file(UNLOCKED_PATH, {})
+    key = f"{bid}:{idx}"
+    lst = data.setdefault(str(user_id), [])
+    if key not in lst:
+        lst.append(key)
+    save_json_file(UNLOCKED_PATH, data)
+
+
+def tx_used(tx_hash):
+    return tx_hash.lower() in load_json_file(USED_TX_PATH, [])
+
+
+def mark_tx_used(tx_hash):
+    data = load_json_file(USED_TX_PATH, [])
+    data.append(tx_hash.lower())
+    save_json_file(USED_TX_PATH, data)
 
 
 def new_board_id(state):
@@ -80,10 +136,12 @@ def api(method, payload=None, files=None, timeout=60):
         return {"ok": False}
 
 
-def send_message(chat_id, text, reply_markup=None):
+def send_message(chat_id, text, reply_markup=None, parse_mode=None):
     payload = {"chat_id": chat_id, "text": text, "protect_content": True}
     if reply_markup:
         payload["reply_markup"] = reply_markup
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     return api("sendMessage", payload)
 
 
@@ -92,6 +150,13 @@ def send_photo(chat_id, file_id, caption=None):
     if caption:
         payload["caption"] = caption
     return api("sendPhoto", payload)
+
+
+def send_video(chat_id, file_id, caption=None):
+    payload = {"chat_id": chat_id, "video": file_id, "protect_content": True}
+    if caption:
+        payload["caption"] = caption
+    return api("sendVideo", payload)
 
 
 def get_file_bytes(file_id):
@@ -176,6 +241,151 @@ def send_watermarked_photo(chat_id, file_id, tag):
     return send_photo(chat_id, file_id)
 
 
+def looks_like_tx_hash(text):
+    return (
+        len(text) == 66
+        and text.startswith("0x")
+        and all(c in "0123456789abcdefABCDEF" for c in text[2:])
+    )
+
+
+def verify_usdt_tx(tx_hash):
+    """Check a BSC transaction for a >=1 USDT transfer to Arkar.
+    Returns (True, '') or (False, reason). Uses public BSC nodes, no key."""
+    network_error = False
+    for url in BSC_RPC:
+        try:
+            r = requests.post(
+                url,
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "eth_getTransactionReceipt",
+                    "params": [tx_hash],
+                    "id": 1,
+                },
+                timeout=15,
+            )
+            res = r.json().get("result")
+        except Exception:
+            network_error = True
+            continue
+        if not res:
+            continue  # not mined yet on this node; try the next
+        if res.get("status") != "0x1":
+            return False, "That transaction failed on-chain — no payment arrived."
+        for log in res.get("logs", []):
+            if log.get("address", "").lower() != USDT_CONTRACT:
+                continue
+            topics = log.get("topics", [])
+            if len(topics) < 3 or topics[0].lower() != TRANSFER_TOPIC:
+                continue
+            to_addr = "0x" + topics[2][-40:]
+            if to_addr.lower() != USDT_ADDRESS:
+                continue
+            try:
+                value = int(log.get("data", "0x0"), 16)
+            except Exception:
+                continue
+            if value >= USDT_MIN:
+                return True, ""
+        return False, "No 1 USDT transfer to my address in that transaction."
+    if network_error:
+        return False, "Could not reach the network — try again in a minute."
+    return False, "Transaction not confirmed yet — wait a bit and paste the hash again."
+
+
+def send_payment_options(user_id, board, idx, btn):
+    kb = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": f"⭐ Pay {STARS_PRICE} Stars",
+                    "callback_data": f"pay_stars:{board['id']}:{idx}",
+                }
+            ],
+            [
+                {
+                    "text": "💎 Pay 1 USDT (crypto)",
+                    "callback_data": f"pay_usdt:{board['id']}:{idx}",
+                }
+            ],
+        ]
+    }
+    send_message(
+        user_id,
+        f"This video is paid — one-time access:\n\n\"{btn['label']}\"\n\n"
+        f"⭐ {STARS_PRICE} Telegram Stars, or\n"
+        "💎 1 USDT on BSC (BEP20).\n\nPay once and it is yours to watch.",
+        reply_markup=kb,
+    )
+
+
+def handle_successful_payment(chat_id, user_id, sp, state):
+    payload = sp.get("invoice_payload", "")
+    parts = payload.split(":")
+    if len(parts) != 4 or parts[0] != "video" or parts[3] != str(user_id):
+        return
+    _, bid, idx, _ = parts
+    board = state["boards"].get(bid)
+    if not board:
+        return
+    try:
+        btn = board["buttons"][int(idx)]
+    except (ValueError, IndexError):
+        return
+    mark_unlocked(user_id, bid, int(idx))
+    r = send_video(user_id, btn["file_id"])
+    if r.get("ok"):
+        send_message(user_id, "Payment received — enjoy the video.")
+    else:
+        send_message(
+            user_id,
+            "Payment received, but I could not send the video — "
+            "tap the button again and it will come through (already paid).",
+        )
+
+
+def handle_usdt_hash(chat_id, user_id, tx_hash, state):
+    pending = (state.get("pending_usdt") or {}).get(str(user_id))
+    if not pending:
+        send_message(
+            chat_id,
+            "I don't have a pending USDT payment for you — "
+            "tap a 🔒 video button first, then choose 1 USDT.",
+        )
+        return
+    if tx_used(tx_hash):
+        send_message(chat_id, "That transaction was already used for a video.")
+        return
+    ok, reason = verify_usdt_tx(tx_hash)
+    if not ok:
+        send_message(chat_id, f"Not verified yet: {reason}")
+        return
+    bid, idx = pending["board"], pending["idx"]
+    board = state["boards"].get(bid)
+    if not board:
+        send_message(chat_id, "That board is gone.")
+        return
+    try:
+        btn = board["buttons"][idx]
+    except IndexError:
+        send_message(chat_id, "That video is gone.")
+        return
+    mark_tx_used(tx_hash)
+    mark_unlocked(user_id, bid, idx)
+    state["pending_usdt"].pop(str(user_id), None)
+    save_boards(state)
+    r = send_video(user_id, btn["file_id"])
+    if r.get("ok"):
+        send_message(user_id, "USDT received — enjoy the video.")
+    else:
+        send_message(
+            user_id,
+            "USDT received, but I could not send the video — "
+            "tap the button again and it will come through (already paid).",
+        )
+
+
 def answer_callback(callback_id, text=None, show_alert=False, url=None):
     payload = {"callback_query_id": callback_id}
     if text:
@@ -197,8 +407,11 @@ def bot_username():
 def board_keyboard(board, include_open=True):
     rows = []
     for i, btn in enumerate(board["buttons"]):
+        label = btn["label"]
+        if btn.get("kind", "photo") == "video":
+            label = f"{label} 🔒"
         rows.append(
-            [{"text": btn["label"], "callback_data": f"reveal:{board['id']}:{i}"}]
+            [{"text": label, "callback_data": f"reveal:{board['id']}:{i}"}]
         )
     if include_open:
         uname = bot_username()
@@ -216,6 +429,8 @@ def board_keyboard(board, include_open=True):
 
 def board_text(board):
     lines = [board["title"], "", "Tap a button — the photo comes to your private chat."]
+    if any(b.get("kind", "photo") == "video" for b in board["buttons"]):
+        lines.append(f"🔒 Video tabs are paid: {STARS_PRICE} ⭐ or 1 USDT, one-time.")
     return "\n".join(lines)
 
 
@@ -262,8 +477,10 @@ def handle_help(chat_id):
         chat_id,
         "Design a board:\n\n"
         "1. /newboard — I ask for a title, you send it.\n"
-        "2. Send photos, one by one. The CAPTION on each photo "
-        "becomes its button label — e.g. caption \"Show his balls\".\n"
+        "2. Send photos, one by one — FREE tabs. The CAPTION on each "
+        "photo becomes its button label — e.g. caption \"Show his balls\".\n"
+        "   Send a VIDEO instead for a PAID tab — same caption rule. "
+        f"Video tabs cost {STARS_PRICE} Stars or 1 USDT, one-time.\n"
         "3. /done — saves the board and shows a preview.\n"
         "4. /post <id> — posts it to the channel.\n\n"
         "Other commands:\n"
@@ -287,7 +504,15 @@ def handle_message(msg, state):
         handle_start(chat_id, text, state)
         return
 
+    sp = msg.get("successful_payment")
+    if sp:
+        handle_successful_payment(chat_id, user_id, sp, state)
+        return
+
     if not is_admin(chat_id):
+        if looks_like_tx_hash(text):
+            handle_usdt_hash(chat_id, user_id, text, state)
+            return
         if text.startswith("/"):
             send_message(
                 chat_id,
@@ -319,7 +544,7 @@ def handle_message(msg, state):
             send_message(chat_id, "No draft yet — /newboard first, then send a title.")
             return
         if not draft["buttons"]:
-            send_message(chat_id, "The board has no buttons yet — send at least one photo with a caption.")
+            send_message(chat_id, "The board has no buttons yet — send at least one photo (or a video) with a caption.")
             return
         bid = new_board_id(state)
         board = {"id": bid, "title": draft["title"], "buttons": draft["buttons"]}
@@ -394,7 +619,7 @@ def handle_message(msg, state):
             )
         return
 
-    # photo with caption -> add a button to the draft
+    # photo with caption -> add a FREE button to the draft
     if msg.get("photo"):
         draft = state.get("draft")
         if not draft:
@@ -408,12 +633,36 @@ def handle_message(msg, state):
             send_message(chat_id, "That photo has no caption — the caption becomes the button label. Send it again with a caption.")
             return
         file_id = msg["photo"][-1]["file_id"]
-        draft["buttons"].append({"label": label, "file_id": file_id})
+        draft["buttons"].append({"label": label, "file_id": file_id, "kind": "photo"})
         save_boards(state)
         send_message(
             chat_id,
             f"Added button \"{label}\" ({len(draft['buttons'])} on this board). "
-            "Send another photo, or /done to save.",
+            "Send another photo, or a video for a paid tab, or /done to save.",
+        )
+        return
+
+    # video with caption -> add a PAID button to the draft
+    if msg.get("video"):
+        draft = state.get("draft")
+        if not draft:
+            send_message(chat_id, "No draft open — /newboard first.")
+            return
+        if draft.get("title") is None:
+            send_message(chat_id, "Send the board title first (plain text), then the video.")
+            return
+        label = (msg.get("caption") or "").strip()
+        if not label:
+            send_message(chat_id, "That video has no caption — the caption becomes the button label. Send it again with a caption.")
+            return
+        file_id = msg["video"]["file_id"]
+        draft["buttons"].append({"label": label, "file_id": file_id, "kind": "video"})
+        save_boards(state)
+        send_message(
+            chat_id,
+            f"Added PAID video tab \"{label}\" ({len(draft['buttons'])} on this board). "
+            f"Watching it costs {STARS_PRICE} Stars or 1 USDT. "
+            "Send another photo or video, or /done to save.",
         )
         return
 
@@ -425,7 +674,8 @@ def handle_message(msg, state):
         send_message(
             chat_id,
             f"Title set: {text}\n\nNow send the photos, one by one — "
-            "caption each one with its button label.",
+            "caption each one with its button label. "
+            "Send a VIDEO instead for a paid tab.",
         )
         return
 
@@ -440,10 +690,10 @@ def handle_callback(query, state):
     user_id = query["from"]["id"]
     qid = query["id"]
     parts = data.split(":")
-    if len(parts) != 3 or parts[0] != "reveal":
+    if len(parts) != 3:
         answer_callback(qid, "Unknown button.")
         return
-    _, bid, idx = parts
+    action, bid, idx = parts
     board = state["boards"].get(bid)
     if not board:
         answer_callback(qid, "That board is gone.", show_alert=True)
@@ -454,6 +704,66 @@ def handle_callback(query, state):
     except (ValueError, IndexError):
         answer_callback(qid, "Unknown button.", show_alert=True)
         return
+
+    if action == "pay_stars":
+        r = api(
+            "sendInvoice",
+            {
+                "chat_id": user_id,
+                "title": f"Video: {btn['label'][:24]}",
+                "description": "One-time access to this video.",
+                "payload": f"video:{bid}:{i}:{user_id}",
+                "provider_token": "",
+                "currency": "XTR",
+                "prices": [{"label": "Video access", "amount": STARS_PRICE}],
+                "protect_content": True,
+            },
+        )
+        if r.get("ok"):
+            answer_callback(qid, "Invoice sent — check your private chat.")
+        else:
+            answer_callback(
+                qid,
+                "Stars payment is not available right now — try the USDT option.",
+                show_alert=True,
+            )
+        return
+
+    if action == "pay_usdt":
+        state.setdefault("pending_usdt", {})[str(user_id)] = {"board": bid, "idx": i}
+        send_message(
+            user_id,
+            "Pay 1 USDT on BSC (BEP20) to:\n\n"
+            f"<code>{USDT_ADDRESS}</code>\n\n"
+            "Then paste your transaction hash here "
+            "(starts with 0x, 66 characters). "
+            "I will check it on-chain and send the video.",
+            parse_mode="HTML",
+        )
+        answer_callback(qid, "USDT address sent — check your private chat.")
+        return
+
+    if action != "reveal":
+        answer_callback(qid, "Unknown button.")
+        return
+
+    # ---- reveal: photo (free) or video (paid) ----
+    if btn.get("kind", "photo") == "video":
+        if is_unlocked(user_id, bid, i):
+            r = send_video(user_id, btn["file_id"])
+            if r.get("ok"):
+                answer_callback(qid, "Sent to your private chat.")
+            else:
+                answer_callback(
+                    qid,
+                    "Could not send the video — tap START on the bot first, then tap again.",
+                    show_alert=True,
+                )
+        else:
+            send_payment_options(user_id, board, i, btn)
+            answer_callback(qid, "This video is paid — choose how to pay.")
+        return
+
     user = query.get("from", {})
     username = user.get("username")
     tag = f"@{username} | ID {user_id}" if username else f"ID {user_id}"
@@ -497,13 +807,22 @@ def main():
         for upd in data.get("result", []):
             offset = upd["update_id"] + 1
             try:
-                if "message" in upd:
+                if "pre_checkout_query" in upd:
+                    q = upd["pre_checkout_query"]
+                    api(
+                        "answerPreCheckoutQuery",
+                        {"pre_checkout_query_id": q["id"], "ok": True},
+                    )
+                elif "message" in upd:
                     before = json.dumps(state, sort_keys=True)
                     handle_message(upd["message"], state)
                     if json.dumps(state, sort_keys=True) != before:
                         dirty = True
                 elif "callback_query" in upd:
+                    before = json.dumps(state, sort_keys=True)
                     handle_callback(upd["callback_query"], state)
+                    if json.dumps(state, sort_keys=True) != before:
+                        dirty = True
             except Exception as e:
                 print(f"update error: {e}", flush=True)
         if dirty:
