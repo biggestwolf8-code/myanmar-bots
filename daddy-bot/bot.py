@@ -31,6 +31,19 @@ Users:
 Photos/videos are stored as Telegram file_ids only — Telegram hosts them.
 Boards live in boards.json under DATA_DIR (Railway volume); unlocks in
 unlocked.json, spent USDT transaction hashes in used_tx.json.
+
+Every message the bot sends is logged in sent.json (chat, message id,
+board, user). Admin revoke commands delete them again:
+  /revoke user <telegram id>   everything sent to that user
+  /revoke board <id>           that board's channel post + all media
+                               sent from it
+  /revoke all                  everything the bot ever sent (and logged)
+Only messages sent AFTER this was added are logged — older ones cannot
+be revoked. Deleting removes the message from the chat; it cannot undo
+a screenshot or a screen recording.
+
+Forward any post from the channel to the bot and it stores the channel's
+numeric id as the target (more reliable than the invite link).
 """
 
 import json
@@ -52,6 +65,7 @@ DATA_DIR = os.environ.get("DATA_DIR", os.path.dirname(os.path.abspath(__file__))
 BOARDS_PATH = os.path.join(DATA_DIR, "boards.json")
 UNLOCKED_PATH = os.path.join(DATA_DIR, "unlocked.json")
 USED_TX_PATH = os.path.join(DATA_DIR, "used_tx.json")
+SENT_PATH = os.path.join(DATA_DIR, "sent.json")
 API = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else ""
 
 # Paid video tabs: 100 Telegram Stars, or 1 USDT on BSC (BEP20).
@@ -118,6 +132,44 @@ def mark_tx_used(tx_hash):
     save_json_file(USED_TX_PATH, data)
 
 
+def record_sent(chat_id, message_id, kind, board=None, user=None):
+    """Log a message the bot sent, so it can be revoked later."""
+    data = load_json_file(SENT_PATH, [])
+    data.append(
+        {
+            "chat": str(chat_id),
+            "msg": message_id,
+            "kind": kind,
+            "board": board,
+            "user": str(user) if user is not None else None,
+            "ts": int(time.time()),
+        }
+    )
+    save_json_file(SENT_PATH, data)
+
+
+def revoke_entries(entries):
+    """Delete each recorded message. Returns (deleted, failed) and the
+    list of entries that can be pruned from the log (deleted, or already
+    gone). Failures stay logged so they can be retried."""
+    pruned = []
+    deleted = 0
+    failed = 0
+    for e in entries:
+        r = api(
+            "deleteMessage", {"chat_id": e["chat"], "message_id": e["msg"]}
+        )
+        if r.get("ok") or "message to delete not found" in str(
+            r.get("description", "")
+        ):
+            deleted += 1
+            pruned.append(e)
+        else:
+            failed += 1
+        time.sleep(0.05)
+    return deleted, failed, pruned
+
+
 def new_board_id(state):
     state["seq"] = state.get("seq", 0) + 1
     return f"b{state['seq']}"
@@ -136,27 +188,57 @@ def api(method, payload=None, files=None, timeout=60):
         return {"ok": False}
 
 
-def send_message(chat_id, text, reply_markup=None, parse_mode=None):
+def send_message(chat_id, text, reply_markup=None, parse_mode=None, meta=None):
     payload = {"chat_id": chat_id, "text": text, "protect_content": True}
     if reply_markup:
         payload["reply_markup"] = reply_markup
     if parse_mode:
         payload["parse_mode"] = parse_mode
-    return api("sendMessage", payload)
+    r = api("sendMessage", payload)
+    if r.get("ok"):
+        m = meta or {}
+        record_sent(
+            chat_id,
+            r["result"]["message_id"],
+            m.get("kind", "message"),
+            board=m.get("board"),
+            user=m.get("user", chat_id if isinstance(chat_id, int) else None),
+        )
+    return r
 
 
-def send_photo(chat_id, file_id, caption=None):
+def send_photo(chat_id, file_id, caption=None, meta=None):
     payload = {"chat_id": chat_id, "photo": file_id, "protect_content": True}
     if caption:
         payload["caption"] = caption
-    return api("sendPhoto", payload)
+    r = api("sendPhoto", payload)
+    if r.get("ok"):
+        m = meta or {}
+        record_sent(
+            chat_id,
+            r["result"]["message_id"],
+            m.get("kind", "photo"),
+            board=m.get("board"),
+            user=m.get("user"),
+        )
+    return r
 
 
-def send_video(chat_id, file_id, caption=None):
+def send_video(chat_id, file_id, caption=None, meta=None):
     payload = {"chat_id": chat_id, "video": file_id, "protect_content": True}
     if caption:
         payload["caption"] = caption
-    return api("sendVideo", payload)
+    r = api("sendVideo", payload)
+    if r.get("ok"):
+        m = meta or {}
+        record_sent(
+            chat_id,
+            r["result"]["message_id"],
+            m.get("kind", "video"),
+            board=m.get("board"),
+            user=m.get("user"),
+        )
+    return r
 
 
 def get_file_bytes(file_id):
@@ -222,7 +304,7 @@ def watermark_image(data, tag):
     return buf.getvalue()
 
 
-def send_watermarked_photo(chat_id, file_id, tag):
+def send_watermarked_photo(chat_id, file_id, tag, meta=None):
     """Send a photo with the user's tag burned in. Falls back to the
     original (still protected) photo if anything fails, so a tap never
     silently breaks."""
@@ -234,11 +316,19 @@ def send_watermarked_photo(chat_id, file_id, tag):
             payload = {"chat_id": str(chat_id), "protect_content": "true"}
             r = api("sendPhoto", payload, files=files)
             if r.get("ok"):
+                m = meta or {}
+                record_sent(
+                    chat_id,
+                    r["result"]["message_id"],
+                    m.get("kind", "photo"),
+                    board=m.get("board"),
+                    user=m.get("user"),
+                )
                 return r
             print(f"watermarked send failed, falling back: {r}", flush=True)
         except Exception as e:
             print(f"watermark error, falling back: {e}", flush=True)
-    return send_photo(chat_id, file_id)
+    return send_photo(chat_id, file_id, meta=meta)
 
 
 def looks_like_tx_hash(text):
@@ -334,7 +424,9 @@ def handle_successful_payment(chat_id, user_id, sp, state):
     except (ValueError, IndexError):
         return
     mark_unlocked(user_id, bid, int(idx))
-    r = send_video(user_id, btn["file_id"])
+    r = send_video(
+        user_id, btn["file_id"], meta={"kind": "video", "board": bid, "user": user_id}
+    )
     if r.get("ok"):
         send_message(user_id, "Payment received — enjoy the video.")
     else:
@@ -375,7 +467,9 @@ def handle_usdt_hash(chat_id, user_id, tx_hash, state):
     mark_unlocked(user_id, bid, idx)
     state["pending_usdt"].pop(str(user_id), None)
     save_boards(state)
-    r = send_video(user_id, btn["file_id"])
+    r = send_video(
+        user_id, btn["file_id"], meta={"kind": "video", "board": bid, "user": user_id}
+    )
     if r.get("ok"):
         send_message(user_id, "USDT received — enjoy the video.")
     else:
@@ -486,7 +580,9 @@ def handle_help(chat_id):
         "Other commands:\n"
         "/boards — list boards\n"
         "/delboard <id> — delete one\n"
-        "/setchannel <@channel> — where boards go\n"
+        "/revoke user <id> / board <id> / all — delete what the bot sent\n"
+        "/setchannel <@channel> — where boards go (or forward any channel\n"
+        "  post to me and I take the channel's id from it)\n"
         "/cancel — throw the draft away",
     )
 
@@ -522,6 +618,18 @@ def handle_message(msg, state):
         return
 
     # ---- admin ----
+    # forwarded channel post -> store the channel's numeric id as target
+    fwd = msg.get("forward_from_chat")
+    if fwd and fwd.get("type") == "channel":
+        state["channel"] = str(fwd["id"])
+        save_boards(state)
+        send_message(
+            chat_id,
+            f"Channel set to {fwd.get('title', fwd['id'])} ({fwd['id']}). "
+            "Boards will post there now.",
+        )
+        return
+
     if text == "/help":
         handle_help(chat_id)
         return
@@ -582,6 +690,45 @@ def handle_message(msg, state):
         send_message(chat_id, f"Deleted {parts[1]} ({title}).")
         return
 
+    if text.startswith("/revoke"):
+        parts = text.split()
+        sent = load_json_file(SENT_PATH, [])
+        if len(parts) < 2:
+            send_message(
+                chat_id,
+                "Usage:\n"
+                "/revoke user <telegram id> — everything sent to that user\n"
+                "/revoke board <id> — that board's channel post + all media sent from it\n"
+                "/revoke all — everything the bot ever sent (and logged)",
+            )
+            return
+        scope = parts[1]
+        if scope == "all":
+            targets = sent
+        elif scope == "user" and len(parts) >= 3:
+            targets = [e for e in sent if e.get("user") == parts[2]]
+        elif scope == "board" and len(parts) >= 3:
+            targets = [e for e in sent if e.get("board") == parts[2]]
+        else:
+            send_message(
+                chat_id,
+                "Usage:\n/revoke user <telegram id>\n/revoke board <id>\n/revoke all",
+            )
+            return
+        if not targets:
+            send_message(chat_id, "Nothing recorded for that — nothing to revoke.")
+            return
+        send_message(chat_id, f"Revoking {len(targets)} messages…")
+        deleted, failed, pruned = revoke_entries(targets)
+        remaining = [e for e in sent if e not in pruned]
+        save_json_file(SENT_PATH, remaining)
+        send_message(
+            chat_id,
+            f"Revoked {deleted} messages."
+            + (f" {failed} could not be deleted." if failed else ""),
+        )
+        return
+
     if text.startswith("/setchannel"):
         parts = text.split()
         if len(parts) < 2:
@@ -608,7 +755,12 @@ def handle_message(msg, state):
             send_message(chat_id, "Usage: /post <id> — see /boards for ids.")
             return
         board = state["boards"][bid]
-        r = send_message(channel, board_text(board), reply_markup=board_keyboard(board))
+        r = send_message(
+            channel,
+            board_text(board),
+            reply_markup=board_keyboard(board),
+            meta={"kind": "board", "board": bid},
+        )
         if r.get("ok"):
             send_message(chat_id, f"Posted {bid} to {channel}.")
         else:
@@ -720,6 +872,13 @@ def handle_callback(query, state):
             },
         )
         if r.get("ok"):
+            record_sent(
+                user_id,
+                r["result"]["message_id"],
+                "invoice",
+                board=bid,
+                user=user_id,
+            )
             answer_callback(qid, "Invoice sent — check your private chat.")
         else:
             answer_callback(
@@ -750,7 +909,11 @@ def handle_callback(query, state):
     # ---- reveal: photo (free) or video (paid) ----
     if btn.get("kind", "photo") == "video":
         if is_unlocked(user_id, bid, i):
-            r = send_video(user_id, btn["file_id"])
+            r = send_video(
+                user_id,
+                btn["file_id"],
+                meta={"kind": "video", "board": bid, "user": user_id},
+            )
             if r.get("ok"):
                 answer_callback(qid, "Sent to your private chat.")
             else:
@@ -767,7 +930,12 @@ def handle_callback(query, state):
     user = query.get("from", {})
     username = user.get("username")
     tag = f"@{username} | ID {user_id}" if username else f"ID {user_id}"
-    r = send_watermarked_photo(user_id, btn["file_id"], tag)
+    r = send_watermarked_photo(
+        user_id,
+        btn["file_id"],
+        tag,
+        meta={"kind": "photo", "board": bid, "user": user_id},
+    )
     if r.get("ok"):
         answer_callback(qid, "Sent to your private chat.")
     else:

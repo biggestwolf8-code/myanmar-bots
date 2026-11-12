@@ -50,4 +50,11 @@ the user pastes their transaction hash, the bot checks a public BSC
 node for a >= 1 USDT transfer to the address above; spent hashes are
 recorded so one payment cannot unlock twice.
 
+Revoking: every message the bot sends is logged in sent.json, and the
+admin can delete it again — /revoke user <id>, /revoke board <id>,
+/revoke all. Only messages sent after logging was added are revocable.
+Deleting removes the message from the chat; it cannot undo a screenshot
+or a screen recording. Forward any post from the channel to the bot and
+it stores the channel's numeric id as the post target.
+
 Developed by Arkar Myowin.
