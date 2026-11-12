@@ -26,6 +26,7 @@ Boards live in boards.json under DATA_DIR (Railway volume).
 """
 
 import json
+import io
 import os
 import random
 import string
@@ -91,6 +92,88 @@ def send_photo(chat_id, file_id, caption=None):
     if caption:
         payload["caption"] = caption
     return api("sendPhoto", payload)
+
+
+def get_file_bytes(file_id):
+    """Download a Telegram file's bytes (for watermarking)."""
+    r = api("getFile", {"file_id": file_id})
+    if not r.get("ok"):
+        return None
+    path = r["result"].get("file_path")
+    if not path:
+        return None
+    try:
+        resp = requests.get(
+            f"https://api.telegram.org/file/bot{BOT_TOKEN}/{path}", timeout=60
+        )
+        if resp.status_code == 200:
+            return resp.content
+    except Exception as e:
+        print(f"file download error: {e}", flush=True)
+    return None
+
+
+def watermark_image(data, tag):
+    """Burn a per-user tag into a photo: faint diagonal repeat + a
+    readable bottom bar. Tag must be ASCII (fonts may lack other glyphs)."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    im = Image.open(io.BytesIO(data)).convert("RGB")
+    w, h = im.size
+    base = im.convert("RGBA")
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(overlay)
+
+    def load_font(size):
+        for p in (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+        ):
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    # faint diagonal repeat (hard to crop out)
+    f_diag = load_font(max(20, w // 26))
+    tile = Image.new("RGBA", (w // 2, h // 4), (0, 0, 0, 0))
+    td = ImageDraw.Draw(tile)
+    td.text((10, 10), tag, font=f_diag, fill=(255, 255, 255, 70))
+    tile = tile.rotate(30, expand=True, resample=Image.BICUBIC)
+    tw, th = tile.size
+    for x in range(-tw, w + tw, tw):
+        for y in range(-th, h + th, th):
+            overlay.alpha_composite(tile, (x, y))
+    # readable bottom bar
+    bar_h = max(30, h // 14)
+    d.rectangle([0, h - bar_h, w, h], fill=(0, 0, 0, 150))
+    f_bar = load_font(max(16, bar_h // 2))
+    d.text((12, h - bar_h + bar_h // 4), tag, font=f_bar, fill=(255, 255, 255, 255))
+    out = Image.alpha_composite(base, overlay).convert("RGB")
+    buf = io.BytesIO()
+    out.save(buf, "JPEG", quality=88)
+    return buf.getvalue()
+
+
+def send_watermarked_photo(chat_id, file_id, tag):
+    """Send a photo with the user's tag burned in. Falls back to the
+    original (still protected) photo if anything fails, so a tap never
+    silently breaks."""
+    data = get_file_bytes(file_id)
+    if data:
+        try:
+            wm = watermark_image(data, tag)
+            files = {"photo": ("photo.jpg", io.BytesIO(wm), "image/jpeg")}
+            payload = {"chat_id": str(chat_id), "protect_content": "true"}
+            r = api("sendPhoto", payload, files=files)
+            if r.get("ok"):
+                return r
+            print(f"watermarked send failed, falling back: {r}", flush=True)
+        except Exception as e:
+            print(f"watermark error, falling back: {e}", flush=True)
+    return send_photo(chat_id, file_id)
 
 
 def answer_callback(callback_id, text=None, show_alert=False, url=None):
@@ -371,7 +454,10 @@ def handle_callback(query, state):
     except (ValueError, IndexError):
         answer_callback(qid, "Unknown button.", show_alert=True)
         return
-    r = send_photo(user_id, btn["file_id"])
+    user = query.get("from", {})
+    username = user.get("username")
+    tag = f"@{username} | ID {user_id}" if username else f"ID {user_id}"
+    r = send_watermarked_photo(user_id, btn["file_id"], tag)
     if r.get("ok"):
         answer_callback(qid, "Sent to your private chat.")
     else:

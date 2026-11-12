@@ -34,4 +34,10 @@ All messages and photos the bot sends carry `protect_content=True`, so
 customers cannot forward or save them in the Telegram apps. Note: this
 does not block screenshots or screen recording — no bot can do that.
 
+Second layer: every photo a customer taps is watermarked with their own
+Telegram identity (`@username | ID <id>`) — a faint diagonal repeat plus
+a readable bottom bar — before it is sent, so a leaked screenshot traces
+back to who took it. If watermarking ever fails, the bot falls back to
+sending the original photo (still protected) so a tap never breaks.
+
 Developed by Arkar Myowin.
