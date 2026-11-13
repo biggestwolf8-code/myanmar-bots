@@ -380,9 +380,10 @@ def looks_like_tx_hash(text):
     )
 
 
-def verify_usdt_tx(tx_hash):
-    """Check a BSC transaction for a >=1 USDT transfer to Arkar.
-    Returns (True, '') or (False, reason). Uses public BSC nodes, no key."""
+def verify_usdt_tx(tx_hash, min_units=USDT_MIN):
+    """Check a BSC transaction for a USDT transfer to Arkar of at least
+    min_units. Returns (True, '', value_units) or (False, reason, value).
+    Uses public BSC nodes, no key."""
     network_error = False
     for url in BSC_RPC:
         try:
@@ -403,7 +404,7 @@ def verify_usdt_tx(tx_hash):
         if not res:
             continue  # not mined yet on this node; try the next
         if res.get("status") != "0x1":
-            return False, "That transaction failed on-chain — no payment arrived."
+            return False, "That transaction failed on-chain — no payment arrived.", 0
         for log in res.get("logs", []):
             if log.get("address", "").lower() != USDT_CONTRACT:
                 continue
@@ -417,16 +418,22 @@ def verify_usdt_tx(tx_hash):
                 value = int(log.get("data", "0x0"), 16)
             except Exception:
                 continue
-            if value >= USDT_MIN:
-                return True, ""
-        return False, "No 1 USDT transfer to my address in that transaction."
+            if value >= min_units:
+                return True, "", value
+            return (
+                False,
+                f"That transaction only sent {fmt_usd(value // 10_000)} USDT — "
+                f"at least {fmt_usd(min_units // 10_000)} is needed.",
+                value,
+            )
+        return False, "No USDT transfer to my address in that transaction.", 0
     if network_error:
-        return False, "Could not reach the network — try again in a minute."
-    return False, "Transaction not confirmed yet — wait a bit and paste the hash again."
+        return False, "Could not reach the network — try again in a minute.", 0
+    return False, "Transaction not confirmed yet — wait a bit and paste the hash again.", 0
 
 
 def send_balance_view(user_id):
-    """Show the user's balance + top-up buttons (Stars, 1$ = 100 Stars)."""
+    """Show the user's balance + top-up buttons (Stars or USDT)."""
     balance = get_balance(user_id)
     rows = []
     for usd in TOPUP_USD:
@@ -434,15 +441,20 @@ def send_balance_view(user_id):
         rows.append(
             [
                 {
-                    "text": f"➕ Top up ${usd} ({stars:,} ⭐)",
+                    "text": f"⭐ ${usd} ({stars:,} Stars)",
                     "callback_data": f"topup:{usd * 100}",
-                }
+                },
+                {
+                    "text": f"💎 ${usd} USDT",
+                    "callback_data": f"topup_usdt:{usd * 100}",
+                },
             ]
         )
     return send_message(
         user_id,
         f"💰 Your balance: {fmt_usd(balance)}\n\n"
-        f"Top up with Telegram Stars (1$ = {STARS_PER_USD} Stars).\n"
+        f"Top up with Telegram Stars (1$ = {STARS_PER_USD} Stars) "
+        "or USDT (1 USDT = $1, BSC/BEP20).\n"
         f"A video costs {fmt_usd(VIDEO_PRICE_CENTS)} of balance.",
         reply_markup={"inline_keyboard": rows},
     )
@@ -531,13 +543,31 @@ def handle_usdt_hash(chat_id, user_id, tx_hash, state):
         send_message(
             chat_id,
             "I don't have a pending USDT payment for you — "
-            "tap a 🔒 video button first, then choose 1 USDT.",
+            "tap a 🔒 video button first, or a 💎 USDT top-up in your balance.",
         )
         return
     if tx_used(tx_hash):
-        send_message(chat_id, "That transaction was already used for a video.")
+        send_message(chat_id, "That transaction was already used.")
         return
-    ok, reason = verify_usdt_tx(tx_hash)
+    kind = pending.get("kind", "video")
+    if kind == "topup":
+        cents = pending["cents"]
+        ok, reason, value = verify_usdt_tx(tx_hash, cents * 10_000)
+        if not ok:
+            send_message(chat_id, f"Not verified yet: {reason}")
+            return
+        mark_tx_used(tx_hash)
+        credited = value // 10_000  # USDT units -> USD cents (1 USDT = $1)
+        total = add_balance(user_id, credited)
+        state["pending_usdt"].pop(str(user_id), None)
+        save_boards(state)
+        send_message(
+            user_id,
+            f"USDT received — topped up {fmt_usd(credited)}. "
+            f"Your balance is now {fmt_usd(total)}.",
+        )
+        return
+    ok, reason, _value = verify_usdt_tx(tx_hash)
     if not ok:
         send_message(chat_id, f"Not verified yet: {reason}")
         return
@@ -1014,6 +1044,32 @@ def handle_callback(query, state):
             )
         return
 
+    if data.startswith("topup_usdt:"):
+        try:
+            cents = int(data.split(":")[1])
+        except (IndexError, ValueError):
+            answer_callback(qid, "Unknown button.")
+            return
+        if cents not in [usd * 100 for usd in TOPUP_USD]:
+            answer_callback(qid, "Unknown top-up amount.")
+            return
+        usd = cents // 100
+        state.setdefault("pending_usdt", {})[str(user_id)] = {
+            "kind": "topup",
+            "cents": cents,
+        }
+        send_message(
+            user_id,
+            f"Top up {fmt_usd(cents)} with USDT on BSC (BEP20):\n\n"
+            f"<code>{USDT_ADDRESS}</code>\n\n"
+            f"Send {fmt_usd(cents)} USDT to that address, then paste your "
+            "transaction hash here (starts with 0x, 66 characters). "
+            "I will check it on-chain and add it to your balance.",
+            parse_mode="HTML",
+        )
+        answer_callback(qid, "USDT address sent — check your private chat.")
+        return
+
     parts = data.split(":")
     if len(parts) != 3:
         answer_callback(qid, "Unknown button.")
@@ -1093,7 +1149,11 @@ def handle_callback(query, state):
         return
 
     if action == "pay_usdt":
-        state.setdefault("pending_usdt", {})[str(user_id)] = {"board": bid, "idx": i}
+        state.setdefault("pending_usdt", {})[str(user_id)] = {
+            "kind": "video",
+            "board": bid,
+            "idx": i,
+        }
         send_message(
             user_id,
             "Pay 1 USDT on BSC (BEP20) to:\n\n"

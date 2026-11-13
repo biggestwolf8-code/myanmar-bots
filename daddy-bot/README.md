@@ -64,8 +64,10 @@ it stores the channel's numeric id as the post target.
 
 Balance: every board has a "💰 My Balance" button (also /balance in the
 bot's DM). Balances live in balances.json, in USD cents. Top-ups are
-$5 / $10 / $25 / $50 / $100 via Telegram Stars at 1$ = 100 Stars; a
-video costs $1 of balance. Top-up Stars land in the bot's Stars balance
+$5 / $10 / $25 / $50 / $100, by Telegram Stars at 1$ = 100 Stars or by
+USDT at 1 USDT = $1 (BSC/BEP20, verified on-chain from the pasted
+transaction hash, credited at the amount actually received). A video
+costs $1 of balance. Top-up Stars land in the bot's Stars balance
 just like video Stars payments.
 
 Developed by Arkar Myowin.
