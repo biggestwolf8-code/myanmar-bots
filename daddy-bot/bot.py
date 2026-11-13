@@ -69,6 +69,7 @@ import random
 import string
 import time
 
+import re
 import requests
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -327,6 +328,15 @@ def _load_font(size):
 def _safe_text(s):
     """ASCII-only text for PIL drawing (fonts lack emoji glyphs)."""
     return "".join(c for c in (s or "") if ord(c) < 128).strip()
+
+
+def parse_channel_link(text):
+    """A copied private-channel post link, https://t.me/c/<digits>/...,
+    carries the channel id: the chat id is -100<digits>."""
+    m = re.search(r"t\.me/c/(\d+)", text or "")
+    if not m:
+        return None
+    return "-100" + m.group(1)
 
 
 def user_tag(user):
@@ -934,7 +944,8 @@ def handle_help(chat_id):
         "/delboard <id> — delete one\n"
         "/revoke user <id> / board <id> / all — delete what the bot sent\n"
         "/setchannel <@channel> — where boards go (or forward any channel\n"
-        "  post to me and I take the channel's id from it)\n"
+        "  post to me, or paste a copied post link from it, and I take\n"
+        "  the channel's id from that)\n"
         "/cancel — throw the draft away",
     )
 
@@ -982,6 +993,18 @@ def handle_message(msg, state):
             chat_id,
             f"Channel set to {fwd.get('title', fwd['id'])} ({fwd['id']}). "
             "Boards will post there now.",
+        )
+        return
+
+    # copied post link (t.me/c/<digits>/...) -> same, for channels where
+    # forwarding is switched off
+    link_id = parse_channel_link(text)
+    if link_id:
+        state["channel"] = link_id
+        save_boards(state)
+        send_message(
+            chat_id,
+            f"Channel set to {link_id}. Boards will post there now.",
         )
         return
 
@@ -1088,14 +1111,25 @@ def handle_message(msg, state):
             send_message(chat_id, f"Current channel: {cur}\nUsage: /setchannel <@channel>")
             return
         target = parts[1]
+        link_id = parse_channel_link(target)
+        if link_id:
+            state["channel"] = link_id
+            save_boards(state)
+            send_message(
+                chat_id,
+                f"Channel set to {link_id}. Boards will post there now.",
+            )
+            return
         if target.startswith("https://t.me/+") or "joinchat" in target:
             # An invite link is not a chat id — Telegram will refuse every
-            # post with "chat not found". The fix is a forwarded post.
+            # post with "chat not found". The fix is a forwarded post or a
+            # copied post link.
             send_message(
                 chat_id,
                 "That's an invite link — Telegram won't let me post to it.\n"
-                "Instead, open the channel, long-press any post, Forward it "
-                "to me, and I'll pick up the channel's real ID. Then /post again.",
+                "Instead, forward any post from the channel to me, or "
+                "long-press a post there → Copy Link and paste it here, "
+                "and I'll pick up the channel's real ID. Then /post again.",
             )
             return
         state["channel"] = target
@@ -1118,8 +1152,9 @@ def handle_message(msg, state):
                 chat_id,
                 "The channel is still set to an invite link, which Telegram "
                 "won't accept — that's why posting fails.\n"
-                "Open the channel, long-press any post, Forward it to me, "
-                "and I'll set the real channel ID. Then send /post "
+                "Forward any post from the channel to me, or long-press a "
+                "post there → Copy Link and paste it here, and I'll set the "
+                "real channel ID. Then send /post "
                 f"{parts[1] if len(parts) > 1 else '<id>'} again.",
             )
             return
