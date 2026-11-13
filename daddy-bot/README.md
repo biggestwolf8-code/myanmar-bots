@@ -21,7 +21,7 @@ Admin is Arkar (HenryRealGood 7061620871 + SirArkar 8028025915).
 5. `/post <id>` — post the board to the channel
 
 Other commands: `/boards`, `/delboard <id>`, `/setchannel <@channel>`,
-`/cancel`, `/help`.
+`/users`, `/cancel`, `/help`.
 
 ## Setup
 

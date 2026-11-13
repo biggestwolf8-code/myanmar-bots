@@ -35,6 +35,7 @@ Admin (Arkar) designs boards from the bot's DM:
   /setchannel <@ch>  set the target channel (bot must be admin there)
   /boards            list saved boards
   /delboard <id>     delete a board
+  /users             who has used the bot (admin)
   /cancel            discard the current draft
   /help              admin help
 
@@ -46,7 +47,8 @@ Users:
 
 Photos/videos are stored as Telegram file_ids only — Telegram hosts them.
 Boards live in boards.json under DATA_DIR (Railway volume); unlocks in
-unlocked.json, spent USDT transaction hashes in used_tx.json.
+unlocked.json, spent USDT transaction hashes in used_tx.json, users who
+interacted in users.json (username + first/last seen).
 
 Every message the bot sends is logged in sent.json (chat, message id,
 board, user). Admin revoke commands delete them again:
@@ -84,6 +86,7 @@ UNLOCKED_PATH = os.path.join(DATA_DIR, "unlocked.json")
 USED_TX_PATH = os.path.join(DATA_DIR, "used_tx.json")
 SENT_PATH = os.path.join(DATA_DIR, "sent.json")
 BALANCES_PATH = os.path.join(DATA_DIR, "balances.json")
+USERS_PATH = os.path.join(DATA_DIR, "users.json")
 
 # Balance: 1 USD = 100 Telegram Stars. Video = $1 of balance.
 STARS_PER_USD = 100
@@ -343,6 +346,24 @@ def user_tag(user):
     username = (user or {}).get("username")
     uid = (user or {}).get("id", "?")
     return f"@{username} | ID {uid}" if username else f"ID {uid}"
+
+
+def note_user(user):
+    """Remember a user who interacted with the bot (username + first/last
+    seen), so /users can list them. Admins are recorded too and filtered
+    out at display time."""
+    uid = (user or {}).get("id")
+    if uid is None:
+        return
+    data = load_json_file(USERS_PATH, {})
+    now = int(time.time())
+    entry = data.get(str(uid), {"first_seen": now})
+    username = (user or {}).get("username")
+    if username:
+        entry["username"] = username
+    entry["last_seen"] = now
+    data[str(uid)] = entry
+    save_json_file(USERS_PATH, data)
 
 
 def make_teaser_image(data, label, tag):
@@ -913,6 +934,7 @@ def handle_start(chat_id, text, state, user=None):
             "Daddy3.0 admin.\n\n"
             "/newboard — design a new board\n"
             "/boards — list your boards\n"
+            "/users — see who is using the bot\n"
             "/post <id> — post a board to the channel\n"
             "/setchannel <@channel> — where boards go\n"
             "/delboard <id> — delete a board\n"
@@ -942,6 +964,7 @@ def handle_help(chat_id):
         "Other commands:\n"
         "/boards — list boards\n"
         "/delboard <id> — delete one\n"
+        "/users — who has used the bot\n"
         "/revoke user <id> / board <id> / all — delete what the bot sent\n"
         "/setchannel <@channel> — where boards go (or forward any channel\n"
         "  post to me, or paste a copied post link from it, and I take\n"
@@ -958,6 +981,8 @@ def handle_message(msg, state):
 
     if chat_type != "private":
         return
+
+    note_user(msg.get("from", {}))
 
     if text.startswith("/start"):
         handle_start(chat_id, text, state, user=msg.get("from", {}))
@@ -1051,6 +1076,34 @@ def handle_message(msg, state):
         for bid, b in boards.items():
             lines.append(f"{bid} — {b['title']} ({len(b['buttons'])} buttons)")
         lines.append("\nPost one with /post <id>")
+        send_message(chat_id, "\n".join(lines))
+        return
+
+    if text == "/users":
+        users = load_json_file(USERS_PATH, {})
+        unlocked = load_json_file(UNLOCKED_PATH, {})
+        sent = load_json_file(SENT_PATH, [])
+        balances = load_json_file(BALANCES_PATH, {})
+        media = {}
+        for e in sent:
+            if e.get("user") and e.get("kind") in ("photo", "video"):
+                media[e["user"]] = media.get(e["user"], 0) + 1
+        rows = []
+        for uid, u in users.items():
+            if uid in ADMIN_IDS:
+                continue
+            name = f"@{u['username']}" if u.get("username") else uid
+            vids = len(unlocked.get(uid, []))
+            taps = media.get(uid, 0)
+            bal = fmt_usd(int(balances.get(uid, 0)))
+            rows.append((u.get("last_seen", 0), f"{name} — {taps} media, {vids} video unlocked, balance {bal}"))
+        if not rows:
+            send_message(chat_id, "No users yet — nobody has opened a board or tapped a tab.")
+            return
+        rows.sort(key=lambda r: r[0], reverse=True)  # most recent first
+        lines = [f"Users ({len(rows)}):"] + [r[1] for r in rows[:50]]
+        if len(rows) > 50:
+            lines.append(f"…(+{len(rows) - 50} more)")
         send_message(chat_id, "\n".join(lines))
         return
 
@@ -1253,6 +1306,8 @@ def handle_callback(query, state):
     data = query.get("data", "")
     user_id = query["from"]["id"]
     qid = query["id"]
+
+    note_user(query.get("from", {}))
 
     if data == "balance":
         r = send_balance_view(user_id)
