@@ -46,3 +46,20 @@ over this `catalog.json`.
 - Or just type `spotify`, `netflix`, `canva`, `vpn`…
 - Unknown questions → forwarded to you; reply to the forwarded message and
   the customer gets your answer.
+
+## Receipts & delivery
+
+A customer pays, then sends the receipt screenshot here.
+
+- **Biggest VPN** (tapped Buy first): you get ✅ Approve & Deliver /
+  ❌ Decline — approval auto-generates and sends the VPN configs.
+- **Chat GPT Plus / Claude AI Pro** (tapped Buy first): approval
+  auto-generates and sends the invite code.
+- **Every other product**: there is no pending order, so you get
+  📦 Deliver product / ❌ Decline with the forwarded receipt.
+  Tap 📦 Deliver, type the product name (the bot matches it against
+  the catalogue — several matches show as buttons), then send the
+  delivery details (account, code, or login info) as your next message
+  and the bot sends it to the customer as "Your <product> is ready!".
+  `/cancel` aborts the delivery at any point. Pending deliveries live
+  in `delivery_pending.json` (one at a time).

@@ -229,6 +229,28 @@ def save_app_orders(d):
     os.replace(tmp, APP_ORDERS_FILE)
 
 
+# Pending manual deliveries: admin chat_id -> {customer, step, product,
+# candidates}. Set when the admin taps 📦 Deliver on a receipt that had
+# no pending VPN/app order. One delivery at a time; a second tap
+# replaces it.
+DELIVERY_FILE = os.path.join(BASE_DIR, "delivery_pending.json")
+
+
+def load_delivery():
+    try:
+        with open(DELIVERY_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_delivery(d):
+    tmp = DELIVERY_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f)
+    os.replace(tmp, DELIVERY_FILE)
+
+
 def kb_app_buy(product):
     """Buy buttons for each app plan (Chat GPT Plus / Claude AI Pro).
     Callback data must stay under Telegram's 64-byte limit, so buttons
@@ -632,6 +654,52 @@ def forward_to_admin(chat_id, message_id, fwd_map):
         save_map(fwd_map)
 
 
+def handle_delivery_input(chat_id, text, msg, delivery):
+    """Admin is delivering a receipt manually. Step 'product': match the
+    typed name against the catalogue. Step 'details': the message IS the
+    delivery (account/code/login info) and goes to the customer."""
+    cust_id = delivery["customer"]
+    if delivery["step"] == "product":
+        matches = search_products(text)
+        if not matches:
+            send_threaded(chat_id,
+                          "No product matched that name — try again, or /cancel.",
+                          msg)
+            return
+        if len(matches) == 1:
+            delivery["product"] = matches[0]
+            delivery["step"] = "details"
+            d = load_delivery()
+            d[chat_id] = delivery
+            save_delivery(d)
+            send_threaded(
+                chat_id,
+                f"Product: {matches[0]}\n"
+                f"Now send the delivery details for customer {cust_id} — "
+                "account email/password, code, or login info — "
+                "as your next message.",
+                msg)
+            return
+        delivery["candidates"] = matches[:8]
+        d = load_delivery()
+        d[chat_id] = delivery
+        save_delivery(d)
+        rows = [[{"text": p, "callback_data": f"delpick:{i}"}]
+                for i, p in enumerate(matches[:8])]
+        send_threaded(chat_id, "Several products match — tap the right one:",
+                      msg, reply_markup={"inline_keyboard": rows})
+        return
+    product = delivery.get("product", "your subscription")
+    api("sendMessage", chat_id=cust_id,
+        text=f"🎉 Your {product} is ready!\n\n{text}\n\n"
+             "Thanks for buying from Biggest Seller Myanmar! 🙏")
+    api("sendMessage", chat_id=chat_id,
+        text=f"✅ {product} delivered to {cust_id}.")
+    d = load_delivery()
+    d.pop(chat_id, None)
+    save_delivery(d)
+
+
 def handle_message(msg, fwd_map):
     chat_id = str(msg["chat"]["id"])
     is_admin = bool(ADMIN_CHAT_ID) and chat_id == ADMIN_CHAT_ID
@@ -677,11 +745,38 @@ def handle_message(msg, fwd_map):
                         {"text": "❌ Decline",
                          "callback_data": f"appno:{chat_id}"}]]})
                 return
+            # Any other product: no pending order exists, so give the admin
+            # one-tap Deliver / Decline options instead of just the receipt.
+            if ADMIN_CHAT_ID:
+                api("sendMessage", chat_id=ADMIN_CHAT_ID,
+                    text=(f"📸 Receipt from customer {chat_id} — no order "
+                          "matched this receipt.\n"
+                          "Tap to deliver the product, or decline."),
+                    reply_markup={"inline_keyboard": [[
+                        {"text": "📦 Deliver product",
+                         "callback_data": f"deliver:{chat_id}"},
+                        {"text": "❌ Decline",
+                         "callback_data": f"decline:{chat_id}"}]]})
         return
 
     if "text" not in msg:
         return
     text = msg["text"]
+
+    # Admin in the middle of a receipt delivery: /cancel aborts, other
+    # commands pass through to normal handling, anything else is flow input.
+    if is_admin:
+        delivery = load_delivery().get(chat_id)
+        if delivery:
+            if text.strip() == "/cancel":
+                d = load_delivery()
+                d.pop(chat_id, None)
+                save_delivery(d)
+                send_threaded(chat_id, "Delivery cancelled.", msg)
+                return
+            if not text.startswith("/"):
+                handle_delivery_input(chat_id, text, msg, delivery)
+                return
 
     # Admin replying to a forwarded customer message -> relay it back.
     if is_admin and msg.get("reply_to_message"):
@@ -1150,6 +1245,56 @@ def handle_callback(cb):
         orders = load_app_orders()
         orders.pop(cust_id, None)
         save_app_orders(orders)
+    elif data.startswith("deliver:"):
+        # Admin starts a manual delivery for a receipt with no pending order.
+        if chat_id != ADMIN_CHAT_ID:
+            return
+        try:
+            _, cust_id = data.split(":", 1)
+        except ValueError:
+            return
+        d = load_delivery()
+        d[chat_id] = {"customer": cust_id, "step": "product"}
+        save_delivery(d)
+        api("sendMessage", chat_id=chat_id,
+            text=f"📦 Delivering to customer {cust_id}.\n"
+                 "Which product is this receipt for?\n"
+                 "Type the product name (e.g. Spotify Premium), or /cancel.")
+    elif data.startswith("decline:"):
+        if chat_id != ADMIN_CHAT_ID:
+            return
+        try:
+            _, cust_id = data.split(":", 1)
+        except ValueError:
+            return
+        api("sendMessage", chat_id=cust_id,
+            text="❌ We couldn't confirm your payment. Please contact @biggestseller1.")
+        api("sendMessage", chat_id=chat_id,
+            text=f"Declined receipt from {cust_id}.")
+    elif data.startswith("delpick:"):
+        # Admin picked one of several matching products for a delivery.
+        if chat_id != ADMIN_CHAT_ID:
+            return
+        try:
+            idx = int(data.split(":", 1)[1])
+        except ValueError:
+            return
+        d = load_delivery()
+        delivery = d.get(chat_id)
+        if not delivery or delivery.get("step") != "product":
+            return
+        cands = delivery.get("candidates", [])
+        if idx >= len(cands):
+            return
+        delivery["product"] = cands[idx]
+        delivery["step"] = "details"
+        delivery.pop("candidates", None)
+        save_delivery(d)
+        api("sendMessage", chat_id=chat_id,
+            text=f"Product: {cands[idx]}\n"
+                 f"Now send the delivery details for customer "
+                 f"{delivery['customer']} — account email/password, code, "
+                 "or login info — as your next message.")
 
 
 def main():
