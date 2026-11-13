@@ -1,8 +1,10 @@
 """Daddy3.0 — interactive game-board bot for Arkar's channel.
 
 A board is a post: a text message with inline buttons. Each button is
-tied to one photo or one video. A user taps a button in the channel and
-the photo is sent to their PRIVATE chat (never to the channel).
+tied to one photo or one video. In the channel, every tab is a LINK into
+the bot's private chat: the user taps any tab, the bot chat opens with
+the board's tabs ready, and they pick one there — the photo/video is
+then sent to their PRIVATE chat (never to the channel).
 
 Photos are free tabs. Videos are PAID tabs: one-time access, either
 100 Telegram Stars (native Stars invoice) or 1 USDT on BSC (BEP20),
@@ -30,8 +32,9 @@ Admin (Arkar) designs boards from the bot's DM:
 
 Users:
   /start             welcome (or /start board_<id> via deep link)
-  tap a button       the photo/video lands in their private chat
-                     (video tabs ask for payment first)
+  tap a tab in the channel — the bot chat opens with all tabs ready;
+                     tap one there and the photo/video lands in the
+                     private chat (video tabs ask for payment first)
 
 Photos/videos are stored as Telegram file_ids only — Telegram hosts them.
 Boards live in boards.json under DATA_DIR (Railway volume); unlocks in
@@ -584,31 +587,50 @@ def bot_username():
 
 
 def board_keyboard(board, include_open=True):
+    """Channel post (include_open=True): every tab is a deep link that
+    opens the bot chat, where the board's tabs are shown for choosing.
+    DM view / admin preview (include_open=False): real callback buttons
+    that deliver the photo/video right there. If the bot's username
+    cannot be read, fall back to callback buttons."""
     rows = []
+    uname = bot_username() if include_open else ""
     for i, btn in enumerate(board["buttons"]):
         label = btn["label"]
         if btn.get("kind", "photo") == "video":
             label = f"{label} 🔒"
-        rows.append(
-            [{"text": label, "callback_data": f"reveal:{board['id']}:{i}"}]
-        )
-    rows.append([{"text": "💰 My Balance", "callback_data": "balance"}])
-    if include_open:
-        uname = bot_username()
         if uname:
             rows.append(
                 [
                     {
-                        "text": "▶ Open in private chat",
+                        "text": label,
                         "url": f"https://t.me/{uname}?start=board_{board['id']}",
                     }
                 ]
             )
+        else:
+            rows.append(
+                [{"text": label, "callback_data": f"reveal:{board['id']}:{i}"}]
+            )
+    if uname:
+        rows.append(
+            [
+                {
+                    "text": "💰 My Balance",
+                    "url": f"https://t.me/{uname}?start=balance",
+                }
+            ]
+        )
+    else:
+        rows.append([{"text": "💰 My Balance", "callback_data": "balance"}])
     return {"inline_keyboard": rows}
 
 
 def board_text(board):
-    lines = [board["title"], "", "Tap a button — the photo comes to your private chat."]
+    lines = [
+        board["title"],
+        "",
+        "Tap a tab — it opens the bot chat, where you pick and the photo comes to your private chat.",
+    ]
     if any(b.get("kind", "photo") == "video" for b in board["buttons"]):
         lines.append(
             f"🔒 Video tabs are paid: {STARS_PRICE} ⭐, 1 USDT, or "

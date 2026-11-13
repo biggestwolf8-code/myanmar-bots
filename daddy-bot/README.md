@@ -1,8 +1,11 @@
 # Daddy3.0 bot
 
 Interactive game-board bot for Arkar's channel. A board is a post with
-inline buttons; each button is tied to one photo. A user taps a button
-in the channel and the photo is sent to their PRIVATE chat.
+inline buttons; each button is tied to one photo or one video. In the
+channel every tab is a LINK: tapping any tab opens the bot's private
+chat, where the board appears with all its tabs ready as real buttons.
+The user picks a tab there and the photo/video is sent to their PRIVATE
+chat (never to the channel).
 
 Admin is Arkar (HenryRealGood 7061620871 + SirArkar 8028025915).
 
@@ -11,7 +14,9 @@ Admin is Arkar (HenryRealGood 7061620871 + SirArkar 8028025915).
 1. `/newboard` — start a draft
 2. Send the board title (plain text)
 3. Send photos one by one — the CAPTION on each photo becomes its
-   button label (e.g. "Show his balls", "Take off his clothes")
+   button label (e.g. "Show his balls", "Take off his clothes").
+   Send a VIDEO instead for a paid tab (same caption rule) — watching
+   it costs 100 Stars, 1 USDT, or $1 of balance, one-time.
 4. `/done` — save + preview
 5. `/post <id>` — post the board to the channel
 
