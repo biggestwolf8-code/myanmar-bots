@@ -1274,6 +1274,16 @@ def handle_callback(query, state):
             "transaction hash here (starts with 0x, 66 characters). "
             "I will check it on-chain and add it to your balance.",
             parse_mode="HTML",
+            reply_markup={
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "📋 Copy USDT address",
+                            "copy_text": {"text": USDT_ADDRESS},
+                        }
+                    ]
+                ]
+            },
         )
         answer_callback(qid, "USDT address sent — check your private chat.")
         return
@@ -1370,6 +1380,16 @@ def handle_callback(query, state):
             "(starts with 0x, 66 characters). "
             "I will check it on-chain and send the video.",
             parse_mode="HTML",
+            reply_markup={
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "📋 Copy USDT address",
+                            "copy_text": {"text": USDT_ADDRESS},
+                        }
+                    ]
+                ]
+            },
         )
         answer_callback(qid, "USDT address sent — check your private chat.")
         return
