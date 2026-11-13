@@ -1087,11 +1087,22 @@ def handle_message(msg, state):
             cur = state.get("channel") or "(not set)"
             send_message(chat_id, f"Current channel: {cur}\nUsage: /setchannel <@channel>")
             return
-        state["channel"] = parts[1]
+        target = parts[1]
+        if target.startswith("https://t.me/+") or "joinchat" in target:
+            # An invite link is not a chat id — Telegram will refuse every
+            # post with "chat not found". The fix is a forwarded post.
+            send_message(
+                chat_id,
+                "That's an invite link — Telegram won't let me post to it.\n"
+                "Instead, open the channel, long-press any post, Forward it "
+                "to me, and I'll pick up the channel's real ID. Then /post again.",
+            )
+            return
+        state["channel"] = target
         save_boards(state)
         send_message(
             chat_id,
-            f"Channel set to {parts[1]}.\n"
+            f"Channel set to {target}.\n"
             "Make sure the bot is an admin in that channel, or posting will fail.",
         )
         return
@@ -1101,6 +1112,16 @@ def handle_message(msg, state):
         channel = state.get("channel")
         if not channel:
             send_message(chat_id, "No channel set yet — /setchannel <@channel> first.")
+            return
+        if channel.startswith("https://t.me/+") or "joinchat" in channel:
+            send_message(
+                chat_id,
+                "The channel is still set to an invite link, which Telegram "
+                "won't accept — that's why posting fails.\n"
+                "Open the channel, long-press any post, Forward it to me, "
+                "and I'll set the real channel ID. Then send /post "
+                f"{parts[1] if len(parts) > 1 else '<id>'} again.",
+            )
             return
         bid = parts[1] if len(parts) > 1 else None
         if not bid or bid not in state["boards"]:
