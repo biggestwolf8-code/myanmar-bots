@@ -10,6 +10,11 @@ verified on-chain via a public BSC node from the transaction hash the
 user pastes. Paid videos are sent with protect_content (no forward/save);
 photos additionally carry a per-user watermark.
 
+Balance: every board has a "💰 My Balance" button. A user's balance is
+in dollars (stored as cents). Top-ups are $5 / $10 / $25 / $50 / $100,
+paid in Telegram Stars at 1$ = 100 Stars. A video costs $1 of balance,
+so a topped-up user can pay with balance instead of Stars or USDT.
+
 Admin (Arkar) designs boards from the bot's DM:
   /newboard          start a draft (bot asks for the board title)
   <title text>       sets the draft title
@@ -66,6 +71,12 @@ BOARDS_PATH = os.path.join(DATA_DIR, "boards.json")
 UNLOCKED_PATH = os.path.join(DATA_DIR, "unlocked.json")
 USED_TX_PATH = os.path.join(DATA_DIR, "used_tx.json")
 SENT_PATH = os.path.join(DATA_DIR, "sent.json")
+BALANCES_PATH = os.path.join(DATA_DIR, "balances.json")
+
+# Balance: 1 USD = 100 Telegram Stars. Video = $1 of balance.
+STARS_PER_USD = 100
+VIDEO_PRICE_CENTS = 100
+TOPUP_USD = [5, 10, 25, 50, 100]
 API = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else ""
 
 # Paid video tabs: 100 Telegram Stars, or 1 USDT on BSC (BEP20).
@@ -130,6 +141,33 @@ def mark_tx_used(tx_hash):
     data = load_json_file(USED_TX_PATH, [])
     data.append(tx_hash.lower())
     save_json_file(USED_TX_PATH, data)
+
+
+def fmt_usd(cents):
+    return f"${cents // 100}.{cents % 100:02d}"
+
+
+def get_balance(user_id):
+    return int(load_json_file(BALANCES_PATH, {}).get(str(user_id), 0))
+
+
+def add_balance(user_id, cents):
+    data = load_json_file(BALANCES_PATH, {})
+    total = int(data.get(str(user_id), 0)) + cents
+    data[str(user_id)] = total
+    save_json_file(BALANCES_PATH, data)
+    return total
+
+
+def deduct_balance(user_id, cents):
+    """Take cents from the balance if there is enough. Returns True/False."""
+    data = load_json_file(BALANCES_PATH, {})
+    total = int(data.get(str(user_id), 0))
+    if total < cents:
+        return False
+    data[str(user_id)] = total - cents
+    save_json_file(BALANCES_PATH, data)
+    return True
 
 
 def record_sent(chat_id, message_id, kind, board=None, user=None):
@@ -384,35 +422,82 @@ def verify_usdt_tx(tx_hash):
     return False, "Transaction not confirmed yet — wait a bit and paste the hash again."
 
 
-def send_payment_options(user_id, board, idx, btn):
-    kb = {
-        "inline_keyboard": [
+def send_balance_view(user_id):
+    """Show the user's balance + top-up buttons (Stars, 1$ = 100 Stars)."""
+    balance = get_balance(user_id)
+    rows = []
+    for usd in TOPUP_USD:
+        stars = usd * STARS_PER_USD
+        rows.append(
             [
                 {
-                    "text": f"⭐ Pay {STARS_PRICE} Stars",
-                    "callback_data": f"pay_stars:{board['id']}:{idx}",
+                    "text": f"➕ Top up ${usd} ({stars:,} ⭐)",
+                    "callback_data": f"topup:{usd * 100}",
                 }
-            ],
-            [
-                {
-                    "text": "💎 Pay 1 USDT (crypto)",
-                    "callback_data": f"pay_usdt:{board['id']}:{idx}",
-                }
-            ],
-        ]
-    }
-    send_message(
+            ]
+        )
+    return send_message(
         user_id,
+        f"💰 Your balance: {fmt_usd(balance)}\n\n"
+        f"Top up with Telegram Stars (1$ = {STARS_PER_USD} Stars).\n"
+        f"A video costs {fmt_usd(VIDEO_PRICE_CENTS)} of balance.",
+        reply_markup={"inline_keyboard": rows},
+    )
+
+
+def send_payment_options(user_id, board, idx, btn):
+    rows = [
+        [
+            {
+                "text": f"⭐ Pay {STARS_PRICE} Stars",
+                "callback_data": f"pay_stars:{board['id']}:{idx}",
+            }
+        ],
+        [
+            {
+                "text": "💎 Pay 1 USDT (crypto)",
+                "callback_data": f"pay_usdt:{board['id']}:{idx}",
+            }
+        ],
+    ]
+    balance = get_balance(user_id)
+    if balance >= VIDEO_PRICE_CENTS:
+        rows.append(
+            [
+                {
+                    "text": f"💰 Pay {fmt_usd(VIDEO_PRICE_CENTS)} from balance ({fmt_usd(balance)})",
+                    "callback_data": f"pay_balance:{board['id']}:{idx}",
+                }
+            ]
+        )
+    kb = {"inline_keyboard": rows}
+    text = (
         f"This video is paid — one-time access:\n\n\"{btn['label']}\"\n\n"
         f"⭐ {STARS_PRICE} Telegram Stars, or\n"
-        "💎 1 USDT on BSC (BEP20).\n\nPay once and it is yours to watch.",
-        reply_markup=kb,
+        "💎 1 USDT on BSC (BEP20)"
     )
+    if balance >= VIDEO_PRICE_CENTS:
+        text += f", or\n💰 {fmt_usd(VIDEO_PRICE_CENTS)} from your balance ({fmt_usd(balance)})."
+    else:
+        text += ".\n\nTop up your balance from the 💰 My Balance button on the board."
+    text += "\n\nPay once and it is yours to watch."
+    send_message(user_id, text, reply_markup=kb)
 
 
 def handle_successful_payment(chat_id, user_id, sp, state):
     payload = sp.get("invoice_payload", "")
     parts = payload.split(":")
+    if len(parts) == 3 and parts[0] == "topup" and parts[2] == str(user_id):
+        # Credit the Stars actually received (1 Star = 1 cent at 1$ = 100 Stars).
+        cents = int(sp.get("total_amount", 0) or 0)
+        if cents <= 0:
+            return
+        total = add_balance(user_id, cents)
+        send_message(
+            user_id,
+            f"Topped up {fmt_usd(cents)} — your balance is now {fmt_usd(total)}.",
+        )
+        return
     if len(parts) != 4 or parts[0] != "video" or parts[3] != str(user_id):
         return
     _, bid, idx, _ = parts
@@ -507,6 +592,7 @@ def board_keyboard(board, include_open=True):
         rows.append(
             [{"text": label, "callback_data": f"reveal:{board['id']}:{i}"}]
         )
+    rows.append([{"text": "💰 My Balance", "callback_data": "balance"}])
     if include_open:
         uname = bot_username()
         if uname:
@@ -524,7 +610,10 @@ def board_keyboard(board, include_open=True):
 def board_text(board):
     lines = [board["title"], "", "Tap a button — the photo comes to your private chat."]
     if any(b.get("kind", "photo") == "video" for b in board["buttons"]):
-        lines.append(f"🔒 Video tabs are paid: {STARS_PRICE} ⭐ or 1 USDT, one-time.")
+        lines.append(
+            f"🔒 Video tabs are paid: {STARS_PRICE} ⭐, 1 USDT, or "
+            f"{fmt_usd(VIDEO_PRICE_CENTS)} balance — one-time."
+        )
     return "\n".join(lines)
 
 
@@ -534,6 +623,9 @@ def is_admin(chat_id):
 
 def handle_start(chat_id, text, state):
     parts = text.split()
+    if len(parts) > 1 and parts[1] == "balance":
+        send_balance_view(chat_id)
+        return
     if len(parts) > 1 and parts[1].startswith("board_"):
         bid = parts[1][len("board_"):]
         board = state["boards"].get(bid)
@@ -562,7 +654,8 @@ def handle_start(chat_id, text, state):
         chat_id,
         "Welcome to Daddy3.0.\n\n"
         "The game boards live in the channel — tap a button there and "
-        "the photo comes straight to this private chat.",
+        "the photo comes straight to this private chat.\n"
+        "💰 My Balance on any board shows your balance and lets you top up.",
     )
 
 
@@ -608,6 +701,9 @@ def handle_message(msg, state):
     if not is_admin(chat_id):
         if looks_like_tx_hash(text):
             handle_usdt_hash(chat_id, user_id, text, state)
+            return
+        if text == "/balance":
+            send_balance_view(chat_id)
             return
         if text.startswith("/"):
             send_message(
@@ -841,6 +937,61 @@ def handle_callback(query, state):
     data = query.get("data", "")
     user_id = query["from"]["id"]
     qid = query["id"]
+
+    if data == "balance":
+        r = send_balance_view(user_id)
+        if r and r.get("ok"):
+            answer_callback(qid, "Balance sent to your private chat.")
+        else:
+            uname = bot_username()
+            url = f"https://t.me/{uname}?start=balance" if uname else None
+            answer_callback(
+                qid,
+                "Tap START on the bot first, then tap the button again.",
+                show_alert=True,
+                url=url,
+            )
+        return
+
+    if data.startswith("topup:"):
+        try:
+            cents = int(data.split(":")[1])
+        except (IndexError, ValueError):
+            answer_callback(qid, "Unknown button.")
+            return
+        if cents not in [usd * 100 for usd in TOPUP_USD]:
+            answer_callback(qid, "Unknown top-up amount.")
+            return
+        usd = cents // 100
+        r = api(
+            "sendInvoice",
+            {
+                "chat_id": user_id,
+                "title": f"Top up ${usd}",
+                "description": f"Add ${usd} to your Daddy3.0 balance.",
+                "payload": f"topup:{cents}:{user_id}",
+                "provider_token": "",
+                "currency": "XTR",
+                "prices": [{"label": f"Top up ${usd}", "amount": cents}],
+                "protect_content": True,
+            },
+        )
+        if r.get("ok"):
+            record_sent(
+                user_id,
+                r["result"]["message_id"],
+                "invoice",
+                user=user_id,
+            )
+            answer_callback(qid, "Top-up invoice sent — check your private chat.")
+        else:
+            answer_callback(
+                qid,
+                "Stars payment is not available right now — try again later.",
+                show_alert=True,
+            )
+        return
+
     parts = data.split(":")
     if len(parts) != 3:
         answer_callback(qid, "Unknown button.")
@@ -855,6 +1006,37 @@ def handle_callback(query, state):
         btn = board["buttons"][i]
     except (ValueError, IndexError):
         answer_callback(qid, "Unknown button.", show_alert=True)
+        return
+
+    if action == "pay_balance":
+        if btn.get("kind", "photo") != "video":
+            answer_callback(qid, "Unknown button.")
+            return
+        if not deduct_balance(user_id, VIDEO_PRICE_CENTS):
+            answer_callback(
+                qid,
+                "Not enough balance — top up from the 💰 My Balance button.",
+                show_alert=True,
+            )
+            return
+        mark_unlocked(user_id, bid, i)
+        r = send_video(
+            user_id,
+            btn["file_id"],
+            meta={"kind": "video", "board": bid, "user": user_id},
+        )
+        if r.get("ok"):
+            answer_callback(
+                qid,
+                f"Paid {fmt_usd(VIDEO_PRICE_CENTS)} from your balance — video sent.",
+            )
+        else:
+            add_balance(user_id, VIDEO_PRICE_CENTS)  # refund: video never arrived
+            answer_callback(
+                qid,
+                "Could not send the video — your balance was refunded.",
+                show_alert=True,
+            )
         return
 
     if action == "pay_stars":
