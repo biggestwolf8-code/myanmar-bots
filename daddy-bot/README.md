@@ -70,4 +70,13 @@ transaction hash, credited at the amount actually received). A video
 costs $1 of balance. Top-up Stars land in the bot's Stars balance
 just like video Stars payments.
 
+Sneak peeks: opening a board in the bot chat shows a blurred teaser
+photo for every tab, captioned with its label, just above the tab
+buttons. Photo teasers are the photo downscaled and heavily blurred
+with the label and the viewer's tag; video teasers use the thumbnail
+Telegram stored when the video was sent, or a dark placeholder card.
+Teasers are cached per viewer in DATA_DIR/teasers. The channel post
+gets the same cover photos as an album above the board message (label
+captions, no per-user tag).
+
 Developed by Arkar Myowin.

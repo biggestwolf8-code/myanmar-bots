@@ -4,7 +4,14 @@ A board is a post: a text message with inline buttons. Each button is
 tied to one photo or one video. In the channel, every tab is a LINK into
 the bot's private chat: the user taps any tab, the bot chat opens with
 the board's tabs ready, and they pick one there — the photo/video is
-then sent to their PRIVATE chat (never to the channel).
+then sent to their PRIVATE chat (never to the channel). Opening a board
+in the bot chat first shows a blurred sneak-peek photo for every tab,
+each captioned with its label, so the user can see what each tab is
+before choosing. Photos are blurred previews; videos show their
+thumbnail, or a dark placeholder card when no thumbnail was stored.
+Teasers are cached per viewer under DATA_DIR/teasers. The channel post
+gets the same cover photos as an album above the board message (label
+captions, no per-user tag on those).
 
 Photos are free tabs. Videos are PAID tabs: one-time access, either
 100 Telegram Stars (native Stars invoice) or 1 USDT on BSC (BEP20),
@@ -14,8 +21,9 @@ photos additionally carry a per-user watermark.
 
 Balance: every board has a "💰 My Balance" button. A user's balance is
 in dollars (stored as cents). Top-ups are $5 / $10 / $25 / $50 / $100,
-paid in Telegram Stars at 1$ = 100 Stars. A video costs $1 of balance,
-so a topped-up user can pay with balance instead of Stars or USDT.
+paid in Telegram Stars at 1$ = 100 Stars or in USDT at 1 USDT = $1
+(BSC/BEP20, verified on-chain). A video costs $1 of balance, so a
+topped-up user can pay with balance instead of Stars or USDT.
 
 Admin (Arkar) designs boards from the bot's DM:
   /newboard          start a draft (bot asks for the board title)
@@ -301,10 +309,225 @@ def get_file_bytes(file_id):
     return None
 
 
+def _load_font(size):
+    from PIL import ImageFont
+
+    for p in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+    ):
+        try:
+            return ImageFont.truetype(p, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def _safe_text(s):
+    """ASCII-only text for PIL drawing (fonts lack emoji glyphs)."""
+    return "".join(c for c in (s or "") if ord(c) < 128).strip()
+
+
+def user_tag(user):
+    username = (user or {}).get("username")
+    uid = (user or {}).get("id", "?")
+    return f"@{username} | ID {uid}" if username else f"ID {uid}"
+
+
+def make_teaser_image(data, label, tag):
+    """Blurred sneak-peek of a photo: small, heavily blurred, with a
+    bottom bar carrying the tab label and the viewer's tag."""
+    from PIL import Image, ImageDraw, ImageFilter
+    import io
+
+    im = Image.open(io.BytesIO(data)).convert("RGB")
+    im.thumbnail((480, 480))
+    im = im.filter(ImageFilter.GaussianBlur(10))
+    d = ImageDraw.Draw(im)
+    w, h = im.size
+    bar_h = max(44, h // 5)
+    d.rectangle([0, h - bar_h, w, h], fill=(0, 0, 0, 170))
+    f_label = _load_font(max(18, bar_h // 3))
+    f_tag = _load_font(max(12, bar_h // 5))
+    lines = [(_safe_text(label), f_label, (255, 255, 255, 255))]
+    if (tag or "").strip():
+        lines.append((_safe_text(tag), f_tag, (200, 200, 200, 255)))
+    heights = [d.textbbox((0, 0), t, font=f)[3] for t, f, _c in lines]
+    y = h - bar_h + max(4, (bar_h - sum(heights) - 4 * (len(lines) - 1)) // 2)
+    for (t, f, c), th in zip(lines, heights):
+        d.text((10, y), t, font=f, fill=c)
+        y += th + 4
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=85)
+    return buf.getvalue()
+
+
+def make_video_placeholder(label, tag):
+    """Teaser for a video with no stored thumbnail: dark card with the
+    label, so the tab still gets a visible sneak peek."""
+    from PIL import Image, ImageDraw
+    import io
+
+    im = Image.new("RGB", (480, 360), (24, 24, 32))
+    d = ImageDraw.Draw(im)
+    d.text(
+        (24, 120), _safe_text(label), font=_load_font(28), fill=(255, 255, 255, 255)
+    )
+    d.text(
+        (24, 165), "VIDEO - PAID", font=_load_font(20), fill=(200, 200, 200, 255)
+    )
+    d.text((24, 200), _safe_text(tag), font=_load_font(16), fill=(160, 160, 160, 255))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=85)
+    return buf.getvalue()
+
+
+def send_photo_bytes(chat_id, jpeg_bytes, caption=None, meta=None):
+    payload = {"chat_id": str(chat_id), "protect_content": "true"}
+    if caption:
+        payload["caption"] = caption
+    files = {"photo": ("teaser.jpg", io.BytesIO(jpeg_bytes), "image/jpeg")}
+    r = api("sendPhoto", payload, files=files)
+    if r.get("ok"):
+        m = meta or {}
+        record_sent(
+            chat_id,
+            r["result"]["message_id"],
+            m.get("kind", "teaser"),
+            board=m.get("board"),
+            user=m.get("user"),
+        )
+    return r
+
+
+def get_teaser_bytes(btn, tag):
+    """Build (or load from cache) the teaser JPEG for one tab.
+    Returns None when the source can't be fetched."""
+    import hashlib
+
+    label = btn["label"]
+    kind = btn.get("kind", "photo")
+    key = f"{btn.get('file_id')}:{label}:{tag}"
+    cache_dir = os.path.join(DATA_DIR, "teasers")
+    os.makedirs(cache_dir, exist_ok=True)
+    path = os.path.join(
+        cache_dir, hashlib.sha256(key.encode()).hexdigest()[:20] + ".jpg"
+    )
+    if os.path.exists(path):
+        with open(path, "rb") as fh:
+            return fh.read()
+    if kind == "video":
+        thumb_id = btn.get("thumb")
+        data = get_file_bytes(thumb_id) if thumb_id else None
+        teaser = (
+            make_teaser_image(data, label, tag)
+            if data
+            else make_video_placeholder(label, tag)
+        )
+    else:
+        data = get_file_bytes(btn["file_id"])
+        if not data:
+            return None
+        teaser = make_teaser_image(data, label, tag)
+    with open(path, "wb") as fh:
+        fh.write(teaser)
+    return teaser
+
+
+def send_board_teasers(chat_id, board, tag):
+    """One blurred teaser photo per tab, each captioned with its label,
+    sent just above the board message."""
+    for btn in board["buttons"]:
+        label = btn["label"]
+        kind = btn.get("kind", "photo")
+        caption = label + (" 🔒" if kind == "video" else "")
+        try:
+            teaser = get_teaser_bytes(btn, tag)
+            if teaser is None:
+                continue
+            send_photo_bytes(
+                chat_id,
+                teaser,
+                caption=caption,
+                meta={"kind": "teaser", "board": board["id"], "user": chat_id},
+            )
+        except Exception as e:
+            print(f"teaser error for {label}: {e}", flush=True)
+            continue
+
+
+def send_media_group(chat_id, items, meta=None):
+    """Send 2-10 photos as one album. items: list of (jpeg_bytes, caption)."""
+    media = []
+    files = {}
+    for i, (data, caption) in enumerate(items):
+        key = f"photo{i}"
+        files[key] = (f"teaser{i}.jpg", io.BytesIO(data), "image/jpeg")
+        entry = {"type": "photo", "media": f"attach://{key}"}
+        if caption:
+            entry["caption"] = caption
+        media.append(entry)
+    r = api(
+        "sendMediaGroup",
+        {
+            "chat_id": str(chat_id),
+            "media": json.dumps(media),
+            "protect_content": "true",
+        },
+        files=files,
+    )
+    if r.get("ok"):
+        m = meta or {}
+        for msg in r["result"]:
+            record_sent(
+                chat_id,
+                msg["message_id"],
+                m.get("kind", "teaser"),
+                board=m.get("board"),
+                user=m.get("user"),
+            )
+    return r
+
+
+def send_channel_teasers(channel, board):
+    """The channel post gets the same cover photos: one album of teasers
+    (label captions, no per-user tag) above the board message."""
+    items = []
+    for btn in board["buttons"]:
+        label = btn["label"]
+        kind = btn.get("kind", "photo")
+        try:
+            teaser = get_teaser_bytes(btn, "")
+            if teaser is None:
+                continue
+            items.append((teaser, label + (" 🔒" if kind == "video" else "")))
+        except Exception as e:
+            print(f"channel teaser error for {label}: {e}", flush=True)
+            continue
+    meta = {"kind": "teaser", "board": board["id"]}
+    for start in range(0, len(items), 10):
+        chunk = items[start : start + 10]
+        if len(chunk) == 1:
+            send_photo_bytes(channel, chunk[0][0], caption=chunk[0][1], meta=meta)
+        else:
+            send_media_group(channel, chunk, meta=meta)
+
+
+def send_board_view(chat_id, board, tag, include_open=False):
+    """Teasers first, then the board text with its tab buttons."""
+    send_board_teasers(chat_id, board, tag)
+    send_message(
+        chat_id,
+        board_text(board),
+        reply_markup=board_keyboard(board, include_open=include_open),
+    )
+
+
 def watermark_image(data, tag):
     """Burn a per-user tag into a photo: faint diagonal repeat + a
     readable bottom bar. Tag must be ASCII (fonts may lack other glyphs)."""
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     im = Image.open(io.BytesIO(data)).convert("RGB")
     w, h = im.size
@@ -312,20 +535,8 @@ def watermark_image(data, tag):
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(overlay)
 
-    def load_font(size):
-        for p in (
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-        ):
-            try:
-                return ImageFont.truetype(p, size)
-            except Exception:
-                continue
-        return ImageFont.load_default()
-
     # faint diagonal repeat (hard to crop out)
-    f_diag = load_font(max(20, w // 26))
+    f_diag = _load_font(max(20, w // 26))
     tile = Image.new("RGBA", (w // 2, h // 4), (0, 0, 0, 0))
     td = ImageDraw.Draw(tile)
     td.text((10, 10), tag, font=f_diag, fill=(255, 255, 255, 70))
@@ -337,7 +548,7 @@ def watermark_image(data, tag):
     # readable bottom bar
     bar_h = max(30, h // 14)
     d.rectangle([0, h - bar_h, w, h], fill=(0, 0, 0, 150))
-    f_bar = load_font(max(16, bar_h // 2))
+    f_bar = _load_font(max(16, bar_h // 2))
     d.text((12, h - bar_h + bar_h // 4), tag, font=f_bar, fill=(255, 255, 255, 255))
     out = Image.alpha_composite(base, overlay).convert("RGB")
     buf = io.BytesIO()
@@ -673,7 +884,7 @@ def is_admin(chat_id):
     return str(chat_id) in ADMIN_IDS
 
 
-def handle_start(chat_id, text, state):
+def handle_start(chat_id, text, state, user=None):
     parts = text.split()
     if len(parts) > 1 and parts[1] == "balance":
         send_balance_view(chat_id)
@@ -682,11 +893,7 @@ def handle_start(chat_id, text, state):
         bid = parts[1][len("board_"):]
         board = state["boards"].get(bid)
         if board:
-            send_message(
-                chat_id,
-                board_text(board),
-                reply_markup=board_keyboard(board, include_open=False),
-            )
+            send_board_view(chat_id, board, user_tag(user), include_open=False)
             return
         send_message(chat_id, "That board is gone. Check the channel for the latest one.")
         return
@@ -742,7 +949,7 @@ def handle_message(msg, state):
         return
 
     if text.startswith("/start"):
-        handle_start(chat_id, text, state)
+        handle_start(chat_id, text, state, user=msg.get("from", {}))
         return
 
     sp = msg.get("successful_payment")
@@ -807,11 +1014,8 @@ def handle_message(msg, state):
         state["boards"][bid] = board
         state["draft"] = None
         save_boards(state)
-        send_message(
-            chat_id,
-            f"Saved as {bid} — preview:\n\n{board_text(board)}",
-            reply_markup=board_keyboard(board, include_open=False),
-        )
+        send_message(chat_id, f"Saved as {bid} — preview:")
+        send_board_view(chat_id, board, user_tag(msg.get("from", {})), include_open=False)
         send_message(chat_id, f"Post it with: /post {bid}")
         return
 
@@ -903,6 +1107,7 @@ def handle_message(msg, state):
             send_message(chat_id, "Usage: /post <id> — see /boards for ids.")
             return
         board = state["boards"][bid]
+        send_channel_teasers(channel, board)
         r = send_message(
             channel,
             board_text(board),
@@ -956,7 +1161,10 @@ def handle_message(msg, state):
             send_message(chat_id, "That video has no caption — the caption becomes the button label. Send it again with a caption.")
             return
         file_id = msg["video"]["file_id"]
-        draft["buttons"].append({"label": label, "file_id": file_id, "kind": "video"})
+        thumb_id = (msg["video"].get("thumb") or {}).get("file_id")
+        draft["buttons"].append(
+            {"label": label, "file_id": file_id, "kind": "video", "thumb": thumb_id}
+        )
         save_boards(state)
         send_message(
             chat_id,
@@ -1192,8 +1400,7 @@ def handle_callback(query, state):
         return
 
     user = query.get("from", {})
-    username = user.get("username")
-    tag = f"@{username} | ID {user_id}" if username else f"ID {user_id}"
+    tag = user_tag(user)
     r = send_watermarked_photo(
         user_id,
         btn["file_id"],
