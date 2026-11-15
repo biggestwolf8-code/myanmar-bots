@@ -297,11 +297,14 @@ def handle_callback(query):
         )
         if tunnel["stealth_cmd"]:
             caption += (
-                "\n🛡️ <b>Stealth TCP 443:</b> start the wrapper first, "
-                "then import the .conf below:\n"
+                "\n🛡️ <b>Stealth TCP 443 (for MPT):</b> run the wrapper "
+                "first, then turn on the tunnel in the WireGuard app:\n"
                 f"<code>{tunnel['stealth_cmd']}</code>\n"
-                "Self-signed setup: the wrapper must trust the node "
-                "certificate — see client/NOTES.md."
+                "On a phone: in Termux, download the wstunnel "
+                "Android/arm64 binary from github.com/erebe/wstunnel/"
+                "releases, then paste the command above. "
+                "No certificate step is needed. "
+                "The one-tap app will remove this extra step."
             )
 
         qr_png = make_qr_png(tunnel["config"])
