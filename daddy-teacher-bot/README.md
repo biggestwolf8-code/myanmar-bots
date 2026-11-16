@@ -230,7 +230,9 @@ card. Same gates as `/sell`: a live profile and a linked group.
   video has no thumbnail, the seller sends a cover photo) → confirm
   the preview → the bot posts the auction card to the group.
 - **Rules** — starting bid is fixed at **5,000 Ks**. The auction
-  runs **15 minutes only**. A new bid must beat the current bid by
+  runs **15 minutes only**. Auction videos must be **1 to 5 minutes**
+  long (the bot refuses shorter/longer ones and asks for another
+  video); the card shows the length as "⏱️ N min". A new bid must beat the current bid by
   at least **1,000 Ks** (quick bids: +1,000 / +5,000 / +10,000 over
   the current bid, or a typed amount). Bids come from the bidder's
   **bot balance only** — top up with `/topup` (Stars/USDT) first if

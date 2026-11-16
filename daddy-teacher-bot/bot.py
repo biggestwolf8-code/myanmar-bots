@@ -870,10 +870,14 @@ def reveal_card_purchase(state, card_id, option_name, buyer_name):
 # bid by at least 1,000 Ks. An auction runs 15 minutes only. An
 # unsold auction post stays up 24 hours after posting, then the
 # sweep deletes it. Fixed-price cards are never auto-deleted.
+# Auction videos must be 1 to 5 minutes long; the card shows the
+# length in whole minutes (e.g. "⏱️ 3 min").
 AUCTION_START_KS = 5000
 AUCTION_MIN_INCREMENT_KS = 1000
 AUCTION_DURATION_S = 15 * 60
 AUCTION_POST_TTL_S = 24 * 3600
+AUCTION_MIN_VIDEO_S = 60
+AUCTION_MAX_VIDEO_S = 300
 
 
 def fmt_countdown(seconds):
@@ -897,6 +901,8 @@ def auction_card_text(auction, now=None):
         "",
         f"Starting bid: {fmt_ks(auction.get('start', AUCTION_START_KS))}",
     ]
+    if auction.get("duration_min"):
+        lines.insert(1, f"⏱️ {auction['duration_min']} min")
     if auction.get("current_bidder"):
         lines.append(
             f"Current bid: {fmt_ks(auction['current_bid'])} by "
@@ -1065,6 +1071,7 @@ def send_auction_preview(chat_id, user_id, draft):
         "seller": str(user_id),
         "product": draft.get("product"),
         "start": AUCTION_START_KS,
+        "duration_min": draft.get("duration_min"),
         "current_bidder": None,
         "ends_at": int(time.time()) + AUCTION_DURATION_S,
         "status": "live",
@@ -1146,7 +1153,9 @@ def handle_auction_step(chat_id, user_id, text, state, user=None):
         return True
     if step == "video":
         send_message(
-            chat_id, "Send the auction video now — or /cancel to stop."
+            chat_id,
+            "Send the auction video now (1 to 5 minutes) — or /cancel "
+            "to stop.",
         )
         return True
     if step == "cover":
@@ -3182,7 +3191,20 @@ def handle_flow_media(msg, state):
     user_id = msg.get("from", {}).get("id")
     photo = msg.get("photo")
     video = msg.get("video")
+    document = msg.get("document")
     if not photo and not video:
+        # A video sent as a file during an auction: nudge the seller
+        # to send it as a video instead — otherwise it silently falls
+        # through and nothing happens.
+        if document:
+            adraft = (state.get("auction_draft") or {}).get(str(user_id))
+            if adraft and adraft.get("step") == "video":
+                send_message(
+                    chat_id,
+                    "That came through as a file — send it as a video "
+                    "instead (tap the video, not 'Send as file').",
+                )
+                return True
         return False
 
     # ---- profile photos (3 required) ----
@@ -3272,7 +3294,21 @@ def handle_flow_media(msg, state):
             )
             return True
         if video:
+            dur = video.get("duration")
+            if dur is not None and (
+                dur < AUCTION_MIN_VIDEO_S or dur > AUCTION_MAX_VIDEO_S
+            ):
+                send_message(
+                    chat_id,
+                    f"That video is {dur // 60} min {dur % 60:02d} s — "
+                    "auction videos must be 1 to 5 minutes. Send "
+                    "another video.",
+                )
+                return True
             adraft["video_file_id"] = video["file_id"]
+            if dur is not None:
+                adraft["duration_s"] = dur
+                adraft["duration_min"] = max(1, dur // 60)
             thumb = video.get("thumb") or {}
             if thumb.get("file_id"):
                 adraft["cover_file_id"] = thumb["file_id"]
@@ -3509,7 +3545,9 @@ def handle_help(chat_id):
         "Or run a video auction with /auction: starting bid 5,000 Ks, "
         "15 minutes, bids from your bot balance — highest bidder wins "
         "the video privately (an admin win is revealed in the group "
-        "instead). The cover is the video's own thumbnail, unblurred. "
+        "instead). Auction videos must be 1 to 5 minutes, and the card "
+        "shows the length in minutes. The cover is the video's own "
+        "thumbnail, unblurred. "
         "Unsold auction posts are deleted after 24 hours. "
         "Sellers earn a title from their sales — New Seller, Seller, "
         "Rising Star, Top Seller, Star Seller, Legend — shown with "
@@ -3596,7 +3634,9 @@ def handle_message(msg, state):
 
     # Photos/videos for a guided flow (profile photos, card media)
     # are consumed by that flow — never treat them as receipts.
-    if msg.get("photo") or msg.get("video"):
+    # Documents are routed too, so a video sent as a file during an
+    # auction gets the "send it as a video" nudge instead of silence.
+    if msg.get("photo") or msg.get("video") or msg.get("document"):
         if handle_flow_media(msg, state):
             return
 
@@ -4794,7 +4834,8 @@ def handle_callback(query, state):
         save_state(state)
         send_message(
             user_id,
-            f"🔨 Auction for {PRODUCTS.get(key, key)} — send the video now.\n\n"
+            f"🔨 Auction for {PRODUCTS.get(key, key)} — send the video now "
+            "(1 to 5 minutes).\n\n"
             "Starting bid is fixed at 5,000 Ks. The auction runs 15 "
             "minutes once posted. The highest bidder wins the video "
             "privately — it is NOT revealed in the group (unless an "
@@ -4840,6 +4881,8 @@ def handle_callback(query, state):
             "product": draft["product"],
             "video_file_id": draft["video_file_id"],
             "cover_file_id": draft.get("cover_file_id"),
+            "duration_s": draft.get("duration_s"),
+            "duration_min": draft.get("duration_min"),
             "start": AUCTION_START_KS,
             "current_bid": AUCTION_START_KS,
             "current_bidder": None,
