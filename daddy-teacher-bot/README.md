@@ -468,6 +468,34 @@ from the name step.
 shows the length as "⏱️ N min". Fixed-price `/sell` cards never had
 a duration limit and are untouched.
 
+## v7.8 — preview fallback + no more silent videos (bug fix)
+
+**The bug** — in a `/pool` flow, a seller sent a video and the bot
+answered nothing: no preview, no error, no log line, and no pool
+card in the group. The preview was sent with the video's thumbnail
+as a photo, and if Telegram rejected that `sendPhoto`, the failure
+was thrown away unnoticed and the draft sat at the confirm step
+forever. A re-sent video did not help either.
+
+**The fix** — three changes, all in `bot.py`:
+- `api()` now logs every Telegram refusal (`api <method> failed:
+  <error_code> <description>`), so a failed call leaves a trace
+  in the deploy logs instead of vanishing.
+- `send_pool_preview` and `send_auction_preview` check the
+  `sendPhoto` result: if it fails, they fall back to the same
+  preview as a plain text message with the same Post / Cancel
+  buttons. The seller always gets the preview.
+- `handle_message` no longer goes silent on a photo, video or
+  file that no flow claimed: the sender gets a plain reply
+  ("Got your video — but I'm not waiting for one right now.
+  Start a pool with /pool, an auction with /auction, or a card
+  with /sell."). The net sits after every draft handler, so a
+  live draft still answers first, and non-admin receipt photos
+  still go to the receipt flow with no double reply.
+
+Nothing else changed: prices, ranges, the 1–30 minute video rule,
+profiles, and the announcements are untouched.
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
