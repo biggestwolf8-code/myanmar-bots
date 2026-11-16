@@ -1277,7 +1277,7 @@ def send_auction_preview(chat_id, user_id, draft):
         ]
     }
     if draft.get("cover_file_id"):
-        api(
+        res = api(
             "sendPhoto",
             {
                 "chat_id": chat_id,
@@ -1286,6 +1286,11 @@ def send_auction_preview(chat_id, user_id, draft):
                 "reply_markup": kb,
             },
         )
+        if not res.get("ok"):
+            # The video's thumbnail could not be sent as a photo —
+            # fall back to the same preview as a plain message so
+            # the seller still gets the Post button.
+            send_message(chat_id, text, reply_markup=kb)
     else:
         send_message(chat_id, text, reply_markup=kb)
 
@@ -2343,7 +2348,7 @@ def send_pool_preview(chat_id, user_id, draft):
         ]
     }
     if draft.get("cover_file_id"):
-        api(
+        res = api(
             "sendPhoto",
             {
                 "chat_id": chat_id,
@@ -2352,6 +2357,11 @@ def send_pool_preview(chat_id, user_id, draft):
                 "reply_markup": kb,
             },
         )
+        if not res.get("ok"):
+            # The video's thumbnail could not be sent as a photo —
+            # fall back to the same preview as a plain message so
+            # the seller still gets the Post button.
+            send_message(chat_id, text, reply_markup=kb)
     else:
         send_message(chat_id, text, reply_markup=kb)
 
@@ -3226,10 +3236,21 @@ def api(method, payload=None, files=None, timeout=60):
             r = requests.post(url, data=payload or {}, files=files, timeout=timeout)
         else:
             r = requests.post(url, json=payload or {}, timeout=timeout)
-        return r.json()
+        data = r.json()
     except Exception as e:
         print(f"api {method} error: {e}", flush=True)
         return {"ok": False}
+    if not data.get("ok"):
+        # Telegram refused the call — log it. Callers used to get
+        # {"ok": False} back with no trace at all, which is how a
+        # failed preview send could swallow a whole pool/auction
+        # flow without a word.
+        print(
+            f"api {method} failed: {data.get('error_code')} "
+            f"{data.get('description')}",
+            flush=True,
+        )
+    return data
 
 
 def send_message(chat_id, text, reply_markup=None, parse_mode=None):
@@ -5427,6 +5448,31 @@ def handle_message(msg, state):
     draft = (state.get("profile_draft") or {}).get(str(user_id))
     if draft and (not text.startswith("/") or text == "/skip"):
         handle_profile_step(chat_id, text, state, user=msg.get("from", {}))
+        return
+
+    # A photo/video/file that no flow claimed: answer instead of
+    # going silent — the sender otherwise waits forever for a reply
+    # that never comes. This sits after every draft handler, so a
+    # live draft still gets its own reply first (e.g. a video sent
+    # while a pool draft waits for a price gets the price prompt),
+    # and before the non-admin block below, which returns without
+    # a word for media it does not recognise.
+    if msg.get("photo") or msg.get("video") or msg.get("document"):
+        if msg.get("video") or msg.get("document"):
+            send_message(
+                chat_id,
+                "Got your video — but I'm not waiting for one right "
+                "now. Start a pool with /pool, an auction with "
+                "/auction, or a card with /sell.",
+            )
+        else:
+            send_message(
+                chat_id,
+                "Got your photo — but I'm not waiting for one right "
+                "now. Add profile photos with /profile, or start a "
+                "pool with /pool, an auction with /auction, or a "
+                "card with /sell.",
+            )
         return
 
     if not is_admin(chat_id):
