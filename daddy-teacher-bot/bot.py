@@ -24,6 +24,7 @@ Admin (Arkar) posts from the bot's DM:
   /newsession <topic> | <date/time>   create + post a session card
   /newsession                         (no args) interactive prompt
   /post <text>                        plain announcement + pack buttons
+  /board                              post the live sellers board
   /setgroup <@group>                  where sessions go (or forward a
                                       group post / paste a t.me/c link)
   /sessions                           list posted sessions
@@ -34,19 +35,44 @@ Admin (Arkar) posts from the bot's DM:
 Students:
   /start                              welcome + the three packs
   /mysessions                         remaining session credits
+  /profile                            make/edit your seller profile
+  /myprofile                          your profile + its status
+  /sellers                            live sellers + their products
+  /balance                            your bot balance
+  /topup                              top up by Stars or USDT
   tap a pack button on a group post — it deep-links into the bot DM,
   where the payment choice happens (invoices go to private chat only)
 
 State lives in JSON files under DATA_DIR (same pattern as daddy-bot):
-  state.json      group id, sessions, pending payments, receipts, seq
+  state.json      group id, sessions, pending payments, receipts, seq,
+                  profile drafts
   credits.json    user id -> session credits remaining
-  purchases.json  purchase records (user, pack, method, status, time)
+  purchases.json  purchase records — kind "pack" (session packs),
+                  "market" (peer-to-peer product sales) and "topup"
   used_tx.json    USDT transaction hashes already spent
   users.json      everyone who interacted (username + first/last seen)
+  profiles.json   seller profiles (products, prices, payment details,
+                  status pending/live/declined)
+  balances.json   user id -> bot balance in Ks (Stars/USDT top-ups;
+                  balance payments debit the buyer, credit the seller)
+
+v2 — seller profiles + peer-to-peer market:
+  Members make a seller profile with /profile (products: milk,
+  eggplant, peaches, donut, HD; price 5,000–50,000 Ks each; their own
+  KBZPay / WavePay / AYAPay / USDT / bank details). A profile is
+  PENDING until an admin approves it — the admin approves only after
+  seeing the seller join the Zoom live (the bot cannot see Zoom
+  attendance). /board posts the live sellers to the group.
+  Buyers pay with their bot balance, Stars, USDT (to the bot, the
+  seller gets the balance), or directly to the seller (receipt photo
+  or USDT hash, confirmed by the seller or an admin). Top up with
+  /topup (Stars $1/$2/$5/$10/$20 or USDT). Cash-out is NOT built yet
+  — the balance ledger is ready for it, but nothing pays out.
 
 No watermarking, no protect_content — these are plain text posts.
 """
 
+import html
 import json
 import os
 import re
@@ -68,6 +94,8 @@ CREDITS_PATH = os.path.join(DATA_DIR, "credits.json")
 PURCHASES_PATH = os.path.join(DATA_DIR, "purchases.json")
 USED_TX_PATH = os.path.join(DATA_DIR, "used_tx.json")
 USERS_PATH = os.path.join(DATA_DIR, "users.json")
+PROFILES_PATH = os.path.join(DATA_DIR, "profiles.json")
+BALANCES_PATH = os.path.join(DATA_DIR, "balances.json")
 API = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else ""
 
 # 1 USD = 5,000 Ks. Stars: 1 USD = 100 Stars. USDT: 1 USDT = $1.
@@ -93,6 +121,22 @@ USDT_MIN = 1_000_000  # 1 USDT = 1,000,000 units (6 decimals)
 KBZPAY = "09403720481"
 WAVEPAY = "09780695959"
 AYAPAY = "09754926216"
+
+# ---------------------------------------------------------- marketplace ----
+
+KS_PER_USD = 5000
+STARS_PER_USD = 100
+PRICE_MIN_KS = 5000
+PRICE_MAX_KS = 50000
+TOPUP_USD_AMOUNTS = (1, 2, 5, 10, 20)
+
+PRODUCTS = {
+    "milk": "🥛 Milk",
+    "eggplant": "🍆 Eggplant",
+    "peaches": "🍑 Peaches",
+    "donut": "🍩 Donut",
+    "hd": "🎬 HD",
+}
 
 FOOTER = "Developed by Arkar Myowin"
 
@@ -129,6 +173,7 @@ def load_state():
             "receipts": {},
             "receipt_seq": 0,
             "draft_session": False,
+            "profile_draft": {},
         },
     )
 
@@ -181,6 +226,7 @@ def record_purchase(user_id, username, pack_key, method, status, tx_hash=None):
     data = load_json_file(PURCHASES_PATH, [])
     data.append(
         {
+            "kind": "pack",
             "user": str(user_id),
             "username": username or "",
             "pack": pack_key,
@@ -207,6 +253,363 @@ def mark_tx_used(tx_hash):
 
 def fmt_time(ts):
     return time.strftime("%d-%m-%Y %H:%M", time.localtime(ts))
+
+
+# ---------------------------------------------------------- marketplace ----
+
+
+def load_profiles():
+    return load_json_file(PROFILES_PATH, {})
+
+
+def save_profiles(data):
+    save_json_file(PROFILES_PATH, data)
+
+
+def get_profile(user_id):
+    return load_profiles().get(str(user_id))
+
+
+def get_balance(user_id):
+    return int(load_json_file(BALANCES_PATH, {}).get(str(user_id), 0))
+
+
+def change_balance(user_id, delta_ks):
+    """Add delta_ks (may be negative) to a member's bot balance.
+    Returns the new balance, or None if a debit would go below zero
+    (nothing is changed then). Balances are kept in integer Ks."""
+    data = load_json_file(BALANCES_PATH, {})
+    total = int(data.get(str(user_id), 0)) + delta_ks
+    if total < 0:
+        return None
+    data[str(user_id)] = total
+    save_json_file(BALANCES_PATH, data)
+    return total
+
+
+def fmt_ks(ks):
+    return f"{int(ks):,} Ks"
+
+
+def fmt_usd_from_ks(ks):
+    return f"${int(ks) / KS_PER_USD:g}"
+
+
+def parse_price_ks(text):
+    """A seller-typed price. Returns the Ks int, or None if it is not a
+    whole number inside 5,000–50,000 Ks."""
+    cleaned = (text or "").replace(",", "").replace(" ", "").strip()
+    if not cleaned.isdigit():
+        return None
+    value = int(cleaned)
+    if value < PRICE_MIN_KS or value > PRICE_MAX_KS:
+        return None
+    return value
+
+
+def looks_like_usdt_address(text):
+    t = (text or "").strip()
+    return (
+        len(t) == 42
+        and t.startswith("0x")
+        and all(c in "0123456789abcdefABCDEF" for c in t[2:])
+    )
+
+
+def looks_like_mm_number(text):
+    t = (text or "").replace(" ", "").replace("-", "").strip()
+    if t.startswith("+"):
+        t = t[1:]
+    return t.isdigit() and 9 <= len(t) <= 15
+
+
+def record_event(entry):
+    data = load_json_file(PURCHASES_PATH, [])
+    data.append(entry)
+    save_json_file(PURCHASES_PATH, data)
+
+
+def record_market_sale(buyer_id, buyer_username, seller_id, seller_name,
+                       product, ks, method, status, tx_hash=None):
+    record_event(
+        {
+            "kind": "market",
+            "buyer": str(buyer_id),
+            "buyer_username": buyer_username or "",
+            "seller": str(seller_id),
+            "seller_name": seller_name or "",
+            "product": product,
+            "ks": ks,
+            "method": method,
+            "status": status,
+            "tx": tx_hash or "",
+            "ts": int(time.time()),
+        }
+    )
+
+
+def record_topup(user_id, username, usd, ks, method, tx_hash=None):
+    record_event(
+        {
+            "kind": "topup",
+            "user": str(user_id),
+            "username": username or "",
+            "usd": usd,
+            "ks": ks,
+            "method": method,
+            "status": "paid",
+            "tx": tx_hash or "",
+            "ts": int(time.time()),
+        }
+    )
+
+
+def seller_pay_methods(profile):
+    pay = profile.get("pay", {})
+    methods = []
+    if pay.get("kbz"):
+        methods.append("KBZPay")
+    if pay.get("wave"):
+        methods.append("WavePay")
+    if pay.get("aya"):
+        methods.append("AYAPay")
+    if pay.get("usdt"):
+        methods.append("USDT")
+    if pay.get("bank_name") or pay.get("bank_acct"):
+        methods.append("Bank transfer")
+    return methods
+
+
+def profile_summary_text(profile):
+    lines = [f"👤 {profile.get('name', 'Seller')}"]
+    if profile.get("username"):
+        lines.append(
+            f"@{profile['username']} | ID {profile.get('user_id', '?')}"
+        )
+    lines.append("Products:")
+    for key, price in (profile.get("products") or {}).items():
+        lines.append(f"• {PRODUCTS.get(key, key)} — {fmt_ks(price)}")
+    methods = seller_pay_methods(profile)
+    lines.append("Payment: " + (", ".join(methods) if methods else "none"))
+    return "\n".join(lines)
+
+
+def seller_card_text(profile):
+    lines = [f"🛍 {html.escape(str(profile.get('name', 'Seller')))}"]
+    if profile.get("username"):
+        lines.append(f"@{profile['username']}")
+    lines.append("")
+    lines.append("Products:")
+    for key, price in (profile.get("products") or {}).items():
+        lines.append(f"• {PRODUCTS.get(key, key)} — {fmt_ks(price)}")
+    lines.append("")
+    methods = seller_pay_methods(profile)
+    if methods:
+        lines.append("Accepts: " + " · ".join(methods))
+    pay = profile.get("pay", {})
+    details = []
+    if pay.get("kbz"):
+        details.append(f"KBZPay: <code>{html.escape(pay['kbz'])}</code>")
+    if pay.get("wave"):
+        details.append(f"WavePay: <code>{html.escape(pay['wave'])}</code>")
+    if pay.get("aya"):
+        details.append(f"AYAPay: <code>{html.escape(pay['aya'])}</code>")
+    if pay.get("usdt"):
+        details.append(f"USDT (BEP20): <code>{html.escape(pay['usdt'])}</code>")
+    if pay.get("bank_name") or pay.get("bank_acct"):
+        details.append(
+            f"Bank: {html.escape(str(pay.get('bank_name', '')))} — "
+            f"<code>{html.escape(str(pay.get('bank_acct', '')))}</code>"
+        )
+    if details:
+        lines.append("")
+        lines.append("Pay the seller directly:")
+        lines.extend(details)
+    lines.append("")
+    lines.append("Tap a product below to buy it.")
+    return "\n".join(lines)
+
+
+def seller_card_keyboard(profile):
+    rows = []
+    uid = profile.get("user_id", "")
+    for key in (profile.get("products") or {}):
+        price = profile["products"][key]
+        rows.append(
+            [
+                {
+                    "text": f"Buy {PRODUCTS.get(key, key)} — {fmt_ks(price)}",
+                    "callback_data": f"buy:{uid}:{key}",
+                }
+            ]
+        )
+    if (profile.get("pay", {}) or {}).get("usdt"):
+        rows.append(
+            [
+                {
+                    "text": "📋 Copy seller's USDT address",
+                    "copy_text": {"text": profile["pay"]["usdt"]},
+                }
+            ]
+        )
+    return {"inline_keyboard": rows}
+
+
+def sellers_board_text(live_profiles):
+    lines = ["🛍 DaddyTeacher Market — live sellers\n"]
+    lines.append(
+        "Every seller below joined the Zoom live and has an approved "
+        "profile. Tap a seller to see their products and pay them."
+    )
+    for profile in live_profiles:
+        lines.append("")
+        lines.append(f"👤 {profile.get('name', 'Seller')}")
+        for key, price in (profile.get("products") or {}).items():
+            lines.append(f"   • {PRODUCTS.get(key, key)} — {fmt_ks(price)}")
+    lines.append("")
+    lines.append(
+        "Buy in the bot — balance, Stars, USDT, or pay the seller directly."
+    )
+    return "\n".join(lines)
+
+
+def sellers_board_keyboard(live_profiles):
+    rows = []
+    for profile in live_profiles:
+        rows.append(
+            [
+                {
+                    "text": f"🛍 {profile.get('name', 'Seller')}",
+                    "url": f"https://t.me/{bot_username()}?start=seller_{profile['user_id']}",
+                }
+            ]
+        )
+    rows.append(
+        [
+            {
+                "text": "💰 My balance / top up",
+                "url": f"https://t.me/{bot_username()}?start=balance",
+            }
+        ]
+    )
+    return {"inline_keyboard": rows}
+
+
+def send_sellers_list(chat_id):
+    profiles = load_profiles()
+    live = [p for p in profiles.values() if p.get("status") == "live"]
+    if not live:
+        send_message(
+            chat_id,
+            "No live sellers yet — profiles go live once an admin "
+            "approves them after the Zoom live.\n\n"
+            "Want to sell? Make your profile with /profile.",
+        )
+        return
+    lines = ["🛍 Live sellers:\n"]
+    rows = []
+    for p in live:
+        products = ", ".join(
+            f"{PRODUCTS.get(k, k)} {fmt_ks(v)}"
+            for k, v in (p.get("products") or {}).items()
+        )
+        lines.append(f"👤 {p.get('name', 'Seller')} — {products}")
+        rows.append(
+            [
+                {
+                    "text": f"🛍 {p.get('name', 'Seller')}",
+                    "callback_data": f"seller:{p['user_id']}",
+                }
+            ]
+        )
+    send_message(chat_id, "\n".join(lines), reply_markup={"inline_keyboard": rows})
+
+
+def show_balance(user_id):
+    total = get_balance(user_id)
+    send_message(
+        user_id,
+        f"💰 Your balance: {fmt_ks(total)} ({fmt_usd_from_ks(total)}).\n\n"
+        "Spend it on any live seller's products, or top it up below.",
+        reply_markup={
+            "inline_keyboard": [
+                [{"text": "💰 Top up", "callback_data": "topup"}],
+                [{"text": "🛍 Browse sellers", "callback_data": "browse"}],
+            ]
+        },
+    )
+
+
+def send_topup_options(user_id):
+    rows = [
+        [{"text": f"⭐ Stars — ${usd}", "callback_data": f"topup_stars:{usd}"}]
+        for usd in TOPUP_USD_AMOUNTS
+    ]
+    rows += [
+        [{"text": f"💎 USDT — ${usd}", "callback_data": f"topup_usdt:{usd}"}]
+        for usd in TOPUP_USD_AMOUNTS
+    ]
+    send_message(
+        user_id,
+        "Top up your balance — pick an amount and a method.\n\n"
+        "Stars: a native invoice from the bot.\n"
+        "USDT: send it on BSC, paste the hash, I'll verify on-chain.",
+        reply_markup={"inline_keyboard": rows},
+    )
+
+
+def send_buy_options(user_id, profile, product, price):
+    seller_name = profile.get("name", "Seller")
+    balance = get_balance(user_id)
+    stars = max(1, round(price / 50))
+    usd = price / KS_PER_USD
+    rows = []
+    if balance >= price:
+        rows.append(
+            [
+                {
+                    "text": f"💰 Pay from balance ({fmt_ks(balance)})",
+                    "callback_data": f"buypay:balance:{profile['user_id']}:{product}",
+                }
+            ]
+        )
+    else:
+        rows.append([{"text": "💰 Top up balance", "callback_data": "topup"}])
+    rows.append(
+        [
+            {
+                "text": f"⭐ Pay {stars} Stars now",
+                "callback_data": f"buypay:stars:{profile['user_id']}:{product}",
+            }
+        ]
+    )
+    rows.append(
+        [
+            {
+                "text": f"💎 Pay {usd:g} USDT now",
+                "callback_data": f"buypay:usdt:{profile['user_id']}:{product}",
+            }
+        ]
+    )
+    rows.append(
+        [
+            {
+                "text": "🇲🇲 Pay seller directly",
+                "callback_data": f"buypay:direct:{profile['user_id']}:{product}",
+            }
+        ]
+    )
+    text = (
+        f"🛍 {PRODUCTS.get(product, product)} from {seller_name} — "
+        f"{fmt_ks(price)} (${usd:g})\n\n"
+        "How do you want to pay?\n"
+        f"💰 Balance: you have {fmt_ks(balance)}.\n"
+        f"⭐ Stars: {stars} Stars go to the bot, the seller gets the balance.\n"
+        f"💎 USDT: {usd:g} USDT to the bot, the seller gets the balance.\n"
+        "🇲🇲 Direct: pay the seller's own KBZPay / WavePay / AYAPay / "
+        "bank / USDT and send a receipt."
+    )
+    send_message(user_id, text, reply_markup={"inline_keyboard": rows})
 
 
 # ------------------------------------------------------------------ API ---
@@ -272,10 +675,11 @@ def looks_like_tx_hash(text):
     )
 
 
-def verify_usdt_tx(tx_hash, min_units):
-    """Check a BSC transaction for a USDT transfer to Arkar of at least
-    min_units. Returns (True, '', value_units) or (False, reason, value).
-    Uses public BSC nodes, no key."""
+def verify_usdt_tx(tx_hash, min_units, to_address=None):
+    """Check a BSC transaction for a USDT transfer to to_address (Arkar's
+    bot address by default) of at least min_units. Returns (True, '',
+    value_units) or (False, reason, value). Uses public BSC nodes, no key."""
+    target = (to_address or USDT_ADDRESS).lower()
     network_error = False
     for url in BSC_RPC:
         try:
@@ -304,7 +708,7 @@ def verify_usdt_tx(tx_hash, min_units):
             if len(topics) < 3 or topics[0].lower() != TRANSFER_TOPIC:
                 continue
             to_addr = "0x" + topics[2][-40:]
-            if to_addr.lower() != USDT_ADDRESS.lower():
+            if to_addr.lower() != target:
                 continue
             try:
                 value = int(log.get("data", "0x0"), 16)
@@ -318,7 +722,7 @@ def verify_usdt_tx(tx_hash, min_units):
                 f"at least {min_units / 1_000_000:g} is needed.",
                 value,
             )
-        return False, "No USDT transfer to my address in that transaction.", 0
+        return False, "No USDT transfer to that address in that transaction.", 0
     if network_error:
         return False, "Could not reach the network — try again in a minute.", 0
     return False, "Transaction not confirmed yet — wait a bit and paste the hash again.", 0
@@ -407,6 +811,249 @@ def session_text(session):
     )
 
 
+# ------------------------------------------------------ seller profiles ----
+
+
+def profile_draft_keyboard(draft):
+    selected = set(draft.get("selected", []))
+    rows = []
+    for key, label in PRODUCTS.items():
+        mark = "✅ " if key in selected else "⬜ "
+        rows.append(
+            [{"text": mark + label, "callback_data": f"prodtoggle:{key}"}]
+        )
+    rows.append(
+        [{"text": "✅ Done — continue", "callback_data": "proddone"}]
+    )
+    return {"inline_keyboard": rows}
+
+
+def start_profile(chat_id, user, state):
+    existing = get_profile(chat_id)
+    data = {}
+    if existing:
+        data = {
+            "name": existing.get("name", ""),
+            "products": dict(existing.get("products", {})),
+            "pay": dict(existing.get("pay", {})),
+        }
+    state.setdefault("profile_draft", {})[str(chat_id)] = {
+        "step": "name",
+        "data": data,
+        "editing": bool(existing),
+    }
+    save_state(state)
+    if existing:
+        send_message(
+            chat_id,
+            f"Let's update your seller profile (currently "
+            f"{existing.get('status', '?')}).\n\n"
+            "What's your display name? Send a new one, or /skip to keep "
+            f"\"{existing.get('name', '')}\".",
+        )
+    else:
+        send_message(
+            chat_id,
+            "Let's set up your seller profile — this is how other "
+            "members find you and pay you on the show.\n\n"
+            "What's your display name?",
+        )
+
+
+def send_profile_confirm(chat_id, data, username=""):
+    text = "Check your profile:\n\n" + profile_summary_text(
+        {
+            "name": data.get("name", ""),
+            "username": username,
+            "products": data.get("products", {}),
+            "pay": data.get("pay", {}),
+        }
+    )
+    text += (
+        "\n\nSubmit it for approval? An admin approves it once "
+        "they've seen you join the Zoom live."
+    )
+    send_message(
+        chat_id,
+        text,
+        reply_markup={
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "✅ Submit for approval",
+                        "callback_data": "profconfirm",
+                    },
+                    {
+                        "text": "✏️ Start over",
+                        "callback_data": "profedit",
+                    },
+                    {
+                        "text": "❌ Cancel",
+                        "callback_data": "profcancel",
+                    },
+                ]
+            ]
+        },
+    )
+
+
+def handle_profile_step(chat_id, text, state, user=None):
+    """One step of the guided /profile flow. Returns True if the message
+    was consumed by the flow."""
+    draft = (state.get("profile_draft") or {}).get(str(chat_id))
+    if not draft:
+        return False
+    step = draft.get("step")
+    data = draft.setdefault("data", {})
+    username = (user or {}).get("username", "")
+
+    if text == "/cancel":
+        state.get("profile_draft", {}).pop(str(chat_id), None)
+        save_state(state)
+        send_message(chat_id, "Profile setup cancelled — nothing was saved.")
+        return True
+
+    if step == "name":
+        if text == "/skip":
+            if not draft.get("editing") or not data.get("name"):
+                send_message(chat_id, "Please send a display name first.")
+                return True
+        elif len(text) < 2 or len(text) > 50:
+            send_message(
+                chat_id,
+                "That name doesn't look right — send a display name "
+                "(2–50 characters).",
+            )
+            return True
+        else:
+            data["name"] = text
+        draft["step"] = "products"
+        save_state(state)
+        send_message(
+            chat_id,
+            "What do you sell? Tap each product you offer, then Done.",
+            reply_markup=profile_draft_keyboard(draft),
+        )
+        return True
+
+    if step == "products":
+        send_message(
+            chat_id,
+            "Tap the products above to pick them, then press Done.",
+            reply_markup=profile_draft_keyboard(draft),
+        )
+        return True
+
+    if step == "price":
+        current = draft.get("price_for")
+        price = parse_price_ks(text)
+        if price is None:
+            send_message(
+                chat_id,
+                f"Price must be a whole number from "
+                f"{PRICE_MIN_KS:,} to {PRICE_MAX_KS:,} Ks — try again for "
+                f"{PRODUCTS.get(current, current)}.",
+            )
+            return True
+        data.setdefault("products", {})[current] = price
+        queue = draft.get("price_queue", [])
+        if queue:
+            nxt = queue.pop(0)
+            draft["price_for"] = nxt
+            draft["price_queue"] = queue
+            save_state(state)
+            send_message(
+                chat_id,
+                f"Price for {PRODUCTS.get(nxt, nxt)} in Ks "
+                f"({PRICE_MIN_KS:,}–{PRICE_MAX_KS:,}):",
+            )
+        else:
+            draft["step"] = "pay_kbz"
+            save_state(state)
+            send_message(
+                chat_id,
+                "Payment details — buyers pay YOU directly, so these "
+                "are your own accounts.\n\n"
+                "KBZPay number? Send it, or /skip if you don't use KBZPay.",
+            )
+        return True
+
+    pay_steps = [
+        ("pay_kbz", "kbz", "KBZPay number",
+         "WavePay number? Send it, or /skip."),
+        ("pay_wave", "wave", "WavePay number",
+         "AYAPay number? Send it, or /skip."),
+        ("pay_aya", "aya", "AYAPay number",
+         "USDT address (BSC, starts with 0x)? Send it, or /skip."),
+        ("pay_usdt", "usdt", "USDT address",
+         "Bank name? Send it, or /skip if you don't take bank transfer."),
+        ("pay_bank_name", "bank_name", "bank name",
+         "Bank account number? Send it, or /skip."),
+        ("pay_bank_acct", "bank_acct", "bank account number", None),
+    ]
+    for idx, (step_name, field, label, next_prompt) in enumerate(pay_steps):
+        if step != step_name:
+            continue
+        if text == "/skip":
+            # Keep the existing value when editing; record empty for a
+            # brand-new profile.
+            data.setdefault("pay", {}).setdefault(field, "")
+        elif field in ("kbz", "wave", "aya"):
+            if not looks_like_mm_number(text):
+                send_message(
+                    chat_id,
+                    f"That doesn't look like a {label} — send just the "
+                    "number, or /skip.",
+                )
+                return True
+            data.setdefault("pay", {})[field] = (
+                text.replace(" ", "").replace("-", "")
+            )
+        elif field == "usdt":
+            if not looks_like_usdt_address(text):
+                send_message(
+                    chat_id,
+                    "That doesn't look like a USDT address — it starts "
+                    "with 0x and is 42 characters. Try again, or /skip.",
+                )
+                return True
+            data.setdefault("pay", {})[field] = text.strip()
+        else:
+            data.setdefault("pay", {})[field] = text
+        if idx + 1 < len(pay_steps):
+            draft["step"] = pay_steps[idx + 1][0]
+            save_state(state)
+            send_message(chat_id, next_prompt)
+        else:
+            pay = data.get("pay", {})
+            if not any(
+                pay.get(k)
+                for k in ("kbz", "wave", "aya", "usdt", "bank_acct")
+            ):
+                draft["step"] = "pay_kbz"
+                save_state(state)
+                send_message(
+                    chat_id,
+                    "You need at least one payment method so buyers can "
+                    "pay you. Let's go through them again.\n\n"
+                    "KBZPay number? Send it, or /skip.",
+                )
+            else:
+                draft["step"] = "confirm"
+                save_state(state)
+                send_profile_confirm(chat_id, data, username)
+        return True
+
+    if step == "confirm":
+        send_message(
+            chat_id,
+            "Tap Submit below to send your profile for approval, "
+            "or /cancel to drop it.",
+        )
+        return True
+    return False
+
+
 # ------------------------------------------------------------ payments ----
 
 
@@ -446,12 +1093,73 @@ def credit_pack(user_id, username, key, method, tx_hash=None):
 def handle_successful_payment(chat_id, user_id, sp, user=None):
     payload = sp.get("invoice_payload", "")
     parts = payload.split(":")
-    if len(parts) != 3 or parts[0] != "pack" or parts[2] != str(user_id):
+    if not parts or parts[0] not in ("pack", "topup", "mkt"):
+        return
+    username = (user or {}).get("username", "")
+
+    if parts[0] == "topup":
+        if len(parts) != 3 or parts[2] != str(user_id):
+            return
+        try:
+            usd = int(parts[1])
+        except ValueError:
+            return
+        ks = usd * KS_PER_USD
+        change_balance(user_id, ks)
+        record_topup(user_id, username, usd, ks, "Stars")
+        total = get_balance(user_id)
+        send_message(
+            user_id,
+            f"✅ Balance topped up +{fmt_ks(ks)}.\n"
+            f"Your balance is now {fmt_ks(total)} "
+            f"({fmt_usd_from_ks(total)}).",
+        )
+        return
+
+    if parts[0] == "mkt":
+        if len(parts) != 5 or parts[4] != str(user_id):
+            return
+        seller_id, product, price_s = parts[1], parts[2], parts[3]
+        try:
+            price = int(price_s)
+        except ValueError:
+            return
+        profile = get_profile(seller_id)
+        if not profile or profile.get("status") != "live":
+            send_message(
+                user_id,
+                "That seller is not live any more — the Stars were "
+                "charged, so please message @SirArkar and we'll sort it out.",
+            )
+            return
+        seller_name = profile.get("name", "Seller")
+        change_balance(seller_id, price)
+        record_market_sale(
+            user_id, username, seller_id, seller_name, product, price,
+            "Stars", "paid",
+        )
+        seller_total = get_balance(seller_id)
+        send_message(
+            user_id,
+            f"✅ Paid {fmt_ks(price)} with Stars for "
+            f"{PRODUCTS.get(product, product)} from {seller_name}.",
+        )
+        send_message(
+            seller_id,
+            f"💰 {user_tag(user)} bought your "
+            f"{PRODUCTS.get(product, product)} for {fmt_ks(price)} (Stars).\n"
+            "Credited to your bot balance — now "
+            f"{fmt_ks(seller_total)}. You can spend it on other sellers' "
+            "products in the bot.",
+        )
+        return
+
+    # pack:<key>:<user_id>
+    if len(parts) != 3 or parts[2] != str(user_id):
         return
     key = parts[1]
     if key not in PACKS:
         return
-    username = (user or {}).get("username", "")
     total = credit_pack(user_id, username, key, "Stars")
     send_message(
         user_id,
@@ -468,12 +1176,100 @@ def handle_usdt_hash(chat_id, user_id, tx_hash, state, user=None):
         send_message(
             chat_id,
             "I don't have a pending USDT payment for you — "
-            "tap a pack first, then choose USDT.",
+            "tap a pack or a product first, then choose USDT.",
         )
         return
     if tx_used(tx_hash):
         send_message(chat_id, "That transaction was already used.")
         return
+    kind = pending.get("kind", "pack")
+    username = (user or {}).get("username", "")
+
+    if kind == "topup":
+        usd = int(pending.get("usd", 0))
+        ok, reason, value = verify_usdt_tx(tx_hash, usd * USDT_MIN)
+        if not ok:
+            send_message(chat_id, f"Not verified yet: {reason}")
+            return
+        mark_tx_used(tx_hash)
+        state["pending_usdt"].pop(str(user_id), None)
+        save_state(state)
+        # Credit what actually arrived (1 USDT = 5,000 Ks).
+        ks = int(value * KS_PER_USD / 1_000_000)
+        if ks <= 0:
+            ks = usd * KS_PER_USD
+        change_balance(user_id, ks)
+        record_topup(user_id, username, usd, ks, "USDT", tx_hash)
+        total = get_balance(user_id)
+        send_message(
+            user_id,
+            f"✅ USDT received — balance topped up +{fmt_ks(ks)}.\n"
+            f"Your balance is now {fmt_ks(total)} "
+            f"({fmt_usd_from_ks(total)}).",
+        )
+        return
+
+    if kind in ("market", "market_direct"):
+        seller_id = pending.get("seller")
+        product = pending.get("product")
+        price = int(pending.get("price_ks", 0))
+        profile = get_profile(seller_id)
+        if not profile or profile.get("status") != "live":
+            state["pending_usdt"].pop(str(user_id), None)
+            save_state(state)
+            send_message(
+                chat_id,
+                "That seller is not live any more — no payment was made. "
+                "Pick another seller.",
+            )
+            return
+        seller_name = profile.get("name", "Seller")
+        if kind == "market_direct":
+            seller_usdt = (profile.get("pay", {}) or {}).get("usdt", "")
+            if not seller_usdt:
+                send_message(chat_id, "That seller has no USDT address.")
+                return
+            to_addr = seller_usdt
+            method = "USDT direct"
+        else:
+            to_addr = None  # the bot's address — seller gets bot balance
+            method = "USDT"
+        min_units = price * 200  # 1 Ks = 200 USDT units (6 decimals)
+        ok, reason, _value = verify_usdt_tx(tx_hash, min_units, to_address=to_addr)
+        if not ok:
+            send_message(chat_id, f"Not verified yet: {reason}")
+            return
+        mark_tx_used(tx_hash)
+        state["pending_usdt"].pop(str(user_id), None)
+        save_state(state)
+        if kind == "market":
+            change_balance(seller_id, price)
+            send_message(
+                seller_id,
+                f"💰 {user_tag(user)} bought your "
+                f"{PRODUCTS.get(product, product)} for {fmt_ks(price)} (USDT).\n"
+                "Credited to your bot balance — now "
+                f"{fmt_ks(get_balance(seller_id))}.",
+            )
+        else:
+            send_message(
+                seller_id,
+                f"💰 {user_tag(user)} paid you {fmt_ks(price)} in USDT for "
+                f"{PRODUCTS.get(product, product)} (direct, verified on-chain).",
+            )
+        record_market_sale(
+            user_id, username, seller_id, seller_name, product, price,
+            method, "paid", tx_hash,
+        )
+        send_message(
+            user_id,
+            f"✅ USDT confirmed on-chain — you bought "
+            f"{PRODUCTS.get(product, product)} for {fmt_ks(price)} from "
+            f"{seller_name}.",
+        )
+        return
+
+    # kind == "pack": original class-pack flow
     key = pending["pack"]
     p = PACKS[key]
     ok, reason, _value = verify_usdt_tx(tx_hash, p["usdt"] * USDT_MIN)
@@ -483,7 +1279,6 @@ def handle_usdt_hash(chat_id, user_id, tx_hash, state, user=None):
     mark_tx_used(tx_hash)
     state["pending_usdt"].pop(str(user_id), None)
     save_state(state)
-    username = (user or {}).get("username", "")
     total = credit_pack(user_id, username, key, "USDT", tx_hash)
     send_message(
         user_id,
@@ -494,40 +1289,73 @@ def handle_usdt_hash(chat_id, user_id, tx_hash, state, user=None):
     )
 
 
-def forward_receipt_to_admins(user_id, user, key, message_id):
-    """Forward the receipt photo to every admin with Approve / Decline
-    buttons. One receipt id per photo, so only the first decision
-    counts — a second admin tapping later gets 'already handled'."""
-    state = load_state()
+def forward_receipt_to_admins(user_id, user, key, message_id, state, market=None):
+    """Forward the receipt photo with Approve / Decline buttons. For a
+    class pack it goes to every admin; for a marketplace sale it also
+    goes to the seller, and the seller or an admin may confirm it.
+    One receipt id per photo, so only the first decision counts — a
+    second tap later gets 'already handled'.
+
+    Takes the caller's `state` and saves it — it must NOT load its own
+    fresh copy, or the main loop's end-of-batch save would overwrite
+    the new receipt record with the stale in-memory state."""
     state["receipt_seq"] = state.get("receipt_seq", 0) + 1
     rid = f"r{state['receipt_seq']}"
-    state.setdefault("receipts", {})[rid] = {
+    entry = {
         "user": str(user_id),
         "username": (user or {}).get("username", ""),
-        "pack": key,
         "status": "pending",
         "ts": int(time.time()),
     }
+    if market:
+        entry.update(
+            {
+                "kind": "market",
+                "seller": str(market["seller"]),
+                "product": market["product"],
+                "price_ks": market["price_ks"],
+                "method": market.get("method", "Myanmar pay"),
+            }
+        )
+        note = (
+            f"📸 Receipt from {user_tag(user)} — buying your "
+            f"{PRODUCTS.get(market['product'], market['product'])} for "
+            f"{fmt_ks(market['price_ks'])} via "
+            f"{market.get('method', 'Myanmar pay')}.\n"
+            "Tap to confirm the payment, or decline."
+        )
+        button = "✅ Confirm payment"
+        targets = [str(market["seller"])] + [
+            a for a in sorted(ADMIN_IDS) if a != str(market["seller"])
+        ]
+    else:
+        entry.update({"kind": "pack", "pack": key})
+        note = (
+            f"📸 Receipt from {user_tag(user)} — "
+            f"{pack_label(key)} ({PACKS[key]['ks']:,} Ks).\n"
+            "Tap to add the sessions, or decline."
+        )
+        button = "✅ Approve — add sessions"
+        targets = sorted(ADMIN_IDS)
+    state.setdefault("receipts", {})[rid] = entry
     save_state(state)
-    for admin_id in sorted(ADMIN_IDS):
+    for target_id in targets:
         api(
             "forwardMessage",
             {
-                "chat_id": admin_id,
+                "chat_id": target_id,
                 "from_chat_id": user_id,
                 "message_id": message_id,
             },
         )
         send_message(
-            admin_id,
-            f"📸 Receipt from {user_tag(user)} — "
-            f"{pack_label(key)} ({PACKS[key]['ks']:,} Ks).\n"
-            "Tap to add the sessions, or decline.",
+            target_id,
+            note,
             reply_markup={
                 "inline_keyboard": [
                     [
                         {
-                            "text": "✅ Approve — add sessions",
+                            "text": button,
                             "callback_data": f"mmok:{rid}",
                         },
                         {
@@ -548,19 +1376,27 @@ def handle_receipt_photo(msg, state):
     if not pending:
         send_message(
             chat_id,
-            "Got your photo — but tap a pack first, then choose "
-            "KBZPay / WavePay / AYAPay (or Thai QR), and send the "
-            "receipt after that so I know what it's for.",
+            "Got your photo — but tap a pack or a product first, then "
+            "choose how to pay, and send the receipt after that so I "
+            "know what it's for.",
         )
         return
-    key = pending["pack"]
     state["pending_mm"].pop(str(user_id), None)
     save_state(state)
-    forward_receipt_to_admins(user_id, msg.get("from", {}), key, msg["message_id"])
+    if pending.get("kind") == "market":
+        forward_receipt_to_admins(
+            user_id, msg.get("from", {}), None, msg["message_id"], state,
+            market=pending,
+        )
+    else:
+        forward_receipt_to_admins(
+            user_id, msg.get("from", {}), pending["pack"], msg["message_id"],
+            state,
+        )
     send_message(
         chat_id,
-        "Receipt sent to the admin — your sessions will be added "
-        "as soon as it's confirmed. 🙏",
+        "Receipt sent — it will be confirmed as soon as the seller or "
+        "an admin checks it. 🙏",
     )
 
 
@@ -600,6 +1436,28 @@ def handle_start(chat_id, text, state, user=None):
         send_message(chat_id, "That session is gone — check the group for the latest one.")
         return
 
+    if arg.startswith("seller_"):
+        target = arg[len("seller_"):]
+        profile = get_profile(target)
+        if not profile or profile.get("status") != "live":
+            send_message(chat_id, "That seller is not live right now.")
+            return
+        send_message(
+            chat_id,
+            seller_card_text(profile),
+            parse_mode="HTML",
+            reply_markup=seller_card_keyboard(profile),
+        )
+        return
+
+    if arg == "balance":
+        show_balance(chat_id)
+        return
+
+    if arg == "topup":
+        send_topup_options(chat_id)
+        return
+
     if is_admin(chat_id):
         send_message(
             chat_id,
@@ -607,10 +1465,12 @@ def handle_start(chat_id, text, state, user=None):
             "/newsession <topic> | <date/time> — create + post a session\n"
             "/newsession — interactive prompt\n"
             "/post <text> — announcement + pack buttons\n"
+            "/board — post the live sellers board\n"
             "/setgroup <@group> — where sessions go\n"
             "/sessions — list posted sessions\n"
             "/users — buyers, credits, packs bought\n"
             "/sales — recent purchases\n"
+            "/sellers — live sellers\n"
             "/id — this chat's id\n"
             "/help — full help",
         )
@@ -625,7 +1485,10 @@ def handle_start(chat_id, text, state, user=None):
         "• 1 session — 15,000 Ks ($3)\n"
         "• 2 sessions — 20,000 Ks ($4)\n"
         "• 4 sessions — 30,000 Ks ($6)\n\n"
-        "Tap a pack to pay — Stars, USDT, or KBZPay / WavePay / AYAPay.",
+        "Tap a pack to pay — Stars, USDT, or KBZPay / WavePay / AYAPay.\n\n"
+        "🛍 Plus the market — members sell products (milk, eggplant, "
+        "peaches, donut, HD). Make your seller profile with /profile, "
+        "browse with /sellers, check your balance with /balance.",
         reply_markup=pack_keyboard(url_buttons=False),
     )
 
@@ -637,16 +1500,28 @@ def handle_help(chat_id):
         "Students buy session packs (1 / 2 / 4 sessions) and pay by "
         "Stars, USDT (BSC), KBZPay / WavePay / AYAPay, or Thai QR.\n"
         "Receipts go to the admins for approval.\n\n"
+        "Market — members sell products (milk, eggplant, peaches, "
+        "donut, HD, 5,000–50,000 Ks each). Make a profile with "
+        "/profile; an admin approves it once they've seen you join "
+        "the Zoom live. Buyers pay from their bot balance, with "
+        "Stars, with USDT, or directly to the seller (receipt photo "
+        "or USDT hash). Top up with /topup.\n\n"
         "Admin:\n"
         "/newsession <topic> | <date/time> — post a session card\n"
         "/post <text> — announcement with pack buttons\n"
+        "/board — post the live sellers board\n"
         "/setgroup <@group> — set the teaching group\n"
         "/sessions — list sessions\n"
         "/users — buyers and credits\n"
         "/sales — recent purchases\n"
         "/id — this chat's id\n\n"
-        "Students:\n"
+        "Everyone:\n"
         "/mysessions — sessions left\n"
+        "/profile — make/edit your seller profile\n"
+        "/myprofile — your profile + its status\n"
+        "/sellers — live sellers\n"
+        "/balance — your bot balance\n"
+        "/topup — top up by Stars or USDT\n"
         f"{FOOTER}",
     )
 
@@ -706,25 +1581,75 @@ def handle_message(msg, state):
         handle_receipt_photo(msg, state)
         return
 
+    # ---- shared commands: everyone, admins included ----
+    if text == "/cancel":
+        state.get("profile_draft", {}).pop(str(user_id), None)
+        state["draft_session"] = False
+        save_state(state)
+        send_message(chat_id, "Cancelled.")
+        return
+
+    if text == "/profile":
+        start_profile(chat_id, msg.get("from", {}), state)
+        return
+
+    if text == "/myprofile":
+        profile = get_profile(user_id)
+        if not profile:
+            send_message(
+                chat_id,
+                "You don't have a seller profile yet — make one with /profile.",
+            )
+            return
+        status = {
+            "pending": "⏳ Pending approval",
+            "live": "✅ Live",
+            "declined": "❌ Declined",
+        }.get(profile.get("status"), profile.get("status", "?"))
+        send_message(
+            chat_id,
+            f"Your profile — {status}:\n\n" + profile_summary_text(profile),
+        )
+        return
+
+    if text == "/sellers":
+        send_sellers_list(chat_id)
+        return
+
+    if text == "/balance":
+        show_balance(user_id)
+        return
+
+    if text == "/topup":
+        send_topup_options(user_id)
+        return
+
+    if text == "/mysessions":
+        total = get_credits(user_id)
+        send_message(
+            chat_id,
+            f"💬 You have {total} session{'s' if total != 1 else ''} left.\n\n"
+            "Buy more below:",
+            reply_markup=pack_keyboard(url_buttons=False),
+        )
+        return
+
+    draft = (state.get("profile_draft") or {}).get(str(user_id))
+    if draft and (not text.startswith("/") or text == "/skip"):
+        handle_profile_step(chat_id, text, state, user=msg.get("from", {}))
+        return
+
     if not is_admin(chat_id):
         if looks_like_tx_hash(text):
             handle_usdt_hash(chat_id, user_id, text, state, user=msg.get("from", {}))
             return
-        if text == "/mysessions":
-            total = get_credits(user_id)
-            send_message(
-                chat_id,
-                f"💬 You have {total} session{'s' if total != 1 else ''} left.\n\n"
-                "Buy more below:",
-                reply_markup=pack_keyboard(url_buttons=False),
-            )
-            return
         if text.startswith("/"):
             send_message(
                 chat_id,
-                "Sessions live in the group — tap a pack button there "
-                "and pay here in this private chat.\n"
-                "Use /mysessions to see your sessions left.",
+                "Sessions and sellers live in the group — tap a pack or "
+                "a seller there and pay here in this private chat.\n"
+                "/mysessions for sessions left, /balance for your "
+                "balance, /sellers to browse.",
             )
         return
 
@@ -752,12 +1677,6 @@ def handle_message(msg, state):
 
     if text == "/help":
         handle_help(chat_id)
-        return
-
-    if text == "/cancel":
-        state["draft_session"] = False
-        save_state(state)
-        send_message(chat_id, "Cancelled.")
         return
 
     if text == "/newsession":
@@ -856,6 +1775,37 @@ def handle_message(msg, state):
         )
         return
 
+    if text == "/board":
+        group = state.get("group") or GROUP_CHAT_ID
+        if not group:
+            send_message(chat_id, "No group set yet — /setgroup <@group> first.")
+            return
+        live = [
+            p for p in load_profiles().values() if p.get("status") == "live"
+        ]
+        if not live:
+            send_message(
+                chat_id, "No live sellers yet — approve a profile first."
+            )
+            return
+        mid, err = post_to_group(
+            state,
+            sellers_board_text(live),
+            reply_markup=sellers_board_keyboard(live),
+        )
+        if err:
+            send_message(
+                chat_id,
+                "Posting failed — is the bot an admin in the group? "
+                f"Telegram said: {err}",
+            )
+            return
+        send_message(
+            chat_id,
+            f"Posted the sellers board ({len(live)} live sellers) to the group.",
+        )
+        return
+
     if text == "/sessions":
         sessions = state.get("sessions", {})
         if not sessions:
@@ -894,6 +1844,21 @@ def handle_message(msg, state):
         lines = [f"Buyers ({len(rows)}):"] + [r[1] for r in rows[:50]]
         if len(rows) > 50:
             lines.append(f"…(+{len(rows) - 50} more)")
+        sellers = [
+            p for p in load_profiles().values() if p.get("status") == "live"
+        ]
+        if sellers:
+            lines.append("")
+            lines.append(f"Sellers live ({len(sellers)}):")
+            for p in sellers:
+                prods = ", ".join(
+                    f"{PRODUCTS.get(k, k)} {fmt_ks(v)}"
+                    for k, v in (p.get("products") or {}).items()
+                )
+                lines.append(
+                    f"@{p.get('username', p['user_id'])} — "
+                    f"{p.get('name', '')} — {prods}"
+                )
         send_message(chat_id, "\n".join(lines))
         return
 
@@ -904,11 +1869,36 @@ def handle_message(msg, state):
             return
         lines = ["Recent sales:"]
         for p in purchases[-20:][::-1]:
-            name = f"@{p['username']}" if p.get("username") else p["user"]
-            lines.append(
-                f"{fmt_time(p['ts'])} — {name} — "
-                f"{pack_label(p['pack'])} — {p['method']} — {p['status']}"
-            )
+            kind = p.get("kind", "pack")
+            if kind == "market":
+                buyer = (
+                    f"@{p['buyer_username']}"
+                    if p.get("buyer_username")
+                    else p["buyer"]
+                )
+                lines.append(
+                    f"{fmt_time(p['ts'])} — {buyer} → "
+                    f"{p.get('seller_name', p['seller'])} — "
+                    f"{PRODUCTS.get(p['product'], p['product'])} — "
+                    f"{fmt_ks(p['ks'])} — {p['method']} — {p['status']}"
+                )
+            elif kind == "topup":
+                name = (
+                    f"@{p['username']}" if p.get("username") else p["user"]
+                )
+                lines.append(
+                    f"{fmt_time(p['ts'])} — {name} — top-up "
+                    f"${p.get('usd')} ({fmt_ks(p.get('ks', 0))}) — "
+                    f"{p['method']} — {p['status']}"
+                )
+            else:
+                name = (
+                    f"@{p['username']}" if p.get("username") else p["user"]
+                )
+                lines.append(
+                    f"{fmt_time(p['ts'])} — {name} — "
+                    f"{pack_label(p['pack'])} — {p['method']} — {p['status']}"
+                )
         send_message(chat_id, "\n".join(lines))
         return
 
@@ -954,11 +1944,8 @@ def handle_callback(query, state):
 
     note_user(query.get("from", {}))
 
-    # ---- admin receipt decisions ----
+    # ---- receipt decisions (packs + marketplace) ----
     if data.startswith("mmok:") or data.startswith("mmno:"):
-        if not is_admin(user_id):
-            answer_callback(qid, "Admin only.", show_alert=True)
-            return
         rid = data.split(":", 1)[1]
         receipt = (state.get("receipts") or {}).get(rid)
         if not receipt:
@@ -967,7 +1954,62 @@ def handle_callback(query, state):
         if receipt.get("status") != "pending":
             answer_callback(qid, "Already handled.", show_alert=True)
             return
+        # A marketplace receipt may be confirmed by the seller or an
+        # admin; a pack receipt is admin-only.
+        allowed = is_admin(user_id) or (
+            receipt.get("kind") == "market"
+            and str(user_id) == str(receipt.get("seller"))
+        )
+        if not allowed:
+            answer_callback(
+                qid, "Only the seller or an admin can confirm this.",
+                show_alert=True,
+            )
+            return
         cust_id = int(receipt["user"])
+        if receipt.get("kind") == "market":
+            seller_id = receipt["seller"]
+            product = receipt["product"]
+            price = int(receipt["price_ks"])
+            method = receipt.get("method", "Myanmar pay")
+            profile = get_profile(seller_id)
+            seller_name = (
+                profile.get("name", "Seller") if profile else "Seller"
+            )
+            if data.startswith("mmok:"):
+                receipt["status"] = "approved"
+                save_state(state)
+                record_market_sale(
+                    cust_id, receipt.get("username", ""), seller_id,
+                    seller_name, product, price, method, "paid",
+                )
+                send_message(
+                    cust_id,
+                    f"✅ Payment confirmed — you bought "
+                    f"{PRODUCTS.get(product, product)} for {fmt_ks(price)} "
+                    f"from {seller_name}.",
+                )
+                send_message(
+                    seller_id,
+                    f"💰 Payment confirmed: {user_tag(query.get('from', {}))} "
+                    f"bought your {PRODUCTS.get(product, product)} for "
+                    f"{fmt_ks(price)} via {method}.",
+                )
+                answer_callback(qid, "Confirmed.")
+            else:
+                receipt["status"] = "declined"
+                save_state(state)
+                record_market_sale(
+                    cust_id, receipt.get("username", ""), seller_id,
+                    seller_name, product, price, method, "declined",
+                )
+                send_message(
+                    cust_id,
+                    "❌ Your receipt was declined. If you think this is "
+                    "a mistake, message @SirArkar.",
+                )
+                answer_callback(qid, "Declined.")
+            return
         key = receipt["pack"]
         if data.startswith("mmok:"):
             receipt["status"] = "approved"
@@ -1005,6 +2047,516 @@ def handle_callback(query, state):
             reply_markup=pack_keyboard(url_buttons=False),
         )
         answer_callback(qid, "Sessions sent to your private chat.")
+        return
+
+    # ---- seller profile approval (admin gate = Zoom live) ----
+    if data.startswith("profok:") or data.startswith("profno:"):
+        if not is_admin(user_id):
+            answer_callback(qid, "Admin only.", show_alert=True)
+            return
+        target = data.split(":", 1)[1]
+        profiles = load_profiles()
+        profile = profiles.get(str(target))
+        if not profile:
+            answer_callback(qid, "Unknown profile.", show_alert=True)
+            return
+        if profile.get("status") != "pending":
+            answer_callback(qid, "Already handled.", show_alert=True)
+            return
+        if data.startswith("profok:"):
+            profile["status"] = "live"
+            save_profiles(profiles)
+            send_message(
+                target,
+                "✅ Your seller profile is LIVE! Other members can now "
+                "find you with /sellers and buy your products.",
+            )
+            answer_callback(qid, "Approved — profile is live.")
+        else:
+            profile["status"] = "declined"
+            save_profiles(profiles)
+            send_message(
+                target,
+                "❌ Your seller profile was declined. If you think this "
+                "is a mistake, message @SirArkar.",
+            )
+            answer_callback(qid, "Declined.")
+        return
+
+    # ---- profile setup: product picker ----
+    if data.startswith("prodtoggle:"):
+        key = data.split(":", 1)[1]
+        draft = (state.get("profile_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "products":
+            answer_callback(qid, "No product picker open — /profile to start.")
+            return
+        selected = draft.setdefault("selected", [])
+        if key in selected:
+            selected.remove(key)
+        elif key in PRODUCTS:
+            selected.append(key)
+        save_state(state)
+        api(
+            "editMessageReplyMarkup",
+            {
+                "chat_id": user_id,
+                "message_id": query.get("message", {}).get("message_id"),
+                "reply_markup": profile_draft_keyboard(draft),
+            },
+        )
+        answer_callback(qid)
+        return
+
+    if data == "proddone":
+        draft = (state.get("profile_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "products":
+            answer_callback(qid, "No product picker open — /profile to start.")
+            return
+        selected = draft.get("selected", [])
+        if not selected:
+            answer_callback(qid, "Pick at least one product first.", show_alert=True)
+            return
+        draft["step"] = "price"
+        draft["price_for"] = selected[0]
+        draft["price_queue"] = selected[1:]
+        save_state(state)
+        send_message(
+            user_id,
+            f"Price for {PRODUCTS.get(selected[0], selected[0])} in Ks "
+            f"({PRICE_MIN_KS:,}–{PRICE_MAX_KS:,}):",
+        )
+        answer_callback(qid)
+        return
+
+    # ---- profile submit / restart / cancel ----
+    if data == "profconfirm":
+        draft = (state.get("profile_draft") or {}).get(str(user_id))
+        if not draft:
+            answer_callback(qid, "No profile draft — /profile to start one.")
+            return
+        pdata = draft.get("data", {})
+        profiles = load_profiles()
+        profiles[str(user_id)] = {
+            "user_id": str(user_id),
+            "username": username,
+            "name": pdata.get("name", ""),
+            "products": pdata.get("products", {}),
+            "pay": pdata.get("pay", {}),
+            "status": "pending",
+            "ts": int(time.time()),
+        }
+        save_profiles(profiles)
+        state.get("profile_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(
+            user_id,
+            "✅ Profile submitted — an admin will approve it once "
+            "they've seen you join the Zoom live. I'll tell you when "
+            "it's live.",
+        )
+        profile = profiles[str(user_id)]
+        for admin_id in sorted(ADMIN_IDS):
+            send_message(
+                admin_id,
+                "🆕 New seller profile to approve:\n\n"
+                + profile_summary_text(profile)
+                + f"\n\nSeller: {user_tag(query.get('from', {}))}\n"
+                "Approve only if you've seen them join the Zoom live.",
+                reply_markup={
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "✅ Approve — make live",
+                                "callback_data": f"profok:{user_id}",
+                            },
+                            {
+                                "text": "❌ Decline",
+                                "callback_data": f"profno:{user_id}",
+                            },
+                        ]
+                    ]
+                },
+            )
+        answer_callback(qid, "Submitted for approval.")
+        return
+
+    if data == "profedit":
+        state.get("profile_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        start_profile(user_id, query.get("from", {}), state)
+        answer_callback(qid, "Starting over.")
+        return
+
+    if data == "profcancel":
+        state.get("profile_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(user_id, "Profile setup cancelled — nothing was saved.")
+        answer_callback(qid, "Cancelled.")
+        return
+
+    # ---- marketplace: browse / buy ----
+    if data == "browse":
+        send_sellers_list(user_id)
+        answer_callback(qid)
+        return
+
+    if data.startswith("seller:"):
+        target = data.split(":", 1)[1]
+        profile = get_profile(target)
+        if not profile or profile.get("status") != "live":
+            answer_callback(qid, "That seller is not live right now.", show_alert=True)
+            return
+        send_message(
+            user_id,
+            seller_card_text(profile),
+            parse_mode="HTML",
+            reply_markup=seller_card_keyboard(profile),
+        )
+        answer_callback(qid, "Seller card sent.")
+        return
+
+    if data.startswith("buy:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            answer_callback(qid, "Unknown button.")
+            return
+        _, seller_id, product = parts
+        profile = get_profile(seller_id)
+        if not profile or profile.get("status") != "live":
+            answer_callback(qid, "That seller is not live right now.", show_alert=True)
+            return
+        if str(user_id) == str(seller_id):
+            answer_callback(qid, "That's your own product.", show_alert=True)
+            return
+        price = (profile.get("products") or {}).get(product)
+        if price is None:
+            answer_callback(qid, "That product is no longer listed.", show_alert=True)
+            return
+        send_buy_options(user_id, profile, product, price)
+        answer_callback(qid, "Payment choices sent.")
+        return
+
+    if data.startswith("buypay:"):
+        parts = data.split(":")
+        if len(parts) != 4:
+            answer_callback(qid, "Unknown button.")
+            return
+        _, method, seller_id, product = parts
+        profile = get_profile(seller_id)
+        if not profile or profile.get("status") != "live":
+            answer_callback(qid, "That seller is not live right now.", show_alert=True)
+            return
+        if str(user_id) == str(seller_id):
+            answer_callback(qid, "That's your own product.", show_alert=True)
+            return
+        price = (profile.get("products") or {}).get(product)
+        if price is None:
+            answer_callback(qid, "That product is no longer listed.", show_alert=True)
+            return
+        seller_name = profile.get("name", "Seller")
+        if method == "balance":
+            new_buyer = change_balance(user_id, -price)
+            if new_buyer is None:
+                answer_callback(
+                    qid,
+                    "Not enough balance — top up with /topup first.",
+                    show_alert=True,
+                )
+                return
+            new_seller = change_balance(seller_id, price)
+            record_market_sale(
+                user_id, username, seller_id, seller_name, product, price,
+                "Balance", "paid",
+            )
+            send_message(
+                user_id,
+                f"✅ Paid {fmt_ks(price)} from your balance for "
+                f"{PRODUCTS.get(product, product)} from {seller_name}.\n"
+                f"Your balance is now {fmt_ks(new_buyer)}.",
+            )
+            send_message(
+                seller_id,
+                f"💰 {user_tag(query.get('from', {}))} bought your "
+                f"{PRODUCTS.get(product, product)} for {fmt_ks(price)} — "
+                "paid from their bot balance.\n"
+                f"Your balance is now {fmt_ks(new_seller)}. You can spend "
+                "it on other sellers' products.",
+            )
+            answer_callback(qid, "Paid from balance.")
+            return
+        if method == "stars":
+            stars = max(1, round(price / 50))
+            r = api(
+                "sendInvoice",
+                {
+                    "chat_id": user_id,
+                    "title": f"DaddyTeacher Market: {PRODUCTS.get(product, product)}",
+                    "description": (
+                        f"{PRODUCTS.get(product, product)} from "
+                        f"{seller_name} — {fmt_ks(price)}."
+                    ),
+                    "payload": f"mkt:{seller_id}:{product}:{price}:{user_id}",
+                    "provider_token": "",
+                    "currency": "XTR",
+                    "prices": [
+                        {
+                            "label": f"{PRODUCTS.get(product, product)} — {fmt_ks(price)}",
+                            "amount": stars,
+                        }
+                    ],
+                },
+            )
+            if r.get("ok"):
+                answer_callback(qid, "Invoice sent — check your private chat.")
+            else:
+                answer_callback(
+                    qid,
+                    "Stars payment is not available right now — try another option.",
+                    show_alert=True,
+                )
+            return
+        if method == "usdt":
+            usd = price / KS_PER_USD
+            state.setdefault("pending_usdt", {})[str(user_id)] = {
+                "kind": "market",
+                "seller": str(seller_id),
+                "product": product,
+                "price_ks": price,
+            }
+            save_state(state)
+            send_message(
+                user_id,
+                f"Pay {usd:g} USDT on BSC (BEP20) to the bot:\n\n"
+                f"<code>{USDT_ADDRESS}</code>\n\n"
+                f"🔗 <a href=\"{USDT_BSCSCAN_URL}\">View on BscScan</a>\n"
+                "⚠️ Send on BSC (BEP20) only.\n\n"
+                "Then paste your transaction hash here (starts with 0x, "
+                "66 characters). The seller gets the amount in their bot "
+                "balance once it's verified.",
+                parse_mode="HTML",
+                reply_markup=usdt_copy_keyboard(),
+            )
+            answer_callback(qid, "USDT address sent — check your private chat.")
+            return
+        if method == "direct":
+            pay = profile.get("pay", {})
+            rows = []
+            if pay.get("kbz"):
+                rows.append(
+                    [
+                        {
+                            "text": "🇲🇲 KBZPay",
+                            "callback_data": f"dirpay:kbz:{seller_id}:{product}",
+                        }
+                    ]
+                )
+            if pay.get("wave"):
+                rows.append(
+                    [
+                        {
+                            "text": "🇲🇲 WavePay",
+                            "callback_data": f"dirpay:wave:{seller_id}:{product}",
+                        }
+                    ]
+                )
+            if pay.get("aya"):
+                rows.append(
+                    [
+                        {
+                            "text": "🇲🇲 AYAPay",
+                            "callback_data": f"dirpay:aya:{seller_id}:{product}",
+                        }
+                    ]
+                )
+            if pay.get("bank_acct"):
+                rows.append(
+                    [
+                        {
+                            "text": "🏦 Bank transfer",
+                            "callback_data": f"dirpay:bank:{seller_id}:{product}",
+                        }
+                    ]
+                )
+            if pay.get("usdt"):
+                rows.append(
+                    [
+                        {
+                            "text": "💎 USDT (direct to seller)",
+                            "callback_data": f"dirpay:usdt:{seller_id}:{product}",
+                        }
+                    ]
+                )
+            if not rows:
+                answer_callback(
+                    qid,
+                    "This seller has no direct payment method listed.",
+                    show_alert=True,
+                )
+                return
+            send_message(
+                user_id,
+                f"Pay {seller_name} directly for "
+                f"{PRODUCTS.get(product, product)} ({fmt_ks(price)}).\n"
+                "Choose how:",
+                reply_markup={"inline_keyboard": rows},
+            )
+            answer_callback(qid, "Choose how to pay the seller.")
+            return
+        answer_callback(qid, "Unknown button.")
+        return
+
+    if data.startswith("dirpay:"):
+        parts = data.split(":")
+        if len(parts) != 4:
+            answer_callback(qid, "Unknown button.")
+            return
+        _, method, seller_id, product = parts
+        profile = get_profile(seller_id)
+        if not profile or profile.get("status") != "live":
+            answer_callback(qid, "That seller is not live right now.", show_alert=True)
+            return
+        price = (profile.get("products") or {}).get(product)
+        if price is None:
+            answer_callback(qid, "That product is no longer listed.", show_alert=True)
+            return
+        pay = profile.get("pay", {})
+        seller_name = profile.get("name", "Seller")
+        if method == "usdt":
+            addr = pay.get("usdt", "")
+            if not addr:
+                answer_callback(qid, "No USDT address for this seller.", show_alert=True)
+                return
+            usd = price / KS_PER_USD
+            state.setdefault("pending_usdt", {})[str(user_id)] = {
+                "kind": "market_direct",
+                "seller": str(seller_id),
+                "product": product,
+                "price_ks": price,
+            }
+            save_state(state)
+            send_message(
+                user_id,
+                f"Pay {usd:g} USDT on BSC (BEP20) straight to {seller_name}:\n\n"
+                f"<code>{addr}</code>\n\n"
+                "⚠️ Send on BSC (BEP20) only.\n\n"
+                "Then paste your transaction hash here — I'll verify it "
+                "on-chain and mark the sale paid.",
+                parse_mode="HTML",
+                reply_markup={
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "📋 Copy seller's USDT address",
+                                "copy_text": {"text": addr},
+                            }
+                        ]
+                    ]
+                },
+            )
+            answer_callback(qid, "Seller's USDT address sent.")
+            return
+        labels = {
+            "kbz": ("KBZPay", pay.get("kbz", "")),
+            "wave": ("WavePay", pay.get("wave", "")),
+            "aya": ("AYAPay", pay.get("aya", "")),
+            "bank": (pay.get("bank_name", "Bank"), pay.get("bank_acct", "")),
+        }
+        label, number = labels.get(method, ("", ""))
+        if not number:
+            answer_callback(qid, "No details for that method.", show_alert=True)
+            return
+        state.setdefault("pending_mm", {})[str(user_id)] = {
+            "kind": "market",
+            "seller": str(seller_id),
+            "product": product,
+            "price_ks": price,
+            "method": label,
+        }
+        save_state(state)
+        send_message(
+            user_id,
+            f"Pay {fmt_ks(price)} for {PRODUCTS.get(product, product)} to "
+            f"{seller_name} via {label}:\n\n"
+            f"<code>{number}</code>\n\n"
+            "Then send your receipt screenshot HERE — I'll forward it to "
+            f"{seller_name} and the admins to confirm.",
+            parse_mode="HTML",
+            reply_markup={
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": f"📋 Copy {label}",
+                            "copy_text": {"text": number},
+                        }
+                    ]
+                ]
+            },
+        )
+        answer_callback(qid, "Payment details sent.")
+        return
+
+    # ---- balance top-ups ----
+    if data == "topup":
+        send_topup_options(user_id)
+        answer_callback(qid, "Top-up choices sent.")
+        return
+
+    if data == "balance":
+        show_balance(user_id)
+        answer_callback(qid)
+        return
+
+    if data.startswith("topup_stars:") or data.startswith("topup_usdt:"):
+        method, usd_s = data.split(":", 1)
+        try:
+            usd = int(usd_s)
+        except ValueError:
+            answer_callback(qid, "Unknown amount.")
+            return
+        if usd not in TOPUP_USD_AMOUNTS:
+            answer_callback(qid, "Unknown amount.")
+            return
+        if method == "topup_stars":
+            r = api(
+                "sendInvoice",
+                {
+                    "chat_id": user_id,
+                    "title": f"DaddyTeacher: top up ${usd}",
+                    "description": (
+                        f"Add {fmt_ks(usd * KS_PER_USD)} to your "
+                        "DaddyTeacher balance."
+                    ),
+                    "payload": f"topup:{usd}:{user_id}",
+                    "provider_token": "",
+                    "currency": "XTR",
+                    "prices": [
+                        {"label": f"Top up ${usd}", "amount": usd * STARS_PER_USD}
+                    ],
+                },
+            )
+            if r.get("ok"):
+                answer_callback(qid, "Invoice sent — check your private chat.")
+            else:
+                answer_callback(
+                    qid, "Stars payment is not available right now.", show_alert=True
+                )
+            return
+        state.setdefault("pending_usdt", {})[str(user_id)] = {
+            "kind": "topup",
+            "usd": usd,
+        }
+        save_state(state)
+        send_message(
+            user_id,
+            f"Top up ${usd} ({fmt_ks(usd * KS_PER_USD)}) with USDT on BSC "
+            f"(BEP20):\n\n<code>{USDT_ADDRESS}</code>\n\n"
+            f"🔗 <a href=\"{USDT_BSCSCAN_URL}\">View on BscScan</a>\n"
+            f"⚠️ Send on BSC (BEP20) only — send at least {usd} USDT.\n\n"
+            "Then paste your transaction hash here.",
+            parse_mode="HTML",
+            reply_markup=usdt_copy_keyboard(),
+        )
+        answer_callback(qid, "USDT address sent.")
         return
 
     parts = data.split(":")
