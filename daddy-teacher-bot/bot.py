@@ -172,6 +172,12 @@ PRICE_MIN_KS = 5000
 PRICE_MAX_KS = 50000
 TOPUP_USD_AMOUNTS = (1, 2, 5, 10, 20)
 
+# Myanmar top-up: pay the admin by KBZPay / WavePay / AYAPay, send
+# the receipt, an admin approves and the balance is credited.
+# Minimum 5,000 Ks.
+TOPUP_MM_MIN_KS = 5000
+TOPUP_MM_METHOD = "Myanmar (KBZPay/WavePay/AYAPay)"
+
 # Cash-out / sell-USDT rate ONLY: 1 USDT = 4,500 Ks. This is NOT the
 # pricing anchor (KS_PER_USD = 5,000) — never use one for the other.
 KS_PER_USDT_CASHOUT = 4500
@@ -234,6 +240,7 @@ def load_state():
             "auction_seq": 0,
             "auction_draft": {},
             "bid_draft": {},
+            "topup_mm_draft": {},
         },
     )
 
@@ -365,6 +372,16 @@ def parse_price_ks(text):
     if value < PRICE_MIN_KS or value > PRICE_MAX_KS:
         return None
     return value
+
+
+def mm_admin_numbers_text():
+    """Arkar's admin payment numbers for Myanmar top-ups. The numbers
+    are <code> so members can tap to copy them."""
+    return (
+        f"• KBZPay: <code>{KBZPAY}</code> (Arkar Myo Win)\n"
+        f"• WavePay: <code>{WAVEPAY}</code> (Arkar Myo Win)\n"
+        f"• AYAPay: <code>{AYAPAY}</code> (Arkar Myowin)"
+    )
 
 
 def looks_like_usdt_address(text):
@@ -1521,11 +1538,21 @@ def send_topup_options(user_id):
         [{"text": f"💎 USDT — ${usd}", "callback_data": f"topup_usdt:{usd}"}]
         for usd in TOPUP_USD_AMOUNTS
     ]
+    rows.append(
+        [
+            {
+                "text": "🇲🇲 KBZPay / WavePay / AYAPay",
+                "callback_data": "topup_mm",
+            }
+        ]
+    )
     send_message(
         user_id,
         "Top up your balance — pick an amount and a method.\n\n"
         "Stars: a native invoice from the bot.\n"
-        "USDT: send it on BSC, paste the hash, I'll verify on-chain.",
+        "USDT: send it on BSC, paste the hash, I'll verify on-chain.\n"
+        "🇲🇲 KBZPay / WavePay / AYAPay: pay the admin, send the receipt "
+        f"— minimum {fmt_ks(TOPUP_MM_MIN_KS)}.",
         reply_markup={"inline_keyboard": rows},
     )
 
@@ -3100,10 +3127,11 @@ def handle_usdt_hash(chat_id, user_id, tx_hash, state, user=None):
     )
 
 
-def forward_receipt_to_admins(user_id, user, key, message_id, state, market=None):
+def forward_receipt_to_admins(user_id, user, key, message_id, state, market=None, topup=None):
     """Forward the receipt photo with Approve / Decline buttons. For a
     class pack it goes to every admin; for a marketplace sale it also
     goes to the seller, and the seller or an admin may confirm it.
+    For a Myanmar balance top-up it goes to every admin only.
     One receipt id per photo, so only the first decision counts — a
     second tap later gets 'already handled'.
 
@@ -3142,6 +3170,20 @@ def forward_receipt_to_admins(user_id, user, key, message_id, state, market=None
         targets = [str(market["seller"])] + [
             a for a in sorted(ADMIN_IDS) if a != str(market["seller"])
         ]
+    elif topup:
+        entry.update(
+            {
+                "kind": "topup_mm",
+                "ks": int(topup["ks"]),
+            }
+        )
+        note = (
+            f"💰 Balance top-up receipt from {user_tag(user)} — "
+            f"{fmt_ks(int(topup['ks']))}.\n"
+            "Tap to credit the member's balance, or decline."
+        )
+        button = "✅ Approve — credit balance"
+        targets = sorted(ADMIN_IDS)
     else:
         entry.update({"kind": "pack", "pack": key})
         note = (
@@ -3342,6 +3384,44 @@ def handle_flow_media(msg, state):
     return False
 
 
+def handle_topup_mm_step(chat_id, user_id, text, state, user=None):
+    """Typed amount during a Myanmar top-up. A valid amount stores a
+    `topup_mm` pending receipt (the member then pays and sends the
+    receipt photo); anything below 5,000 Ks or not a number is
+    rejected and the draft stays open. Returns True if consumed."""
+    draft = (state.get("topup_mm_draft") or {}).get(str(user_id))
+    if not draft:
+        return False
+    cleaned = (text or "").replace(",", "").replace(" ", "").strip()
+    if not cleaned.isdigit():
+        send_message(
+            chat_id,
+            "Send the amount as a whole number in Ks, or /cancel.",
+        )
+        return True
+    amount = int(cleaned)
+    if amount < TOPUP_MM_MIN_KS:
+        send_message(
+            chat_id,
+            f"Minimum top-up is {fmt_ks(TOPUP_MM_MIN_KS)} — type a bigger "
+            "amount, or /cancel.",
+        )
+        return True
+    state.get("topup_mm_draft", {}).pop(str(user_id), None)
+    state.setdefault("pending_mm", {})[str(user_id)] = {
+        "kind": "topup_mm",
+        "ks": amount,
+    }
+    save_state(state)
+    send_message(
+        chat_id,
+        f"Pay {fmt_ks(amount)} to one of these, then send your receipt "
+        "screenshot HERE:\n\n" + mm_admin_numbers_text(),
+        parse_mode="HTML",
+    )
+    return True
+
+
 def handle_receipt_photo(msg, state):
     chat_id = msg["chat"]["id"]
     user_id = msg.get("from", {}).get("id")
@@ -3361,16 +3441,28 @@ def handle_receipt_photo(msg, state):
             user_id, msg.get("from", {}), None, msg["message_id"], state,
             market=pending,
         )
+    elif pending.get("kind") == "topup_mm":
+        forward_receipt_to_admins(
+            user_id, msg.get("from", {}), None, msg["message_id"], state,
+            topup=pending,
+        )
     else:
         forward_receipt_to_admins(
             user_id, msg.get("from", {}), pending["pack"], msg["message_id"],
             state,
         )
-    send_message(
-        chat_id,
-        "Receipt sent — it will be confirmed as soon as the seller or "
-        "an admin checks it. 🙏",
-    )
+    if pending.get("kind") == "topup_mm":
+        send_message(
+            chat_id,
+            "Receipt sent — an admin will check it and credit your "
+            "balance. 🙏",
+        )
+    else:
+        send_message(
+            chat_id,
+            "Receipt sent — it will be confirmed as soon as the seller or "
+            "an admin checks it. 🙏",
+        )
 
 
 # ------------------------------------------------------------- start ------
@@ -3519,7 +3611,9 @@ def handle_start(chat_id, text, state, user=None):
         "full version is revealed in the group when someone buys it. "
         "🔨 Or run an auction with /auction — starting bid 5,000 Ks, "
         "15 minutes, highest bidder wins the video privately. "
-        "Browse with /sellers, check your balance with /balance.\n\n"
+        "Browse with /sellers, check your balance with /balance. "
+        "Top up with /topup — Stars, USDT, or KBZPay / WavePay / "
+        "AYAPay (from 5,000 Ks).\n\n"
         "💸 Cash out your balance as USDT with /cashout, or sell your "
         "USDT to Arkar with /sellusdt — both at 1 USDT = 4,500 Ks.",
         reply_markup=pack_keyboard(url_buttons=False),
@@ -3554,7 +3648,9 @@ def handle_help(chat_id):
         "their sales count on their profile and every post. "
         "Buyers tap an option on the card and pay. Buyers pay from "
         "their bot balance, with Stars, with USDT, or directly to "
-        "the seller (receipt photo or USDT hash). Top up with /topup.\n\n"
+        "the seller (receipt photo or USDT hash). Top up with /topup "
+        "— Stars, USDT, or KBZPay / WavePay / AYAPay (minimum 5,000 Ks "
+        "for Myanmar pay).\n\n"
         "Admin:\n"
         "/newsession <topic> | <date/time> — post a session card\n"
         "/post <text> — announcement with pack buttons\n"
@@ -3572,7 +3668,7 @@ def handle_help(chat_id):
         "/auction — post a video auction (start 5,000 Ks, 15 minutes)\n"
         "/sellers — live sellers\n"
         "/balance — your bot balance\n"
-        "/topup — top up by Stars or USDT\n"
+        "/topup — top up by Stars, USDT or KBZPay/WavePay/AYAPay (min 5,000 Ks)\n"
         "/cashout — cash out your balance as USDT (1 USDT = 4,500 Ks)\n"
         "/sellusdt — sell your USDT to Arkar (1 USDT = 4,500 Ks)\n"
         f"{FOOTER}",
@@ -3652,6 +3748,7 @@ def handle_message(msg, state):
         state.get("card_draft", {}).pop(str(user_id), None)
         state.get("auction_draft", {}).pop(str(user_id), None)
         state.get("bid_draft", {}).pop(str(user_id), None)
+        state.get("topup_mm_draft", {}).pop(str(user_id), None)
         pending = (state.get("pending_usdt") or {}).get(str(user_id))
         if pending and pending.get("kind") == "sellusdt":
             state["pending_usdt"].pop(str(user_id), None)
@@ -3757,6 +3854,11 @@ def handle_message(msg, state):
         state.get("bid_draft", {}).pop(str(user_id), None)
         save_state(state)
         send_message(chat_id, msg)
+        return
+
+    mm_draft = (state.get("topup_mm_draft") or {}).get(str(user_id))
+    if mm_draft and not text.startswith("/"):
+        handle_topup_mm_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
 
     co_draft = (state.get("cashout_draft") or {}).get(str(user_id))
@@ -4148,6 +4250,33 @@ def handle_callback(query, state):
             )
             return
         cust_id = int(receipt["user"])
+        if receipt.get("kind") == "topup_mm":
+            ks = int(receipt["ks"])
+            if data.startswith("mmok:"):
+                receipt["status"] = "approved"
+                save_state(state)
+                new_total = change_balance(cust_id, ks)
+                record_topup(
+                    cust_id, receipt.get("username", ""),
+                    ks // KS_PER_USD, ks, TOPUP_MM_METHOD,
+                )
+                send_message(
+                    cust_id,
+                    f"✅ Top-up approved — {fmt_ks(ks)} added to your "
+                    f"balance.\nYour balance is now {fmt_ks(new_total)}.",
+                )
+                answer_callback(qid, "Approved — balance credited.")
+            else:
+                receipt["status"] = "declined"
+                save_state(state)
+                send_message(
+                    cust_id,
+                    "❌ Your receipt was declined. Check the amount and "
+                    "the payment and try again with /topup, or message "
+                    "@SirArkar.",
+                )
+                answer_callback(qid, "Declined.")
+            return
         if receipt.get("kind") == "market":
             seller_id = receipt["seller"]
             product = receipt["product"]
@@ -5447,6 +5576,23 @@ def handle_callback(query, state):
             reply_markup=usdt_copy_keyboard(),
         )
         answer_callback(qid, "USDT address sent.")
+        return
+
+    if data == "topup_mm":
+        state.setdefault("topup_mm_draft", {})[str(user_id)] = {
+            "step": "amount",
+        }
+        save_state(state)
+        send_message(
+            user_id,
+            "🇲🇲 Top up by KBZPay / WavePay / AYAPay.\n\n"
+            "Pay to any of these:\n\n"
+            + mm_admin_numbers_text()
+            + "\n\nType the amount in Ks you are paying "
+            f"(minimum {fmt_ks(TOPUP_MM_MIN_KS)}), or /cancel.",
+            parse_mode="HTML",
+        )
+        answer_callback(qid, "Myanmar payment details sent.")
         return
 
     parts = data.split(":")

@@ -41,7 +41,7 @@ Students:
 - `/auction` — post a video auction to the group (live profile only)
 - `/sellers` — live sellers + their products
 - `/balance` — your bot balance
-- `/topup` — top up by Stars ($1/$2/$5/$10/$20) or USDT
+- `/topup` — top up by Stars ($1/$2/$5/$10/$20), USDT, or KBZPay / WavePay / AYAPay (min 5,000 Ks)
 - `/cashout` — cash out your balance as USDT (1 USDT = 4,500 Ks)
 - `/sellusdt` — sell your USDT to Arkar (1 USDT = 4,500 Ks)
 - `/id` — this chat's id (works in the group too)
@@ -97,9 +97,10 @@ then a product, and chooses how to pay:
   auto-confirmed).
 
 **Balances** — `/balance` shows the balance in Ks (and USD).
-`/topup` offers Stars ($1/$2/$5/$10/$20 invoices) or USDT (same
+`/topup` offers Stars ($1/$2/$5/$10/$20 invoices), USDT (same
 amounts, on-chain verify to the bot's address; what actually arrives
-is credited). Balances can be spent on any live seller's products,
+is credited), or KBZPay / WavePay / AYAPay (pay the admin, send the
+receipt — min 5,000 Ks, admin approves and the balance is credited). Balances can be spent on any live seller's products,
 or cashed out — see v3 below.
 
 ## v3 — cash-out + sell USDT (rate 1 USDT = 4,500 Ks)
@@ -266,6 +267,30 @@ go stale:
 - Shown as "\<title\> • \<N\> sold" on the seller's profile card,
   `/myprofile`, every fixed-price card, every auction card, the
   `/sellers` list and the `/board` lines.
+
+## v6.2 — Myanmar-payment balance top-up
+
+- **Flow** — `/topup` → tap "🇲🇲 KBZPay / WavePay / AYAPay" → the
+  bot shows Arkar's admin numbers (KBZPay `09403720481`, WavePay
+  `09780695959`, AYAPay `09754926216`, as `<code>` so members can tap
+  to copy) → member types the amount in Ks → member pays and sends
+  the receipt photo here → both admins get the receipt with
+  **✅ Approve — credit balance** / **❌ Decline**.
+- **Minimum 5,000 Ks** — anything below is rejected and the member
+  types again. Whole Ks only; commas/spaces accepted ("10,000").
+- **Approve** (admin only) — the member's balance is credited by
+  exactly the stated amount (`change_balance`), recorded with
+  `record_topup` (method "Myanmar (KBZPay/WavePay/AYAPay)"), and the
+  member is told their new balance. The receipt is marked approved
+  before crediting, and a second Approve tap gets "Already handled"
+  — a receipt can never credit twice.
+- **Decline** — nothing is credited; the member is told to check the
+  amount/payment and try again.
+- Receipts use a new `pending_mm` kind `topup_mm` (the USDT-hash
+  flow keeps its own `pending_usdt` "topup" kind) and a new receipt
+  kind `topup_mm`; the receipt record carries the `ks` amount.
+  `/topup`, `/help` and the `/start` welcome all mention the Myanmar
+  option and the 5,000 Ks minimum.
 
 ## Setup (Railway)
 
