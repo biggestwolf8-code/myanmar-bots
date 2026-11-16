@@ -4890,6 +4890,18 @@ def handle_message(msg, state):
         return
 
     if chat_type != "private":
+        # /start in a group answers with a short pointer to the DM
+        # instead of silence — the bot only works in private chat,
+        # and members typing /start in the group otherwise think
+        # it is missing. Everything else in groups (except /id
+        # above) stays silently ignored.
+        m = re.match(r"^/start(?:@([A-Za-z0-9_]+))?(?:\s|$)", text)
+        if m and (not m.group(1) or m.group(1).lower() == bot_username().lower()):
+            send_message(
+                chat_id,
+                f"👋 Hi! I work in private chat — tap @{bot_username()} "
+                "and press Start to make your profile, sell, and join pools.",
+            )
         return
 
     note_user(msg.get("from", {}))

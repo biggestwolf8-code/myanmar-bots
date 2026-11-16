@@ -411,6 +411,16 @@ still applies to every top-up. On completion the video goes
 privately to each contributor **once**; on cancel/remove each
 member is refunded their **total**.
 
+## v7.4 — /start answers in the group
+
+Group messages are still silently ignored, except `/id` — but
+`/start` in a group now answers with a short pointer instead of
+nothing: "👋 Hi! I work in private chat — tap @DaddyTeacherBot
+and press Start to make your profile, sell, and join pools."
+Matches `/start`, `/start@DaddyTeacherBot`, and `/start` with
+arguments; a `/start` addressed to a different bot is still
+ignored. All flows still run in the DM only.
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
