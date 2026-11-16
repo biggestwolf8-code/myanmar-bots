@@ -113,17 +113,56 @@ v6 — auction house + seller titles:
 
 v7 — group-buy pool ("fundraiser pool"):
   /pool posts a group-buy pool instead of a fixed-price card: an
-  expensive video at a FIXED 50,000 Ks, split at 1,000 Ks per person
-  — always exactly 50 contributors. Members join from their bot
-  balance (1,000 Ks each, one share per person, escrowed). When the
-  50th person joins, the seller gets the full 50,000 Ks and the
-  video is sent PRIVATELY to every contributor's DM — it is NEVER
-  revealed in the group. The pool card is deleted at once. No
-  deadline — a pool stays open until it fills; if the seller or an
-  admin removes it, every contributor is refunded 1,000 Ks. Pool
-  videos must be 1 to 5 minutes (same rule as auctions); the cover
-  is the video's own thumbnail, UNBLURRED. A completed pool counts
-  as ONE sale for the seller's title.
+  expensive video at a seller-set price of 50,000–500,000 Ks.
+  Members join from their bot balance (any amount from 1,000 Ks,
+  as often as they like — each member keeps one running total,
+  escrowed). When the pool fills, the seller gets the full
+  set price and the video is sent PRIVATELY to every contributor's
+  DM — it is NEVER revealed in the group. The pool card is deleted
+  at once. No deadline — a pool stays open until it fills; if the
+  seller or an admin removes it, every contributor is refunded
+  what they put in. Pool videos must be 1 to 5 minutes (same rule
+  as auctions); the cover is the video's own thumbnail, UNBLURRED.
+  A completed pool counts as ONE sale for the seller's title.
+
+v7.2 — flexible pool contributions:
+  Each member chooses the amount: minimum 1,000 Ks, any amount
+  above that. The pool
+  fills when the total raised hits the set price — however many
+  people that takes. The FINAL contribution is capped at exactly
+  what's left, so the pool always totals exactly the set price and
+  the seller always gets exactly the set price. The meter is
+  money-based (Ks raised / set price); the contributor count is
+  shown on its own line. Joining asks for the amount first ("How
+  much do you want to put in?"), then debits min(amount,
+  remaining).
+
+v7.1 — cash out by Myanmar payment too:
+  /cashout now offers two methods: USDT (unchanged — 1 USDT =
+  4,500 Ks, minimum 4,500 Ks, whole USDT only) or KBZPay / WavePay
+  / AYAPay in Ks, 1:1, minimum 5,000 Ks. For Myanmar the member
+  picks one of their saved profile accounts (or types a different
+  service + number), types the amount, and both admins get the
+  request with "Paid — Ks sent" / "Decline" buttons. Approve means
+  the admin has ALREADY sent the Ks; approving debits the exact
+  amount (the request is marked handled + saved BEFORE the debit,
+  so a second Approve answers "Already handled." and debits
+  nothing — same guard as the Myanmar top-up approve).
+
+v7.3 — admin announcement list + repeat pool contributions:
+  /announce (admin DM only) shows three tappable options — Main
+  intro, Fundraiser pool, Both — that post the matching
+  announcement(s) to the group on tap (MAIN_ANNOUNCEMENT /
+  POOL_ANNOUNCEMENT constants; Arkar's drafts, still awaiting his
+  Burmese corrections). Pool members can now contribute MORE than
+  once to the same pool: every top-up is at least 1,000 Ks and adds
+  to their running total (one contributor entry per member). The
+  pool card shows a contributor list under the meter — one line per
+  member with their total, highest first, top 10 plus an "…and N
+  more people (see /poolinfo <id>)" line; /poolinfo <pool id> shows
+  the full list in a DM. On completion the video goes privately to
+  each contributor ONCE; on cancel/remove each member is refunded
+  their total.
 
 No watermarking, no protect_content — these are plain text posts.
 """
@@ -197,6 +236,21 @@ TOPUP_MM_METHOD = "Myanmar (KBZPay/WavePay/AYAPay)"
 KS_PER_USDT_CASHOUT = 4500
 CASHOUT_MIN_KS = 4500  # minimum cash-out: 1 USDT
 
+# Myanmar cash-out: the admin sends the Ks to the member's own
+# KBZPay / WavePay / AYAPay account. 1:1 in Ks — no conversion, no
+# fee, no USDT maths in this path. Minimum 5,000 Ks (same as the
+# Myanmar top-up minimum).
+CASHOUT_MM_MIN_KS = 5000
+CASHOUT_MM_METHOD = "Myanmar (KBZPay/WavePay/AYAPay)"
+MM_SERVICES = {
+    "kbzpay": "KBZPay",
+    "kbz": "KBZPay",
+    "wavepay": "WavePay",
+    "wave": "WavePay",
+    "ayapay": "AYAPay",
+    "aya": "AYAPay",
+}
+
 PRODUCTS = {
     "milk": "🥛 Milk",
     "eggplant": "🍆 Eggplant",
@@ -206,6 +260,64 @@ PRODUCTS = {
 }
 
 FOOTER = "Developed by Arkar Myowin"
+
+# ------------------------------------------------------- announcements ----
+# Admin announcement texts for /announce. These are Arkar's drafts —
+# still awaiting his Burmese corrections — so copy them verbatim and
+# do NOT edit the Burmese here; when he corrects them, update these
+# two constants and the posting logic stays the same.
+MAIN_ANNOUNCEMENT = """📢 DaddyTeacher Bot မိတ်ဆက် — အားလုံးဖတ်ပေးပါ 🙏
+
+@DaddyTeacherBot ကို သုံးပြီး ဒီ group ထဲမှာ ကိုယ့်ပစ္စည်းတွေ ရောင်းလို့ရပါပြီ။
+
+🛍 သင်ဘာတွေလုပ်နိုင်လဲ
+• /profile — ကိုယ့် profile လုပ်ပါ။ နာမည်၊ အသက်၊ role (Top / Bottom / Verse)၊ ဓာတ်ပုံ ၃ ပုံ၊ ရောင်းမယ့်ပစ္စည်း၊ ဈေးနှုန်းနဲ့ ငွေလက်ခံမယ့် အကောင့်တွေ ဖြည့်ပါ။
+• /sell — group ထဲမှာ ပစ္စည်းကတ်တင်ပါ။ option ၄ ခုအထိ ကိုယ့်ဈေးနဲ့ သတ်မှတ်လို့ရပါတယ်။ ဝယ်သူဝယ်ပြီးမှ အပြည့်အစုံကို group ထဲမှာ ဖော်ပြပေးပါတယ်။
+• /auction — ဗီဒီယို လေလံတင်ပါ။ 5,000 ကျပ်က စပြီး 15 မိနစ်သာ။ အမြင့်ဆုံးဈေးပေးသူက ဗီဒီယိုကို သီးသန့်ရပါတယ်။
+• /sellers — ရောင်းနေသူတွေကို ကြည့်ပါ။
+• /balance — ကိုယ့် balance ကြည့်ပါ။ /cashout — balance ကို USDT နဲ့ ထုတ်လို့ရပါတယ်။
+
+📸 အစစ်အမှန် ဓာတ်ပုံနဲ့ ဗီဒီယိုကိုပဲ သုံးပါ
+ကိုယ့်ပစ္စည်းရဲ့ အစစ်အမှန် ဓာတ်ပုံနဲ့ ဗီဒီယိုကိုပဲ တင်ပါ။ သူများပုံ၊ အတုပုံတွေ မသုံးပါနဲ့။ အစစ်မှန်တာက ဝယ်သူတွေရဲ့ ယုံကြည်မှုကို ရစေပါတယ်။
+
+🏆 နာမည်ကောင်း (Reputation) က ရောင်းအားနဲ့ တည်ဆောက်ပါတယ်
+ရောင်းလေလေ သင့်ရဲ့ title က မြင့်လေလေပါ — New Seller → Seller → Rising Star → Top Seller → Star Seller → Legend။ Title မြင့်လေ ဝယ်သူတွေ ပိုယုံလေ၊ ပစ္စည်းတွေ ပိုမြန်မြန် ကုန်လေပါ။
+
+💰 ဝယ်ဖို့ balance ဖြည့်ပါ — 5,000 ကျပ်က စပြီး
+1. Bot ထဲမှာ /topup ကို နှိပ်ပါ။
+2. "🇲🇲 KBZPay / WavePay / AYAPay" tab ကို ရွေးပါ။
+3. ဖြည့်မယ့် ငွေပမာဏ (အနည်းဆုံး 5,000 ကျပ်) ရိုက်ထည့်ပါ။
+4. Admin ရဲ့ KBZPay / WavePay / AYAPay ကို ငွေလွှဲပြီး receipt screenshot ကို bot ထဲမှာ ပို့ပါ။
+5. Admin အတည်ပြုပြီးရင် balance ထဲကို ငွေရောက်ပါပြီ။
+
+KBZPay: 09403720481
+WavePay: 09780695959
+AYAPay: 09754926216
+
+Stars နဲ့ USDT နဲ့လည်း ဖြည့်လို့ရပါတယ်။
+
+🛒 ဝယ်နည်း — ကတ်ပေါ်က option ကို နှိပ်ပြီး balance / Stars / USDT / seller ကို တိုက်ရိုက်ပေးပြီး ဝယ်လို့ရပါတယ်။
+
+မေးစရာရှိရင် @HenryRealGood ကို ဆက်သွယ်ပါ။"""
+
+POOL_ANNOUNCEMENT = """🤝 Fundraiser Pool — အတူတူစုဝယ်လို့ရပါပြီ
+
+ဈေးကြီးတဲ့ ဗီဒီယို (50,000 ကျပ်ကနေ 500,000 ကျပ်အထိ) ကို တစ်ယောက်တည်း ဝယ်စရာမလိုတော့ပါဘူး — အတူတူစုပြီး ဝယ်လို့ရပါပြီ။
+
+💰 ဘယ်လိုစုမလဲ
+• တစ်ယောက်ကို အနည်းဆုံး 1,000 ကျပ်က စပြီး ကြိုက်သလောက် ထည့်လို့ရပါတယ်။
+• စုစုပေါင်း ဈေးနှုန်းပြည့်သွားရင် pool ပိတ်ပါပြီ။
+• ဗီဒီယိုကို ပေးဆောင်ထားသူတွေဆီကိုပဲ သီးသန့်ပို့ပေးပါတယ် — group ထဲမှာ ဘယ်တော့မှ မဖော်ပြပါဘူး။
+• Pool ကတ်ပေါ်မှာ တိုးတက်မှု meter ကို အချိန်နဲ့တပြေးညီ ကြည့်လို့ရပါတယ်။
+• ရောင်းသူက ဈေးနှုန်းအပြည့်အဝ ရပါတယ်။
+
+📝 Pool တင်နည်း — /sell (သို့) /pool ကို နှိပ်ပြီး ပစ္စည်းရွေးပါ၊ "🤝 Pool" ကို ရွေးပါ၊ ဈေးနှုန်း (50,000–500,000 ကျပ်) သတ်မှတ်ပါ၊ ဗီဒီယို (1–5 မိနစ်) ပို့ပါ။
+
+🤝 ပါဝင်နည်း — Pool ကတ်ပေါ်က "Join" ကို နှိပ်ပြီး ထည့်မယ့် ငွေပမာဏ ရိုက်ထည့်ပါ။ Balance ထဲက ဖြတ်ပါမယ်။
+
+Pool မပြည့်သေးရင် ပယ်ဖျက်လိုက်ရင် ထည့်ထားတဲ့ ငွေအတိုင်း အကုန်ပြန်ရပါတယ်။
+
+မေးစရာရှိရင် @HenryRealGood ကို ဆက်သွယ်ပါ။"""
 
 
 def pack_label(key):
@@ -244,6 +356,7 @@ def load_state():
             "cashouts": {},
             "cashout_seq": 0,
             "cashout_draft": {},
+            "cashout_mm_draft": {},
             "sellusdt": {},
             "sell_seq": 0,
             "sell_draft": {},
@@ -256,6 +369,7 @@ def load_state():
             "pools": {},
             "pool_seq": 0,
             "pool_draft": {},
+            "pool_join_draft": {},
             "bid_draft": {},
             "topup_mm_draft": {},
         },
@@ -399,6 +513,32 @@ def mm_admin_numbers_text():
         f"• WavePay: <code>{WAVEPAY}</code> (Arkar Myo Win)\n"
         f"• AYAPay: <code>{AYAPAY}</code> (Arkar Myowin)"
     )
+
+
+def mask_mm_number(number):
+    """'09403720481' -> '0940…' — for buttons, so the full number is
+    not shown on a button row."""
+    number = str(number or "")
+    return (number[:4] + "…") if len(number) > 4 else number
+
+
+def parse_mm_account(text):
+    """A typed Myanmar account: 'KBZPay 09403720481' -> ('KBZPay',
+    '09403720481'). Accepts KBZ/Wave/AYA with or without 'Pay'.
+    Returns None if the service is unknown or the number is not a
+    Myanmar mobile number (09 + 7–9 digits)."""
+    parts = (text or "").strip().split()
+    if len(parts) < 2:
+        return None
+    service = MM_SERVICES.get(parts[0].lower())
+    if not service:
+        return None
+    number = "".join(parts[1:]).replace("-", "").replace(" ", "")
+    if not number.isdigit() or not number.startswith("09"):
+        return None
+    if not 9 <= len(number) <= 11:
+        return None
+    return service, number
 
 
 def looks_like_usdt_address(text):
@@ -914,15 +1054,19 @@ AUCTION_POST_TTL_S = 24 * 3600
 AUCTION_MIN_VIDEO_S = 60
 AUCTION_MAX_VIDEO_S = 300
 
-# Group-buy pool ("fundraiser pool"): an expensive video at a FIXED
-# 50,000 Ks, split at 1,000 Ks per person — always exactly 50
-# contributors. When the pool fills, the video goes privately to
-# every contributor — NEVER revealed in the group. No deadline;
-# removing the pool refunds every contributor 1,000 Ks. Pool videos
-# use the same 1–5 minute rule as auctions (AUCTION_MIN/MAX_VIDEO_S).
-POOL_PRICE_KS = 50000
-POOL_PER_PERSON_KS = 1000
-POOL_NEEDED = 50
+# Group-buy pool ("fundraiser pool"): an expensive video at a
+# SELLER-SET price, 50,000–500,000 Ks. Each member contributes
+# ONCE, any amount from a 1,000 Ks minimum — the pool fills when
+# the total raised hits the set price, however many people that
+# takes. The final contribution is capped at exactly what's left,
+# so the pool always totals exactly the set price. When it fills,
+# the video goes privately to every contributor — NEVER revealed
+# in the group. No deadline; removing the pool refunds every
+# contributor the exact amount they put in. Pool videos use the
+# same 1–5 minute rule as auctions (AUCTION_MIN/MAX_VIDEO_S).
+POOL_MIN_PRICE_KS = 50000
+POOL_MAX_PRICE_KS = 500000
+POOL_MIN_CONTRIB_KS = 1000
 
 
 def fmt_countdown(seconds):
@@ -1144,6 +1288,43 @@ def send_auction_preview(chat_id, user_id, draft):
         )
     else:
         send_message(chat_id, text, reply_markup=kb)
+
+
+def send_pool_info(chat_id, pool):
+    """The FULL contributor list for one pool, in a DM: every
+    member with their running total, highest first. The group card
+    only shows the top 10 (caption limit), so this is where the
+    whole list lives. Works for live and filled pools."""
+    price = int(pool.get("price") or POOL_MIN_PRICE_KS)
+    raised = pool_raised(pool)
+    joined = len(pool.get("contributors") or [])
+    product = PRODUCTS.get(pool.get("product"), pool.get("product", ""))
+    status = pool.get("status", "live")
+    lines = [
+        f"🤝 Pool — {pool.get('seller_name', 'Seller')}'s {product}",
+        "",
+        f"Price: {fmt_ks(price)} — "
+        f"{fmt_ks(POOL_MIN_CONTRIB_KS)} or more per person",
+        f"{pool_meter(raised, price)}",
+        f"👥 {joined} "
+        f"{'person has' if joined == 1 else 'people have'} joined",
+        f"Status: {status}",
+        "",
+        "Contributors:",
+    ]
+    contributors = sorted(
+        (pool.get("contributors") or []),
+        key=lambda c: int(c.get("ks") or 0),
+        reverse=True,
+    )
+    if not contributors:
+        lines.append("No one has joined yet.")
+    for i, c in enumerate(contributors, 1):
+        who = f"@{c['username']}" if c.get("username") else (
+            c.get("name") or "Someone"
+        )
+        lines.append(f"{i}. {who} — {fmt_ks(int(c.get('ks') or 0))}")
+    send_message(chat_id, "\n".join(lines))
 
 
 def start_auction(chat_id, user_id, state, user=None):
@@ -1650,30 +1831,89 @@ def send_buy_options(user_id, profile, product, price, option=None,
 
 # --------------------------------------------------- group-buy pool ----
 
-def pool_meter(joined, needed=POOL_NEEDED, show_remaining=True):
-    """10-segment progress bar for a pool, e.g.
-    '▓▓▓▓▓▓░░░░ 32/50 • 32,000 Ks raised • 18,000 Ks to go'.
-    Filled segments = round(joined / needed × 10). One rendering,
+def pool_raised(pool):
+    """Total Ks raised so far: the stored total, or the sum of
+    contributor amounts for pools saved before v7.2 (their entries
+    carry no 'ks', and each put in the old fixed 1,000 Ks)."""
+    if pool.get("raised") is not None:
+        return int(pool["raised"])
+    total = 0
+    for c in pool.get("contributors") or []:
+        total += int(c.get("ks") or POOL_MIN_CONTRIB_KS)
+    return total
+
+
+def parse_pool_price(text):
+    """A seller-typed pool price: a whole number of Ks inside
+    50,000–500,000. Returns the Ks int, or None."""
+    cleaned = (text or "").replace(",", "").replace(" ", "").strip()
+    if not cleaned.isdigit():
+        return None
+    price = int(cleaned)
+    if price < POOL_MIN_PRICE_KS or price > POOL_MAX_PRICE_KS:
+        return None
+    return price
+
+
+def pool_meter(raised, total, show_remaining=True):
+    """10-segment money progress bar for a pool, e.g. on a 100,000
+    Ks pool with 32,000 raised:
+    '▓▓▓░░░░░░░ 32,000 / 100,000 Ks • 68,000 Ks to go'.
+    Filled segments = round(raised / total × 10). One rendering,
     shared by the group card, the seller preview and the join
     prompt, so the meter is always the same everywhere."""
-    joined = max(0, min(int(joined), int(needed)))
-    filled = round(joined / needed * 10) if needed else 0
+    total = int(total) if total else POOL_MIN_PRICE_KS
+    raised = max(0, min(int(raised), total))
+    filled = round(raised / total * 10) if total else 0
     bar = "▓" * filled + "░" * (10 - filled)
-    raised = joined * POOL_PER_PERSON_KS
-    text = f"{bar} {joined}/{needed} • {fmt_ks(raised)} raised"
+    text = f"{bar} {raised:,} / {total:,} Ks"
     if show_remaining:
-        remaining = (needed - joined) * POOL_PER_PERSON_KS
-        text += f" • {fmt_ks(remaining)} to go"
+        text += f" • {total - raised:,} Ks to go"
     return text
+
+
+def pool_contributor_block(pool, max_count=10):
+    """The contributor list shown on the pool card, under the meter
+    ('the meter list'): one line per member with their RUNNING
+    TOTAL, highest first, e.g. '@alice — 10,000 Ks'. A member who
+    topped up again keeps a single line whose total grew. Capped
+    at max_count lines; if more contributors exist, a final
+    '…and N more people (see /poolinfo <id>)' line points at the
+    full list."""
+    contributors = sorted(
+        (pool.get("contributors") or []),
+        key=lambda c: int(c.get("ks") or 0),
+        reverse=True,
+    )
+    if not contributors or max_count <= 0:
+        return []
+    lines = []
+    for c in contributors[:max_count]:
+        who = f"@{c['username']}" if c.get("username") else (
+            c.get("name") or "Someone"
+        )
+        lines.append(f"{who} — {fmt_ks(int(c.get('ks') or 0))}")
+    extra = len(contributors) - len(contributors[:max_count])
+    if extra > 0:
+        lines.append(
+            f"…and {extra} more "
+            f"{'person' if extra == 1 else 'people'} "
+            f"(see /poolinfo {pool.get('id', '')})"
+        )
+    return lines
 
 
 def pool_card_text(pool):
     """The pool card posted to the group. The cover photo is the
     video's own thumbnail, UNBLURRED (same as auctions). The video
     is NEVER revealed in the group — on completion it goes privately
-    to every contributor's DM. The card carries a LIVE progress
-    meter, refreshed on every join."""
+    to every contributor's DM. The card carries a LIVE money meter,
+    refreshed on every join, plus the contributor count and the
+    contributor list under the meter (top 10 by total). The caption
+    limit is 1,024 chars, so the list shrinks until the card fits."""
     title = seller_title_line(pool.get("seller"))
+    price = int(pool.get("price") or POOL_MIN_PRICE_KS)
+    raised = pool_raised(pool)
     joined = len(pool.get("contributors") or [])
     lines = [
         f"🤝 POOL — {pool.get('seller_name', 'Seller')}, "
@@ -1681,41 +1921,57 @@ def pool_card_text(pool):
         f"{title} — "
         f"{PRODUCTS.get(pool.get('product'), pool.get('product', ''))}",
         "",
-        f"Price: {fmt_ks(POOL_PRICE_KS)} — "
-        f"{fmt_ks(POOL_PER_PERSON_KS)} per person",
+        f"Price: {fmt_ks(price)} — "
+        f"{fmt_ks(POOL_MIN_CONTRIB_KS)} or more per person",
     ]
     if pool.get("duration_min"):
         lines.insert(1, f"⏱️ {pool['duration_min']} min")
+    tail = [
+        "",
+        "When the pool fills, the video goes privately to everyone "
+        "who paid — it is NEVER revealed in the group.",
+        "",
+        f"Tap 🤝 Join to put in {fmt_ks(POOL_MIN_CONTRIB_KS)} or more "
+        "from your bot balance.",
+    ]
     if pool.get("status") == "live":
-        lines.append(pool_meter(joined))
+        lines.append(pool_meter(raised, price))
+        lines.append(
+            f"👥 {joined} "
+            f"{'person has' if joined == 1 else 'people have'} joined"
+        )
+        shown = min(10, joined)
+        while True:
+            block = pool_contributor_block(pool, shown)
+            text = "\n".join(
+                lines + ([""] + block if block else []) + tail
+            )
+            if len(text) <= 1000 or shown == 0:
+                return text
+            shown -= 1
     elif pool.get("status") == "filled":
         lines.append(
-            pool_meter(joined, show_remaining=False)
+            pool_meter(raised, price, show_remaining=False)
             + " — pool filled! 🎉"
         )
-    lines.append("")
-    lines.append(
-        "When the pool fills, the video goes privately to everyone "
-        "who paid — it is NEVER revealed in the group."
-    )
-    lines.append("")
-    lines.append(
-        f"Tap 🤝 Join to pay {fmt_ks(POOL_PER_PERSON_KS)} from your "
-        "bot balance."
-    )
-    return "\n".join(lines)
+        lines.append(
+            f"👥 {joined} "
+            f"{'person' if joined == 1 else 'people'} joined"
+        )
+    return "\n".join(lines + tail)
 
 
 def pool_card_keyboard(pool):
     """Join (deep link into the bot DM — works for members who never
-    started the bot), Seller profile, Remove. The Join button is gone
-    once the pool is no longer live."""
+    started the bot), Contributors (full list in DM), Seller
+    profile, Remove. The Join button is gone once the pool is no
+    longer live."""
     rows = []
     if pool.get("status") == "live":
         rows.append(
             [
                 {
-                    "text": f"🤝 Join — {fmt_ks(POOL_PER_PERSON_KS)}",
+                    "text": f"🤝 Join — from {fmt_ks(POOL_MIN_CONTRIB_KS)}",
                     "url": (
                         f"https://t.me/{bot_username()}"
                         f"?start=pool_{pool['id']}"
@@ -1723,6 +1979,17 @@ def pool_card_keyboard(pool):
                 }
             ]
         )
+    rows.append(
+        [
+            {
+                "text": "📋 Contributors",
+                "url": (
+                    f"https://t.me/{bot_username()}"
+                    f"?start=poolinfo_{pool['id']}"
+                ),
+            }
+        ]
+    )
     rows.append(
         [
             {
@@ -1809,28 +2076,32 @@ def _delete_pool_card(state, pool):
 
 
 def _refund_pool_contributors(state, pool):
-    """Give every contributor their 1,000 Ks back."""
+    """Give every contributor back the exact amount they put in."""
     product = PRODUCTS.get(pool.get("product"), pool.get("product", ""))
     for c in pool.get("contributors") or []:
-        change_balance(c["id"], POOL_PER_PERSON_KS)
+        amount = int(c.get("ks") or POOL_MIN_CONTRIB_KS)
+        change_balance(c["id"], amount)
         send_message(
             c["id"],
-            f"↩️ Your {fmt_ks(POOL_PER_PERSON_KS)} for "
+            f"↩️ Your {fmt_ks(amount)} for "
             f"{pool.get('seller_name', 'Seller')}'s {product} pool was "
             "refunded — the pool was removed.",
         )
     pool["contributors"] = []
+    pool["raised"] = 0
 
 
 def _complete_pool(state, pool):
-    """The 50th contributor joined. The seller gets the full 50,000
-    Ks, the video goes PRIVATELY to every contributor's DM, and the
-    pool card is deleted. Nothing is ever posted to the group."""
+    """The pool filled: total raised hit the set price. The seller
+    gets exactly the set price, the video goes PRIVATELY to every
+    contributor's DM, and the pool card is deleted. Nothing is ever
+    posted to the group."""
     now = int(time.time())
     seller = str(pool.get("seller"))
+    price = int(pool.get("price") or POOL_MIN_PRICE_KS)
     product = PRODUCTS.get(pool.get("product"), pool.get("product", ""))
     contributors = list(pool.get("contributors") or [])
-    change_balance(seller, POOL_PRICE_KS)
+    change_balance(seller, price)
     record_event(
         {
             "kind": "pool",
@@ -1839,7 +2110,7 @@ def _complete_pool(state, pool):
             "seller": seller,
             "seller_name": pool.get("seller_name", "Seller"),
             "product": pool.get("product"),
-            "ks": POOL_PRICE_KS,
+            "ks": price,
             "contributors": len(contributors),
             "method": "Balance (pool)",
             "status": "paid",
@@ -1855,9 +2126,10 @@ def _complete_pool(state, pool):
                 "video": pool["video_file_id"],
                 "caption": (
                     f"🤝 Pool filled! {pool.get('seller_name', 'Seller')}'s "
-                    f"{product} — {fmt_ks(POOL_PRICE_KS)} shared by "
-                    f"{POOL_NEEDED} people. This video is yours "
-                    "privately."
+                    f"{product} — {fmt_ks(price)} shared by "
+                    f"{len(contributors)} "
+                    f"{'person' if len(contributors) == 1 else 'people'}. "
+                    "This video is yours privately."
                 ),
                 "protect_content": True,
             },
@@ -1869,90 +2141,174 @@ def _complete_pool(state, pool):
         )
     send_message(
         seller,
-        f"💰 Your {product} pool filled — {POOL_NEEDED} people × "
-        f"{fmt_ks(POOL_PER_PERSON_KS)} = {fmt_ks(POOL_PRICE_KS)} "
-        "credited to your balance.",
+        f"💰 Your {product} pool filled — {len(contributors)} "
+        f"{'person' if len(contributors) == 1 else 'people'} put in "
+        f"{fmt_ks(price)} in total — credited to your balance.",
     )
     _delete_pool_card(state, pool)
     save_state(state)
 
 
-def join_pool(state, pool, user_id, user=None):
-    """One member joins a pool: 1,000 Ks from balance, escrowed.
-    Returns (ok, message for the member). On the 50th join the pool
-    completes: seller credited 50,000, video sent privately to all
-    50 contributors."""
+def join_pool(state, pool, user_id, amount, user=None):
+    """One member joins a pool with an amount of their choice
+    (minimum 1,000 Ks PER contribution). A member may contribute
+    MORE than once: each top-up adds to their RUNNING TOTAL in the
+    single contributor entry for them (one line on the card, one
+    video on completion, one refund of their total on cancel).
+    The amount is CAPPED at exactly what's left: if 1,000 Ks is
+    all that's needed, only 1,000 Ks is taken even when the member
+    offered more. Returns (ok, message for the member). When the
+    total raised hits the set price the pool completes: seller
+    credited the exact price, video sent privately to all
+    contributors."""
     if pool.get("status") != "live":
         return False, "That pool is closed — check the group for the latest one."
     if str(user_id) == str(pool.get("seller")):
         return False, "You can't join your own pool."
     contributors = pool.setdefault("contributors", [])
-    if any(str(c.get("id")) == str(user_id) for c in contributors):
-        return False, "You've already joined this pool — one share per person."
+    existing = next(
+        (c for c in contributors if str(c.get("id")) == str(user_id)),
+        None,
+    )
+    try:
+        amount = int(amount)
+    except (TypeError, ValueError):
+        return False, "Send the amount as a whole number in Ks."
+    if amount < POOL_MIN_CONTRIB_KS:
+        return (
+            False,
+            f"Minimum is {fmt_ks(POOL_MIN_CONTRIB_KS)} — send an amount "
+            "of 1,000 Ks or more.",
+        )
+    price = int(pool.get("price") or POOL_MIN_PRICE_KS)
+    raised = pool_raised(pool)
+    remaining = price - raised
+    if remaining <= 0:
+        return False, "That pool is already full."
+    take = min(amount, remaining)
+    capped_note = ""
+    if take < amount:
+        capped_note = (
+            f"Only {fmt_ks(take)} was needed — taking {fmt_ks(take)}, "
+            "the rest stays in your balance. "
+        )
     balance = get_balance(user_id)
-    if balance < POOL_PER_PERSON_KS:
+    if balance < take:
         return (
             False,
             f"Your balance is {fmt_ks(balance)} — top up with /topup "
             "first, then join again.",
         )
-    if change_balance(user_id, -POOL_PER_PERSON_KS) is None:
+    if change_balance(user_id, -take) is None:
         return False, "Not enough balance — top up with /topup first."
-    contributors.append(
-        {
+    name = (user or {}).get("first_name") or (user or {}).get(
+        "username"
+    ) or "Someone"
+    if existing is not None:
+        # A top-up: grow their running total, keep one entry.
+        existing["ks"] = int(existing.get("ks") or 0) + take
+        existing["name"] = name
+        existing["username"] = (user or {}).get("username", "")
+        entry = existing
+    else:
+        entry = {
             "id": str(user_id),
-            "name": (user or {}).get("first_name")
-            or (user or {}).get("username")
-            or "Someone",
+            "name": name,
             "username": (user or {}).get("username", ""),
+            "ks": take,
         }
-    )
+        contributors.append(entry)
+    pool["raised"] = raised + take
     save_state(state)
-    if len(contributors) >= POOL_NEEDED:
+    if pool["raised"] >= price:
         _complete_pool(state, pool)
         return (
             True,
-            f"🎉 You were the {POOL_NEEDED}th — the pool is full! "
-            "The video is on its way to your private chat. 🙏",
+            f"{capped_note}🎉 You filled the pool! The video is on "
+            "its way to your private chat. 🙏",
         )
     product = PRODUCTS.get(pool.get("product"), pool.get("product", ""))
     edit_pool_card(state, pool)
+    total = int(entry.get("ks") or 0)
+    if existing is not None:
+        send_message(
+            pool["seller"],
+            f"🤝 {name} topped up their {product} pool — "
+            f"put in {fmt_ks(take)} more (their total is now "
+            f"{fmt_ks(total)}; {fmt_ks(pool['raised'])} / "
+            f"{fmt_ks(price)} raised, {len(contributors)} "
+            f"{'person' if len(contributors) == 1 else 'people'}).",
+        )
+        return (
+            True,
+            f"{capped_note}✅ Added {fmt_ks(take)} — your total in "
+            f"this pool is now {fmt_ks(total)} "
+            f"({fmt_ks(pool['raised'])} / {fmt_ks(price)} raised). "
+            "The video comes to your private chat when the pool fills.",
+        )
     send_message(
         pool["seller"],
-        f"🤝 {contributors[-1]['name']} joined your {product} pool — "
-        f"{len(contributors)}/{POOL_NEEDED}.",
+        f"🤝 {name} joined your {product} pool — "
+        f"put in {fmt_ks(take)} ({fmt_ks(pool['raised'])} / "
+        f"{fmt_ks(price)} raised, {len(contributors)} "
+        f"{'person' if len(contributors) == 1 else 'people'}).",
     )
     return (
         True,
-        f"✅ You're in! {len(contributors)}/{POOL_NEEDED} joined — "
-        "the video comes to your private chat when the pool fills.",
+        f"{capped_note}✅ You're in! {fmt_ks(take)} in — "
+        f"your total is {fmt_ks(total)} "
+        f"({fmt_ks(pool['raised'])} / {fmt_ks(price)} raised). "
+        "The video comes to your private chat when the pool fills.",
     )
 
 
 def send_join_prompt(chat_id, pool):
-    """The DM join screen for one pool: price, progress, the
-    member's balance, Join (1,000 Ks from balance) and Top up.
-    Joining comes from the bot balance only."""
+    """The DM join screen for one pool: price, money meter, the
+    member's balance, Join and Top up. Joining asks for the amount
+    first (minimum 1,000 Ks per contribution) — the typed amount is
+    taken from the bot balance only, capped at what's left. A
+    member who already put in money sees their running total, and
+    can add more — contributions are not one-per-person."""
+    price = int(pool.get("price") or POOL_MIN_PRICE_KS)
+    raised = pool_raised(pool)
     joined = len(pool.get("contributors") or [])
     balance = get_balance(chat_id)
     product = PRODUCTS.get(pool.get("product"), pool.get("product", ""))
+    mine = next(
+        (
+            int(c.get("ks") or 0)
+            for c in pool.get("contributors") or []
+            if str(c.get("id")) == str(chat_id)
+        ),
+        0,
+    )
     text = (
         f"🤝 Pool — {pool.get('seller_name', 'Seller')}'s {product}\n\n"
-        f"Price: {fmt_ks(POOL_PRICE_KS)} — "
-        f"{fmt_ks(POOL_PER_PERSON_KS)} per person\n"
-        f"{pool_meter(joined)}\n"
-        f"Your balance: {fmt_ks(balance)}\n\n"
-        "Pay 1,000 Ks from your bot balance to join — top up with "
-        "/topup first if you're short. When all 50 people have "
-        "joined, the video is sent privately to everyone who paid — "
-        "it is NEVER revealed in the group."
+        f"Price: {fmt_ks(price)} — "
+        f"{fmt_ks(POOL_MIN_CONTRIB_KS)} or more per person\n"
+        f"{pool_meter(raised, price)}\n"
+        f"👥 {joined} "
+        f"{'person has' if joined == 1 else 'people have'} joined\n"
+        f"Your balance: {fmt_ks(balance)}\n"
+    )
+    if mine:
+        text += (
+            f"\nYou've put in {fmt_ks(mine)} so far — add more?\n"
+        )
+    text += (
+        "\nHow much do you want to put in? Minimum "
+        f"{fmt_ks(POOL_MIN_CONTRIB_KS)} — tap Join and send the "
+        "amount in Ks. If less is left than you offer, only what's "
+        "needed is taken. When the total raised hits "
+        f"{fmt_ks(price)}, the video is sent privately to everyone "
+        "who paid — it is NEVER revealed in the group."
     )
     kb = {
         "inline_keyboard": [
             [
                 {
-                    "text": f"🤝 Join — {fmt_ks(POOL_PER_PERSON_KS)}",
-                    "callback_data": f"pooljoin:{pool['id']}",
+                    "text": "🤝 Join",
+                    "callback_data": f"pooljoinask:{pool['id']}",
                 }
             ],
             [{"text": "💰 Top up balance", "callback_data": "topup"}],
@@ -2003,8 +2359,8 @@ def send_pool_preview(chat_id, user_id, draft):
 def start_pool(chat_id, user_id, state, user=None):
     """Entry for /pool. Same gates as /sell (live profile, complete
     profile, group linked), then the seller picks a product and the
-    pool flow starts. The price is FIXED at 50,000 Ks — the seller
-    never types one."""
+    pool flow starts. The price is typed by the seller
+    (50,000–500,000 Ks)."""
     profile = _seller_ready(chat_id, user_id, state)
     if profile is None:
         return
@@ -2040,7 +2396,8 @@ def start_pool(chat_id, user_id, state, user=None):
 
 
 def handle_pool_step(chat_id, user_id, text, state, user=None):
-    """Text nudges during the /pool flow. Media is handled by
+    """Text steps during the /pool flow. The price is typed after the
+    product is picked (50,000–500,000 Ks); media is handled by
     handle_flow_media; this just answers stray text. Returns True if
     the message was consumed."""
     draft = (state.get("pool_draft") or {}).get(str(user_id))
@@ -2050,6 +2407,31 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
     if step == "product":
         send_message(
             chat_id, "Tap a product above to pick it — or /cancel to stop."
+        )
+        return True
+    if step == "price":
+        price = parse_pool_price(text)
+        if price is None:
+            send_message(
+                chat_id,
+                "Set the pool price as a whole number in Ks, between "
+                f"{fmt_ks(POOL_MIN_PRICE_KS)} and "
+                f"{fmt_ks(POOL_MAX_PRICE_KS)} — or /cancel to stop.",
+            )
+            return True
+        draft["price"] = price
+        draft["step"] = "video"
+        save_state(state)
+        send_message(
+            chat_id,
+            f"🤝 Pool for {PRODUCTS.get(draft.get('product'), draft.get('product', ''))} — "
+            f"price {fmt_ks(price)} — send the video now (1 to 5 "
+            "minutes).\n\n"
+            "When the total raised hits "
+            f"{fmt_ks(price)}, the video goes privately to everyone "
+            "who paid — it is NEVER revealed in the group. The cover "
+            "photo is the video's own thumbnail, unblurred.\n\n"
+            "Or /cancel.",
         )
         return True
     if step == "video":
@@ -2321,19 +2703,21 @@ def cashout_usdt_for_ks(ks):
     return int(ks) // KS_PER_USDT_CASHOUT
 
 
-def record_cashout(user_id, username, ks, usdt, address, status):
-    record_event(
-        {
-            "kind": "cashout",
-            "user": str(user_id),
-            "username": username or "",
-            "ks": ks,
-            "usdt": usdt,
-            "address": address or "",
-            "status": status,
-            "ts": int(time.time()),
-        }
-    )
+def record_cashout(user_id, username, ks, usdt, address, status,
+                   method=None):
+    event = {
+        "kind": "cashout",
+        "user": str(user_id),
+        "username": username or "",
+        "ks": ks,
+        "usdt": usdt,
+        "address": address or "",
+        "status": status,
+        "ts": int(time.time()),
+    }
+    if method:
+        event["method"] = method
+    record_event(event)
 
 
 def record_sell_usdt(user_id, username, usdt, mmk, tx_hash, status):
@@ -2352,12 +2736,53 @@ def record_sell_usdt(user_id, username, usdt, mmk, tx_hash, status):
 
 
 def start_cashout(chat_id, user_id, state):
+    """Pick a cash-out method first — USDT or Myanmar payment."""
     balance = get_balance(user_id)
     if balance < CASHOUT_MIN_KS:
         send_message(
             chat_id,
-            f"💸 Cash out your balance as USDT — 1 USDT = "
+            f"💸 Cash out your balance — 1 USDT = "
             f"{CASHOUT_MIN_KS:,} Ks.\n\n"
+            f"Your balance is {fmt_ks(balance)} — you need at least "
+            f"{fmt_ks(CASHOUT_MIN_KS)} (1 USDT) to cash out.\n\n"
+            "Top up with /topup, or earn balance by selling in the market.",
+        )
+        return
+    send_message(
+        chat_id,
+        f"💸 Cash out — your balance is {fmt_ks(balance)}.\n\n"
+        "How do you want to be paid?\n"
+        f"💵 USDT — 1 USDT = {CASHOUT_MIN_KS:,} Ks, minimum "
+        f"{fmt_ks(CASHOUT_MIN_KS)} (whole USDT only).\n"
+        "🇲🇲 KBZPay / WavePay / AYAPay — paid in Ks to your own "
+        f"account, 1:1, minimum {fmt_ks(CASHOUT_MM_MIN_KS)}.\n\n"
+        "Pick one below, or /cancel.",
+        reply_markup={
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "💵 USDT",
+                        "callback_data": "cashout_usdt",
+                    }
+                ],
+                [
+                    {
+                        "text": "🇲🇲 KBZPay / WavePay / AYAPay",
+                        "callback_data": "cashout_mm",
+                    }
+                ],
+            ]
+        },
+    )
+
+
+def start_cashout_usdt(chat_id, user_id, state):
+    """USDT leg of /cashout — unchanged from v3: whole USDT only at
+    1 USDT = 4,500 Ks, leftovers stay in the balance."""
+    balance = get_balance(user_id)
+    if balance < CASHOUT_MIN_KS:
+        send_message(
+            chat_id,
             f"Your balance is {fmt_ks(balance)} — you need at least "
             f"{fmt_ks(CASHOUT_MIN_KS)} (1 USDT) to cash out.\n\n"
             "Top up with /topup, or earn balance by selling in the market.",
@@ -2376,6 +2801,197 @@ def start_cashout(chat_id, user_id, state):
         "your balance.\n\n"
         "Or /cancel.",
     )
+
+
+def start_cashout_mm(chat_id, user_id, state):
+    """Myanmar leg of /cashout — the admin sends the Ks to the
+    member's own KBZPay / WavePay / AYAPay account, 1:1, minimum
+    5,000 Ks. Saved profile accounts are offered as buttons; a
+    member with none types the service and number instead."""
+    balance = get_balance(user_id)
+    if balance < CASHOUT_MM_MIN_KS:
+        send_message(
+            chat_id,
+            f"🇲🇲 Cash out by KBZPay / WavePay / AYAPay needs at "
+            f"least {fmt_ks(CASHOUT_MM_MIN_KS)} — your balance is "
+            f"{fmt_ks(balance)}.\n\n"
+            f"USDT cash-out needs only {fmt_ks(CASHOUT_MIN_KS)} — tap "
+            "/cashout and pick USDT, or top up with /topup.",
+        )
+        return
+    profile = get_profile(user_id)
+    pay = (profile or {}).get("pay", {}) or {}
+    saved = []
+    for key, label in (
+        ("kbz", "KBZPay"),
+        ("wave", "WavePay"),
+        ("aya", "AYAPay"),
+    ):
+        number = pay.get(key)
+        if number:
+            saved.append((key, label, number))
+    state.setdefault("cashout_mm_draft", {})[str(user_id)] = {
+        "step": "account",
+    }
+    save_state(state)
+    if saved:
+        rows = [
+            [
+                {
+                    "text": f"{label} {mask_mm_number(number)}",
+                    "callback_data": f"coacc:{key}",
+                }
+            ]
+            for key, label, number in saved
+        ]
+        rows.append(
+            [
+                {
+                    "text": "⌨️ Type a different number",
+                    "callback_data": "coacc:other",
+                }
+            ]
+        )
+        send_message(
+            chat_id,
+            "🇲🇲 Cash out to your KBZPay / WavePay / AYAPay account — "
+            f"1:1 in Ks, minimum {fmt_ks(CASHOUT_MM_MIN_KS)}.\n\n"
+            "Which account should the admin pay to?",
+            reply_markup={"inline_keyboard": rows},
+        )
+    else:
+        send_message(
+            chat_id,
+            "🇲🇲 Cash out to your KBZPay / WavePay / AYAPay account — "
+            f"1:1 in Ks, minimum {fmt_ks(CASHOUT_MM_MIN_KS)}.\n\n"
+            "You have no Myanmar account on your profile. Type the "
+            "service and number, e.g. \"KBZPay 09403720481\".\n\n"
+            "Or /cancel.",
+        )
+
+
+def ask_cashout_mm_amount(chat_id, user_id, draft):
+    """Prompt for the Myanmar cash-out amount once the account is
+    known (saved button or typed)."""
+    balance = get_balance(user_id)
+    send_message(
+        chat_id,
+        f"Cashing out to your {draft['service']} "
+        f"<code>{html.escape(draft['account'])}</code> — 1:1 in Ks, "
+        "no conversion.\n\n"
+        f"How many Ks? Your balance is {fmt_ks(balance)} "
+        f"(minimum {fmt_ks(CASHOUT_MM_MIN_KS)}).\n\n"
+        "Or /cancel.",
+        parse_mode="HTML",
+    )
+
+
+def handle_cashout_mm_step(chat_id, user_id, text, state, user=None):
+    """One step of the guided Myanmar cash-out flow. Returns True if
+    the message was consumed by the flow."""
+    draft = (state.get("cashout_mm_draft") or {}).get(str(user_id))
+    if not draft:
+        return False
+    step = draft.get("step")
+
+    if step == "account":
+        parsed = parse_mm_account(text)
+        if not parsed:
+            send_message(
+                chat_id,
+                "Send the service and number, e.g. \"KBZPay "
+                "09403720481\" or \"WavePay 09780695959\", or /cancel.",
+            )
+            return True
+        service, account = parsed
+        draft.update(
+            {"step": "amount", "service": service, "account": account}
+        )
+        save_state(state)
+        ask_cashout_mm_amount(chat_id, user_id, draft)
+        return True
+
+    if step == "amount":
+        cleaned = (text or "").replace(",", "").replace(" ", "").strip()
+        if not cleaned.isdigit():
+            send_message(
+                chat_id,
+                "Send the amount in Ks as a number (e.g. 10000), "
+                "or /cancel.",
+            )
+            return True
+        amount = int(cleaned)
+        balance = get_balance(user_id)
+        if amount < CASHOUT_MM_MIN_KS:
+            send_message(
+                chat_id,
+                f"Minimum Myanmar cash-out is "
+                f"{fmt_ks(CASHOUT_MM_MIN_KS)} — send a bigger amount, "
+                "or /cancel.",
+            )
+            return True
+        if amount > balance:
+            send_message(
+                chat_id,
+                f"That's more than your balance ({fmt_ks(balance)}) — "
+                "send a smaller amount, or /cancel.",
+            )
+            return True
+        service = draft["service"]
+        account = draft["account"]
+        state["cashout_seq"] = state.get("cashout_seq", 0) + 1
+        cid = f"co{state['cashout_seq']}"
+        state.setdefault("cashouts", {})[cid] = {
+            "id": cid,
+            "user": str(user_id),
+            "username": (user or {}).get("username", ""),
+            "method": "mm",
+            "service": service,
+            "account": account,
+            "ks": amount,
+            "usdt": 0,
+            "address": "",
+            "status": "pending",
+            "ts": int(time.time()),
+        }
+        state.get("cashout_mm_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(
+            chat_id,
+            f"✅ Cash-out request sent — {fmt_ks(amount)} to your "
+            f"{service} <code>{html.escape(account)}</code>.\n"
+            "An admin will send the Ks and confirm it here. I'll tell "
+            "you when it's paid.",
+            parse_mode="HTML",
+        )
+        for admin_id in sorted(ADMIN_IDS):
+            send_message(
+                admin_id,
+                f"💸 Myanmar cash-out request {cid} from "
+                f"{user_tag(user)}:\n\n"
+                f"• {fmt_ks(amount)} → {service} "
+                f"<code>{html.escape(account)}</code>\n"
+                f"• Balance now: {fmt_ks(get_balance(user_id))}\n\n"
+                "Approve ONLY after you have sent the Ks to that "
+                "account — approving debits the member's balance.",
+                parse_mode="HTML",
+                reply_markup={
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "✅ Paid — Ks sent",
+                                "callback_data": f"cmmok:{cid}",
+                            },
+                            {
+                                "text": "❌ Decline",
+                                "callback_data": f"cmmno:{cid}",
+                            },
+                        ]
+                    ]
+                },
+            )
+        return True
+    return False
 
 
 def handle_cashout_step(chat_id, user_id, text, state, user=None):
@@ -4075,6 +4691,15 @@ def handle_start(chat_id, text, state, user=None):
         send_bid_prompt(chat_id, auction)
         return
 
+    if arg.startswith("poolinfo_"):
+        pid = arg[len("poolinfo_"):]
+        pool = (state.get("pools") or {}).get(pid)
+        if not pool:
+            send_message(chat_id, "That pool is gone.")
+            return
+        send_pool_info(chat_id, pool)
+        return
+
     if arg.startswith("pool_"):
         pid = arg[len("pool_"):]
         pool = (state.get("pools") or {}).get(pid)
@@ -4135,14 +4760,17 @@ def handle_start(chat_id, text, state, user=None):
         "full version is revealed in the group when someone buys it. "
         "🔨 Or run an auction with /auction — starting bid 5,000 Ks, "
         "15 minutes, highest bidder wins the video privately. "
-        "🤝 Or run a pool with /pool — a 50,000 Ks video split "
-        "between 50 people at 1,000 Ks each; everyone who paid gets "
-        "the video privately when it fills. "
+        "🤝 Or run a pool with /pool — a video at a price you set "
+        "(50,000–500,000 Ks); everyone puts in 1,000 Ks or more, and "
+        "when the total raised hits your price the video goes "
+        "privately to everyone who paid. "
         "Browse with /sellers, check your balance with /balance. "
         "Top up with /topup — Stars, USDT, or KBZPay / WavePay / "
         "AYAPay (from 5,000 Ks).\n\n"
-        "💸 Cash out your balance as USDT with /cashout, or sell your "
-        "USDT to Arkar with /sellusdt — both at 1 USDT = 4,500 Ks.",
+        "💸 Cash out your balance with /cashout — as USDT "
+        "(1 USDT = 4,500 Ks) or straight to your KBZPay / WavePay / "
+        "AYAPay in Ks (1:1, minimum 5,000 Ks). Or sell your "
+        "USDT to Arkar with /sellusdt at 1 USDT = 4,500 Ks.",
         reply_markup=pack_keyboard(url_buttons=False),
     )
 
@@ -4171,13 +4799,21 @@ def handle_help(chat_id):
         "thumbnail, unblurred. "
         "Unsold auction posts are deleted after 24 hours. "
         "Or run a group-buy pool with /pool: an expensive video at "
-        "a fixed 50,000 Ks — 50 people pay 1,000 Ks each from their "
-        "bot balance, and when all 50 have joined the video goes "
-        "privately to everyone who paid — it is NEVER revealed in "
-        "the group. Pool videos must be 1 to 5 minutes, and the card "
-        "shows the length in minutes. The cover is the video's own "
-        "thumbnail, unblurred. No deadline — a pool stays open until "
-        "it fills, or the seller removes it (everyone is refunded). "
+        "a price you set, 50,000–500,000 Ks — each person puts in "
+        "1,000 Ks or more from their bot balance, as often as they "
+        "like (every top-up adds to their running total, and the "
+        "card shows each member's total under the meter). When the "
+        "total raised hits your price the "
+        "video goes privately to everyone who paid — it is NEVER "
+        "revealed in the group. The last contribution is capped at "
+        "exactly what's left, so the pool always totals exactly "
+        "your price. The card shows a live money meter (Ks raised / "
+        "your price) and how many people have joined. /poolinfo "
+        "<pool id> shows the full contributor list. Pool videos "
+        "must be 1 to 5 minutes, and the card shows the length in "
+        "minutes. The cover is the video's own thumbnail, unblurred. "
+        "No deadline — a pool stays open until it fills, or the "
+        "seller removes it (everyone is refunded what they put in). "
         "Sellers earn a title from their sales — New Seller, Seller, "
         "Rising Star, Top Seller, Star Seller, Legend — shown with "
         "their sales count on their profile and every post. "
@@ -4189,6 +4825,8 @@ def handle_help(chat_id):
         "Admin:\n"
         "/newsession <topic> | <date/time> — post a session card\n"
         "/post <text> — announcement with pack buttons\n"
+        "/announce — post an announcement to the group (tap to "
+        "choose: main intro, fundraiser pool, or both)\n"
         "/board — post the live sellers board\n"
         "/setgroup <@group> — set the teaching group\n"
         "/sessions — list sessions\n"
@@ -4201,11 +4839,14 @@ def handle_help(chat_id):
         "/myprofile — your profile + its status\n"
         "/sell — post a product card to the group\n"
         "/auction — post a video auction (start 5,000 Ks, 15 minutes)\n"
-        "/pool — post a group-buy pool (50,000 Ks, 1,000 Ks per person)\n"
+        "/pool — post a group-buy pool (price 50,000–500,000 Ks, "
+        "1,000 Ks or more per person)\n"
+        "/poolinfo <pool id> — full contributor list for a pool\n"
         "/sellers — live sellers\n"
         "/balance — your bot balance\n"
         "/topup — top up by Stars, USDT or KBZPay/WavePay/AYAPay (min 5,000 Ks)\n"
-        "/cashout — cash out your balance as USDT (1 USDT = 4,500 Ks)\n"
+        "/cashout — cash out your balance: USDT (1 USDT = 4,500 Ks) "
+        "or KBZPay / WavePay / AYAPay in Ks, 1:1 (min 5,000 Ks)\n"
         "/sellusdt — sell your USDT to Arkar (1 USDT = 4,500 Ks)\n"
         f"{FOOTER}",
     )
@@ -4280,10 +4921,12 @@ def handle_message(msg, state):
     if text == "/cancel":
         state.get("profile_draft", {}).pop(str(user_id), None)
         state.get("cashout_draft", {}).pop(str(user_id), None)
+        state.get("cashout_mm_draft", {}).pop(str(user_id), None)
         state.get("sell_draft", {}).pop(str(user_id), None)
         state.get("card_draft", {}).pop(str(user_id), None)
         state.get("auction_draft", {}).pop(str(user_id), None)
         state.get("pool_draft", {}).pop(str(user_id), None)
+        state.get("pool_join_draft", {}).pop(str(user_id), None)
         state.get("bid_draft", {}).pop(str(user_id), None)
         state.get("topup_mm_draft", {}).pop(str(user_id), None)
         pending = (state.get("pending_usdt") or {}).get(str(user_id))
@@ -4344,6 +4987,23 @@ def handle_message(msg, state):
         start_pool(chat_id, user_id, state, user=msg.get("from", {}))
         return
 
+    if text.startswith("/poolinfo"):
+        parts = text.split()
+        if len(parts) < 2:
+            send_message(
+                chat_id,
+                "Usage: /poolinfo <pool id> — e.g. /poolinfo p12. "
+                "The pool id is on the pool card, or tap "
+                "📋 Contributors on the card.",
+            )
+            return
+        pool = (state.get("pools") or {}).get(parts[1].strip())
+        if not pool:
+            send_message(chat_id, "No pool with that id.")
+            return
+        send_pool_info(chat_id, pool)
+        return
+
     if text == "/sellers":
         send_sellers_list(chat_id)
         return
@@ -4397,6 +5057,38 @@ def handle_message(msg, state):
         send_message(chat_id, msg)
         return
 
+    pj_draft = (state.get("pool_join_draft") or {}).get(str(user_id))
+    if pj_draft and not text.startswith("/"):
+        amount = parse_bid_amount(text)
+        if amount is None:
+            send_message(
+                chat_id,
+                "Send the amount as a whole number in Ks, or /cancel.",
+            )
+            return
+        if amount < POOL_MIN_CONTRIB_KS:
+            # Below the minimum: plain message, draft stays open so
+            # the member can type a valid amount.
+            send_message(
+                chat_id,
+                f"Minimum is {fmt_ks(POOL_MIN_CONTRIB_KS)} — send an "
+                "amount of 1,000 Ks or more, or /cancel.",
+            )
+            return
+        pool = (state.get("pools") or {}).get(pj_draft.get("pool"))
+        if not pool:
+            state.get("pool_join_draft", {}).pop(str(user_id), None)
+            save_state(state)
+            send_message(chat_id, "That pool is gone.")
+            return
+        ok, msg = join_pool(
+            state, pool, user_id, amount, user=msg.get("from", {})
+        )
+        state.get("pool_join_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(chat_id, msg)
+        return
+
     mm_draft = (state.get("topup_mm_draft") or {}).get(str(user_id))
     if mm_draft and not text.startswith("/"):
         handle_topup_mm_step(chat_id, user_id, text, state, user=msg.get("from", {}))
@@ -4405,6 +5097,11 @@ def handle_message(msg, state):
     co_draft = (state.get("cashout_draft") or {}).get(str(user_id))
     if co_draft and (not text.startswith("/") or text == "/keep"):
         handle_cashout_step(chat_id, user_id, text, state, user=msg.get("from", {}))
+        return
+
+    cmm_draft = (state.get("cashout_mm_draft") or {}).get(str(user_id))
+    if cmm_draft and not text.startswith("/"):
+        handle_cashout_mm_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
 
     su_draft = (state.get("sell_draft") or {}).get(str(user_id))
@@ -4532,6 +5229,38 @@ def handle_message(msg, state):
             )
             return
         send_message(chat_id, "Posted to the group.")
+        return
+
+    if text == "/announce":
+        # Admin-only announcement list: tap one option and the
+        # matching announcement goes to the group. The list itself
+        # stays in this DM — only the chosen announcement(s) post.
+        send_message(
+            chat_id,
+            "📢 Announcements — tap to post to the group:",
+            reply_markup={
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "📢 Main intro",
+                            "callback_data": "announce:main",
+                        }
+                    ],
+                    [
+                        {
+                            "text": "🤝 Fundraiser pool",
+                            "callback_data": "announce:pool",
+                        }
+                    ],
+                    [
+                        {
+                            "text": "📢🤝 Both",
+                            "callback_data": "announce:both",
+                        }
+                    ],
+                ]
+            },
+        )
         return
 
     if text.startswith("/setgroup"):
@@ -4693,11 +5422,18 @@ def handle_message(msg, state):
                 name = (
                     f"@{p['username']}" if p.get("username") else p["user"]
                 )
-                lines.append(
-                    f"{fmt_time(p['ts'])} — {name} — cash-out "
-                    f"{fmt_ks(p.get('ks', 0))} → {p.get('usdt')} USDT — "
-                    f"{p['status']}"
-                )
+                if p.get("method", "").startswith("Myanmar"):
+                    lines.append(
+                        f"{fmt_time(p['ts'])} — {name} — cash-out "
+                        f"{fmt_ks(p.get('ks', 0))} → "
+                        f"{p.get('address', '')} — {p['status']}"
+                    )
+                else:
+                    lines.append(
+                        f"{fmt_time(p['ts'])} — {name} — cash-out "
+                        f"{fmt_ks(p.get('ks', 0))} → {p.get('usdt')} USDT — "
+                        f"{p['status']}"
+                    )
             elif kind == "sellusdt":
                 name = (
                     f"@{p['username']}" if p.get("username") else p["user"]
@@ -4925,6 +5661,14 @@ def handle_callback(query, state):
         if not req:
             answer_callback(qid, "Unknown cash-out request.", show_alert=True)
             return
+        if req.get("method") == "mm":
+            # A Myanmar request is decided with its own buttons
+            # (cmmok:/cmmno:) — the USDT buttons never apply to it.
+            answer_callback(
+                qid, "Use the Myanmar buttons for this one.",
+                show_alert=True,
+            )
+            return
         if req.get("status") != "pending":
             answer_callback(qid, "Already handled.", show_alert=True)
             return
@@ -4973,6 +5717,119 @@ def handle_callback(query, state):
                 "❌ Your cash-out request was declined — your balance "
                 "is untouched. If you think this is a mistake, message "
                 "@SirArkar.",
+            )
+            answer_callback(qid, "Declined — balance untouched.")
+        return
+
+    # ---- cash-out method choice + Myanmar account choice ----
+    if data == "cashout_usdt":
+        start_cashout_usdt(user_id, user_id, state)
+        answer_callback(qid, "USDT cash-out — send the amount.")
+        return
+
+    if data == "cashout_mm":
+        start_cashout_mm(user_id, user_id, state)
+        answer_callback(qid, "Myanmar cash-out — pick an account.")
+        return
+
+    if data.startswith("coacc:"):
+        key = data.split(":", 1)[1]
+        draft = (state.get("cashout_mm_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "account":
+            answer_callback(
+                qid, "Start again with /cashout.", show_alert=True,
+            )
+            return
+        if key == "other":
+            send_message(
+                user_id,
+                "Type the service and number, e.g. \"KBZPay "
+                "09403720481\" or \"WavePay 09780695959\", or /cancel.",
+            )
+            answer_callback(qid, "Type the account.")
+            return
+        profile = get_profile(user_id)
+        number = ((profile or {}).get("pay", {}) or {}).get(key)
+        label = {"kbz": "KBZPay", "wave": "WavePay", "aya": "AYAPay"}.get(key)
+        if not number or not label:
+            send_message(
+                user_id,
+                "That account is no longer on your profile — type the "
+                "service and number, e.g. \"KBZPay 09403720481\".",
+            )
+            answer_callback(qid, "Account not on profile.")
+            return
+        draft.update(
+            {"step": "amount", "service": label, "account": number}
+        )
+        save_state(state)
+        ask_cashout_mm_amount(user_id, user_id, draft)
+        answer_callback(qid, f"{label} selected.")
+        return
+
+    # ---- Myanmar cash-out: admin confirms the Ks is paid ----
+    if data.startswith("cmmok:") or data.startswith("cmmno:"):
+        if not is_admin(user_id):
+            answer_callback(qid, "Admin only.", show_alert=True)
+            return
+        cid = data.split(":", 1)[1]
+        req = (state.get("cashouts") or {}).get(cid)
+        if not req or req.get("method") != "mm":
+            answer_callback(qid, "Unknown cash-out request.", show_alert=True)
+            return
+        if req.get("status") != "pending":
+            answer_callback(qid, "Already handled.", show_alert=True)
+            return
+        member_id = req["user"]
+        amount = int(req["ks"])
+        dest = f"{req['service']} {req['account']}"
+        if data.startswith("cmmok:"):
+            if get_balance(member_id) < amount:
+                req["status"] = "failed"
+                save_state(state)
+                send_message(
+                    member_id,
+                    "Your cash-out request was cancelled — your balance "
+                    "no longer covers it. Please try again with /cashout.",
+                )
+                answer_callback(
+                    qid, "Balance no longer covers it — request cancelled.",
+                    show_alert=True,
+                )
+                return
+            # Mark handled + save BEFORE debiting, so a second
+            # Approve finds it already handled and debits nothing
+            # (same guard as the Myanmar top-up approve).
+            req["status"] = "paid"
+            req["decided_ts"] = int(time.time())
+            save_state(state)
+            change_balance(member_id, -amount)
+            record_cashout(
+                member_id, req.get("username", ""), amount, 0, dest,
+                "paid", method=CASHOUT_MM_METHOD,
+            )
+            send_message(
+                member_id,
+                f"✅ Cash-out sent — {fmt_ks(amount)} to your "
+                f"{req['service']} "
+                f"<code>{html.escape(req['account'])}</code>.\n"
+                f"Your balance is now {fmt_ks(get_balance(member_id))}.",
+                parse_mode="HTML",
+            )
+            answer_callback(qid, "Paid — member notified, balance debited.")
+        else:
+            req["status"] = "declined"
+            req["decided_ts"] = int(time.time())
+            save_state(state)
+            record_cashout(
+                member_id, req.get("username", ""), amount, 0, dest,
+                "declined", method=CASHOUT_MM_METHOD,
+            )
+            send_message(
+                member_id,
+                "❌ Your cash-out request was declined — your balance "
+                "is untouched. If you think this is a mistake, message "
+                "@HenryRealGood.",
             )
             answer_callback(qid, "Declined — balance untouched.")
         return
@@ -5304,9 +6161,10 @@ def handle_callback(query, state):
             "your own prices — buyers tap an option to buy it.\n"
             "🔨 Auction: starting bid 5,000 Ks, 15 minutes, highest "
             "bidder wins the video privately.\n"
-            "🤝 Pool: an expensive video at a fixed 50,000 Ks — 50 "
-            "people pay 1,000 Ks each, and everyone who paid gets "
-            "the video privately when the pool fills.",
+            "🤝 Pool: an expensive video at a price you set "
+            "(50,000–500,000 Ks) — everyone puts in 1,000 Ks or "
+            "more, and everyone who paid gets the video privately "
+            "when the pool fills.",
             reply_markup={
                 "inline_keyboard": [
                     [
@@ -5373,23 +6231,24 @@ def handle_callback(query, state):
             product = draft.get("product")
             state.get("card_draft", {}).pop(str(user_id), None)
             state.setdefault("pool_draft", {})[str(user_id)] = {
-                "step": "video",
+                "step": "price",
                 "seller_name": draft.get("seller_name", "Seller"),
                 "product": product,
             }
             save_state(state)
             send_message(
                 user_id,
-                f"🤝 Pool for {PRODUCTS.get(product, product)} — send "
-                "the video now (1 to 5 minutes).\n\n"
-                "Fixed price 50,000 Ks — 50 people pay 1,000 Ks each. "
-                "When all 50 have joined, the video goes privately to "
-                "everyone who paid — it is NEVER revealed in the group. "
-                "The cover photo is the video's own thumbnail, "
-                "unblurred.\n\n"
+                f"🤝 Pool for {PRODUCTS.get(product, product)} — set the "
+                f"pool price (whole Ks, {fmt_ks(POOL_MIN_PRICE_KS)}–"
+                f"{fmt_ks(POOL_MAX_PRICE_KS)}).\n\n"
+                "Each person puts in 1,000 Ks or more, and when the "
+                "total raised hits your price, the video goes "
+                "privately to everyone who paid — it is NEVER "
+                "revealed in the group. The cover photo is the "
+                "video's own thumbnail, unblurred.\n\n"
                 "Or /cancel.",
             )
-            answer_callback(qid, "Send the video.")
+            answer_callback(qid, "Set the price.")
             return
         answer_callback(qid, "Unknown choice.")
         return
@@ -5588,20 +6447,21 @@ def handle_callback(query, state):
             )
             return
         draft["product"] = key
-        draft["step"] = "video"
+        draft["step"] = "price"
         save_state(state)
         send_message(
             user_id,
-            f"🤝 Pool for {PRODUCTS.get(key, key)} — send the video now "
-            "(1 to 5 minutes).\n\n"
-            "Fixed price 50,000 Ks — 50 people pay 1,000 Ks each. "
-            "When all 50 have joined, the video goes privately to "
+            f"🤝 Pool for {PRODUCTS.get(key, key)} — set the pool price "
+            f"(whole Ks, {fmt_ks(POOL_MIN_PRICE_KS)}–"
+            f"{fmt_ks(POOL_MAX_PRICE_KS)}).\n\n"
+            "Each person puts in 1,000 Ks or more, and when the total "
+            "raised hits your price, the video goes privately to "
             "everyone who paid — it is NEVER revealed in the group. "
             "The cover photo is the video's own thumbnail, "
             "unblurred.\n\n"
             "Or /cancel.",
         )
-        answer_callback(qid, "Send the video.")
+        answer_callback(qid, "Set the price.")
         return
 
     if data == "auctpost":
@@ -5719,9 +6579,9 @@ def handle_callback(query, state):
             "cover_file_id": draft.get("cover_file_id"),
             "duration_s": draft.get("duration_s"),
             "duration_min": draft.get("duration_min"),
-            "price": POOL_PRICE_KS,
-            "per_person": POOL_PER_PERSON_KS,
-            "needed": POOL_NEEDED,
+            "price": int(draft.get("price") or POOL_MIN_PRICE_KS),
+            "per_person": POOL_MIN_CONTRIB_KS,
+            "raised": 0,
             "contributors": [],
             "posted_at": now,
             "message_id": None,
@@ -5745,8 +6605,10 @@ def handle_callback(query, state):
         save_state(state)
         send_message(
             user_id,
-            "✅ Pool posted to the group! 50 people × 1,000 Ks — when "
-            "it fills, the video goes privately to everyone who paid.",
+            f"✅ Pool posted to the group! Price {fmt_ks(pool['price'])} — "
+            "each person puts in 1,000 Ks or more. When the total "
+            "raised hits the price, the video goes privately to "
+            "everyone who paid.",
         )
         answer_callback(qid, "Posted.")
         return
@@ -5808,20 +6670,36 @@ def handle_callback(query, state):
         answer_callback(qid, "Send your bid.")
         return
 
-    if data.startswith("pooljoin:"):
+    if data.startswith("pooljoinask:"):
         pid = data.split(":", 1)[1]
         pool = (state.get("pools") or {}).get(pid)
         if not pool:
             answer_callback(qid, "That pool is gone.", show_alert=True)
             return
-        ok, msg = join_pool(
-            state, pool, user_id, user=query.get("from", {})
+        if pool.get("status") != "live":
+            answer_callback(
+                qid, "That pool is closed.", show_alert=True
+            )
+            return
+        if str(user_id) == str(pool.get("seller")):
+            answer_callback(
+                qid, "You can't join your own pool.", show_alert=True
+            )
+            return
+        # Repeat contributions are allowed (v7.3): a member who
+        # already put in money can top up again — join_pool adds
+        # to their running total.
+        state.setdefault("pool_join_draft", {})[str(user_id)] = {
+            "pool": pid
+        }
+        save_state(state)
+        send_message(
+            user_id,
+            "How much do you want to put in? Minimum "
+            f"{fmt_ks(POOL_MIN_CONTRIB_KS)} — send the amount in Ks, "
+            "or /cancel.",
         )
-        if ok:
-            answer_callback(qid, "Joined the pool.")
-            send_message(user_id, msg)
-        else:
-            answer_callback(qid, msg, show_alert=True)
+        answer_callback(qid, "Send your amount.")
         return
 
     if data.startswith("aucdel:"):
@@ -5881,7 +6759,7 @@ def handle_callback(query, state):
             send_message(
                 pool["seller"],
                 "❌ Your pool was removed by an admin — every "
-                "contributor was refunded 1,000 Ks.",
+                "contributor was refunded what they put in.",
             )
         answer_callback(qid, "Pool removed — everyone refunded.")
         return
@@ -6345,6 +7223,60 @@ def handle_callback(query, state):
             parse_mode="HTML",
         )
         answer_callback(qid, "Myanmar payment details sent.")
+        return
+
+    if data.startswith("announce:"):
+        # Admin-only announcement list (/announce): post the main
+        # intro, the pool announcement, or both, to the group.
+        # This MUST sit before the pack section below: its generic
+        # "key not in PACKS" check would swallow "announce:main"
+        # ("main" is not a pack key).
+        if not is_admin(user_id):
+            answer_callback(qid, "Admin only.", show_alert=True)
+            return
+        choice = data.split(":", 1)[1]
+        if choice not in ("main", "pool", "both"):
+            answer_callback(qid, "Unknown button.")
+            return
+        group = state.get("group") or GROUP_CHAT_ID
+        if not group:
+            answer_callback(qid, "No group linked yet.")
+            send_message(
+                user_id,
+                "No group linked yet — nothing was posted.\n"
+                "Set it with /setgroup <@group>, or forward any "
+                "message from the group to me, then tap again.",
+            )
+            return
+        texts = []
+        if choice in ("main", "both"):
+            texts.append(("Main intro", MAIN_ANNOUNCEMENT))
+        if choice in ("pool", "both"):
+            texts.append(("Fundraiser pool", POOL_ANNOUNCEMENT))
+        posted = []
+        for name, text in texts:
+            mid, err = post_to_group(state, text)
+            if err:
+                answer_callback(
+                    qid, f"Posting failed — {err}", show_alert=True
+                )
+                send_message(
+                    user_id,
+                    "Posting failed — is the bot an admin in the "
+                    f"group? Telegram said: {err}"
+                    + (
+                        f"\nAlready posted: {', '.join(posted)}."
+                        if posted
+                        else ""
+                    ),
+                )
+                return
+            posted.append(name)
+        answer_callback(qid, "Posted to the group.")
+        send_message(
+            user_id,
+            "✅ Posted to the group: " + " + ".join(posted) + ".",
+        )
         return
 
     parts = data.split(":")

@@ -39,7 +39,8 @@ Students:
 - `/myprofile` — your profile + its status
 - `/sell` — post a product card to the group (live profile only)
 - `/auction` — post a video auction to the group (live profile only)
-- `/pool` — post a group-buy pool to the group (50,000 Ks, 1,000 Ks per person, live profile only)
+- `/pool` — post a group-buy pool to the group (seller-set price 50,000–500,000 Ks, 1,000 Ks or more per person, live profile only)
+- `/poolinfo <pool id>` — full contributor list for a pool
 - `/sellers` — live sellers + their products
 - `/balance` — your bot balance
 - `/topup` — top up by Stars ($1/$2/$5/$10/$20), USDT, or KBZPay / WavePay / AYAPay (min 5,000 Ks)
@@ -51,6 +52,7 @@ Admin (HenryRealGood 7061620871, SirArkar 8028025915):
 - `/newsession <topic> | <date/time>` — create + post a session card
 - `/newsession` — interactive prompt for topic + date/time
 - `/post <text>` — announcement with pack buttons
+- `/announce` — post an announcement to the group (tap to choose: main intro, fundraiser pool, or both)
 - `/board` — post the live sellers board to the group
 - `/setgroup <@group>` — where sessions go (or forward a group post
   / paste a copied `t.me/c/...` post link)
@@ -298,32 +300,116 @@ go stale:
 **Pool** — `/pool` (or pick "🤝 Pool" after choosing a product in
 `/sell`) posts a group-buy pool instead of a fixed-price card.
 Same gates as `/sell`: a live profile and a linked group.
-- **Flow** — `/pool` → pick a product → send the video → the
-  cover photo is the video's own thumbnail, **unblurred** (if the
-  video has no thumbnail, the seller sends a cover photo) → confirm
-  the preview → the bot posts the pool card to the group.
-- **Rules** — the price is FIXED at **50,000 Ks** (the seller never
-  types a price) — always exactly **50 contributors** at **1,000 Ks**
-  each (50 × 1,000 = 50,000). Joining comes from the member's **bot
-  balance only** — top up with `/topup` first if short. One share
-  per person; the seller cannot join their own pool. Pool videos
-  must be **1 to 5 minutes** long (same rule as auctions); the card
-  shows the length as "⏱️ N min".
-- **Completion** — at the 50th join the seller gets the full
-  **50,000 Ks** in their balance, the video is sent **privately to
-  every contributor's DM** (`protect_content`), and the pool card is
-  deleted at once. The video is NEVER revealed in the group.
-- **Live meter** — the card shows a 10-segment progress bar
-  (`pool_meter`), refreshed on every join: e.g.
-  `▓▓▓▓▓▓░░░░ 32/50 • 32,000 Ks raised • 18,000 Ks to go`. The same
-  rendering is used on the group card, the seller preview and the
-  join prompt.
+- **Flow** — `/pool` → pick a product → type the pool price
+  (whole Ks, **50,000–500,000**) → send the video → the cover photo
+  is the video's own thumbnail, **unblurred** (if the video has no
+  thumbnail, the seller sends a cover photo) → confirm the preview
+  → the bot posts the pool card to the group.
+- **Rules** — the price is **seller-set, 50,000–500,000 Ks**.
+  Each member puts in **1,000 Ks or more per contribution, as
+  often as they like** — every top-up adds to their running total
+  (one entry per member). The pool fills when the total raised
+  hits the set price, however many people that takes. Joining
+  comes from the member's **bot balance only** — top up with
+  `/topup` first if short. The seller cannot join their own pool.
+  Pool videos must be **1 to 5 minutes** long (same rule as
+  auctions); the card shows the length as "⏱️ N min".
+- **Contributor list** — the pool card shows a list under the
+  meter ("the meter list"): one line per member with their
+  running total, **highest first** (e.g. "@alice — 10,000 Ks").
+  The card caption is limited to 1,024 characters, so it shows
+  the **top 10** plus an "…and N more people (see /poolinfo
+  \<id\>)" line when the list is cut. The **full list** is in
+  `/poolinfo <pool id>` (or the 📋 Contributors button on the
+  card), which lists every contributor with their total.
+  On completion the video goes privately to each contributor
+  **once**; on cancel/remove each member is refunded their
+  **total**.
+- **Capping** — the final contribution is capped at exactly what's
+  left, so the pool always totals exactly the set price and the
+  seller always gets exactly the set price. If less is left than
+  the member offered, only what's needed is taken and the member
+  is told so plainly.
+- **Completion** — when the total raised hits the set price the
+  seller gets the full price in their balance, the video is sent
+  **privately to every contributor's DM** (`protect_content`), and
+  the pool card is deleted at once. The video is NEVER revealed in
+  the group.
+- **Live meter** — the card shows a 10-segment money progress bar
+  (`pool_meter`), refreshed on every join: e.g. on a 100,000 Ks
+  pool with 32,000 raised,
+  `▓▓▓░░░░░░░ 32,000 / 100,000 Ks • 68,000 Ks to go`, plus the
+  contributor count on its own line. The same rendering is used on
+  the group card, the seller preview and the join prompt.
 - **No deadline** — a pool stays open until it fills. If the seller
   or an admin removes it (card Remove button, or admin Remove-seller
-  flow), every contributor is refunded 1,000 Ks at once.
+  flow), every contributor is refunded the exact amount they put
+  in, at once.
 - **Sales + titles** — a completed pool is recorded in
   `purchases.json` (kind `pool`, with the contributor count) and
   shown in `/sales`; it counts as ONE sale for the seller's title.
+
+## v7.1 — cash out by Myanmar payment
+
+**Cash-out** — `/cashout` now offers two methods:
+- **💵 USDT** (unchanged from v3) — 1 USDT = 4,500 Ks, minimum
+  4,500 Ks, whole USDT only; leftovers stay in the balance.
+- **🇲🇲 KBZPay / WavePay / AYAPay** — the admin sends the Ks to
+  the member's own account, **1:1, no conversion, no fee**,
+  minimum **5,000 Ks** (same as the Myanmar top-up minimum).
+- **Flow** — pick Myanmar → choose one of the saved accounts from
+  the member's profile (buttons, e.g. "KBZPay 0940…") or "⌨️ Type
+  a different number" → type the amount (whole Ks, min 5,000, at
+  most the balance) → both admins get the request ("💸 Myanmar
+  cash-out request coN — N Ks → KBZPay 0940…") with "✅ Paid — Ks
+  sent" / "❌ Decline" buttons. A member with no saved Myanmar
+  account types the service and number instead (e.g. "WavePay
+  09780695959").
+- **Approve means the admin has ALREADY sent the Ks** (mirrors the
+  USDT wording). Approving marks the request handled + saves
+  BEFORE debiting, so a second Approve answers "Already handled."
+  and debits nothing — the same guard as the Myanmar top-up
+  approve. Declining debits nothing and tells the member to check
+  their account details or message @HenryRealGood.
+- **Records** — Myanmar cash-outs are recorded in
+  `purchases.json` (kind `cashout`, status `paid` / `declined`,
+  method "Myanmar (KBZPay/WavePay/AYAPay)", address "KBZPay
+  0940…") and shown in `/sales` as "cash-out N Ks → KBZPay
+  0940…". The draft lives in `cashout_mm_draft` (separate from
+  the USDT `cashout_draft`); requests live in `cashouts` with
+  `method: "mm"` and are decided only by the `cmmok:` / `cmmno:`
+  buttons — the USDT `cook:` / `cono:` buttons refuse them.
+
+## v7.3 — admin announcement list + repeat pool contributions
+
+**Announcements** — `/announce` (admin DM only) shows a short
+list message with three tappable buttons:
+- **📢 Main intro** — posts the main DaddyTeacher intro
+  announcement to the group.
+- **🤝 Fundraiser pool** — posts the pool announcement to the
+  group.
+- **📢🤝 Both** — posts the main intro first, then the pool
+  announcement.
+- The list message itself is never posted — only the chosen
+  announcement(s) go to the group. If no group is linked,
+  tapping any option posts nothing and tells the admin to set it
+  with `/setgroup` first. After posting, the admin gets a DM
+  confirmation ("✅ Posted to the group: Main intro + Fundraiser
+  pool").
+- The texts live as `MAIN_ANNOUNCEMENT` and `POOL_ANNOUNCEMENT`
+  constants in `bot.py` — Arkar's drafts, still awaiting his
+  Burmese corrections; edit the constants to change the wording,
+  the posting logic stays the same.
+
+**Repeat pool contributions** — members can now put money into
+the same pool **more than once**. Every top-up is at least
+1,000 Ks and adds to their running total (one contributor entry
+per member, `ks` = total across all their contributions). The
+join prompt shows a returning contributor their total
+("You've put in 6,000 Ks so far — add more?"). The capping rule
+still applies to every top-up. On completion the video goes
+privately to each contributor **once**; on cancel/remove each
+member is refunded their **total**.
 
 ## Setup (Railway)
 
