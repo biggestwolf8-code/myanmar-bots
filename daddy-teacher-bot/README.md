@@ -234,7 +234,7 @@ card. Same gates as `/sell`: a live profile and a linked group.
   video has no thumbnail, the seller sends a cover photo) → confirm
   the preview → the bot posts the auction card to the group.
 - **Rules** — starting bid is fixed at **5,000 Ks**. The auction
-  runs **15 minutes only**. Auction videos must be **1 to 5 minutes**
+  runs **15 minutes only**. Auction videos must be **1 to 30 minutes**
   long (the bot refuses shorter/longer ones and asks for another
   video); the card shows the length as "⏱️ N min". A new bid must beat the current bid by
   at least **1,000 Ks** (quick bids: +1,000 / +5,000 / +10,000 over
@@ -312,7 +312,7 @@ Same gates as `/sell`: a live profile and a linked group.
   hits the set price, however many people that takes. Joining
   comes from the member's **bot balance only** — top up with
   `/topup` first if short. The seller cannot join their own pool.
-  Pool videos must be **1 to 5 minutes** long (same rule as
+  Pool videos must be **1 to 30 minutes** long (same rule as
   auctions); the card shows the length as "⏱️ N min".
 - **Contributor list** — the pool card shows a list under the
   meter ("the meter list"): one line per member with their
@@ -446,6 +446,27 @@ with the saved photos still in place — new photos swap the oldest
 out once 3 are saved. Appending while fewer than 3 are saved,
 the oldest-out swap at 3, and `/skip` at the photos step are all
 unchanged.
+
+## v7.7 — edit your profile + 30-minute videos
+
+**Edit profile** — sellers can now change one thing without redoing
+the whole flow. `/myprofile` has an "✏️ Edit profile" button, and
+`/profile` on an existing profile opens a menu — "What do you want
+to change?" — with Name, Age, Role, Products & prices, Payment
+details, Photos, and "✅ Done — review profile". Each section jumps
+straight there and returns to the menu when finished; Done goes to
+the usual confirm screen. Prices show the saved price ("currently
+5,000 Ks") and `/skip` keeps it; `/skip` on a product with no price
+yet is refused. The age prompt says `/skip` keeps the saved age
+when editing. Brand-new profiles keep the exact linear flow as
+before, and "✏️ Start over" on the confirm screen still restarts
+from the name step.
+
+**Videos up to 30 minutes** — auction and pool videos may now be
+1 to 30 minutes long (was 1 to 5). The 1-minute minimum stays, the
+15-minute auction bidding window is unchanged, and the card still
+shows the length as "⏱️ N min". Fixed-price `/sell` cards never had
+a duration limit and are untouched.
 
 ## Setup (Railway)
 
