@@ -496,6 +496,36 @@ forever. A re-sent video did not help either.
 Nothing else changed: prices, ranges, the 1–30 minute video rule,
 profiles, and the announcements are untouched.
 
+## v7.9 — video thumbnails are not photos (bug fix)
+
+**The bug** — v7.8 fixed the silent preview, but tapping "✅ Post
+pool" still failed. Telegram said it plainly: "Bad Request: can't
+use file of type Thumbnail as Photo". A video's thumbnail file_id
+cannot be used as a photo in `sendPhoto` — so every pool and
+auction card whose cover was a video thumbnail was rejected at
+posting time. (The no-thumb path, where the seller sends a real
+cover photo, was never affected, and neither were `/sell` cards,
+whose preview photo is a real photo the seller sent.)
+
+**The fix** — one new helper, `send_photo_with_fallback`, used by
+`post_pool_to_group`, `post_auction_to_group`,
+`send_pool_preview` and `send_auction_preview`:
+- try the file_id directly in `sendPhoto` (real photos still post
+  on the first attempt, no download);
+- if Telegram refuses it, download the file with the existing
+  `download_file_bytes` (`getFile` + the file download URL) and
+  re-upload the bytes as `cover.jpg`;
+- if that fails too, send the caption as a plain text message with
+  the same buttons. Only if all three fail does the caller report
+  an error — never silence.
+
+The seller now sees the real cover in the preview too, not just a
+text fallback. `api()` failure logging and the anti-silence net
+from v7.8 are untouched.
+
+Nothing else changed: prices, ranges, the 1–30 minute video rule,
+profiles, and the announcements are untouched.
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
