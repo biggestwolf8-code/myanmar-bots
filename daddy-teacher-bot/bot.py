@@ -3614,10 +3614,100 @@ def send_profile_confirm(chat_id, data, username=""):
                         "text": "❌ Cancel",
                         "callback_data": "profcancel",
                     },
-                ]
+                ],
+                [
+                    {
+                        "text": "✏️ Change payment details",
+                        "callback_data": "profpayedit",
+                    }
+                ],
             ]
         },
     )
+
+
+PAY_METHOD_KEYS = ("kbz", "wave", "aya", "usdt", "bank_acct")
+PAY_STEP_NAMES = (
+    "pay_kbz",
+    "pay_wave",
+    "pay_aya",
+    "pay_usdt",
+    "pay_bank_name",
+    "pay_bank_acct",
+)
+
+
+def profile_has_pay(pay):
+    """True when at least one payment method is on file."""
+    return bool(pay) and any(pay.get(k) for k in PAY_METHOD_KEYS)
+
+
+def send_photos_step_prompt(chat_id, data):
+    """The prompt for the photos step, depending on how many photos the
+    draft already has."""
+    photos = data.get("photos", [])
+    if photos:
+        if len(photos) >= 3:
+            send_message(
+                chat_id,
+                "You already have 3 photos saved — /skip to "
+                "keep them, or send new ones to swap them.",
+            )
+        else:
+            send_message(
+                chat_id,
+                f"You have {len(photos)} photo(s) saved — "
+                f"send {3 - len(photos)} more photo(s) of "
+                "you, one by one. 3 are required to sell.",
+            )
+    else:
+        send_message(
+            chat_id,
+            "Last step: send 3 photos of you, one by one — "
+            "they're required to sell.",
+        )
+
+
+def try_skip_pay_steps(chat_id, draft, data, state):
+    """v7.5 — remember payment details: if the answer is already known,
+    skip the payment questions and jump to the photos step. Returns True
+    when it skipped (the caller must then return True). Admins get their
+    known accounts filled in; other users reuse their saved profile
+    pay. Users with nothing on file are asked as before."""
+    if draft.get("pay_reask"):
+        # The user tapped "Change payment details" — ask for real,
+        # for the whole re-entry pass.
+        return False
+    pay = data.get("pay") or {}
+    if is_admin(chat_id):
+        for field, value in (
+            ("kbz", KBZPAY),
+            ("wave", WAVEPAY),
+            ("aya", AYAPAY),
+            ("usdt", USDT_ADDRESS),
+        ):
+            if value and not pay.get(field):
+                data.setdefault("pay", {})[field] = value
+        pay = data.get("pay") or {}
+        if profile_has_pay(pay):
+            draft["step"] = "photos"
+            save_state(state)
+            send_message(
+                chat_id,
+                "Using your admin payment details — KBZPay, WavePay, "
+                "AYAPay and USDT are already on file, so no need to "
+                "type them.",
+            )
+            send_photos_step_prompt(chat_id, data)
+            return True
+        return False
+    if profile_has_pay(pay):
+        draft["step"] = "photos"
+        save_state(state)
+        send_message(chat_id, "Using your saved payment details.")
+        send_photos_step_prompt(chat_id, data)
+        return True
+    return False
 
 
 def handle_profile_step(chat_id, text, state, user=None):
@@ -3755,6 +3845,10 @@ def handle_profile_step(chat_id, text, state, user=None):
                 f"({PRICE_MIN_KS:,}–{PRICE_MAX_KS:,}):",
             )
         else:
+            # v7.5 — remember payment details: skip the questions when
+            # the answer is already known (admin constants / saved pay).
+            if try_skip_pay_steps(chat_id, draft, data, state):
+                return True
             draft["step"] = "pay_kbz"
             save_state(state)
             send_message(
@@ -3763,6 +3857,14 @@ def handle_profile_step(chat_id, text, state, user=None):
                 "are your own accounts.\n\n"
                 "KBZPay number? Send it, or /skip if you don't use KBZPay.",
             )
+        return True
+
+    # v7.5 — a draft already sitting in the payment questions (e.g. the
+    # user was mid-flow when the update landed) skips them too when the
+    # details are already known.
+    if step in PAY_STEP_NAMES and try_skip_pay_steps(
+        chat_id, draft, data, state
+    ):
         return True
 
     pay_steps = [
@@ -3813,10 +3915,7 @@ def handle_profile_step(chat_id, text, state, user=None):
             send_message(chat_id, next_prompt)
         else:
             pay = data.get("pay", {})
-            if not any(
-                pay.get(k)
-                for k in ("kbz", "wave", "aya", "usdt", "bank_acct")
-            ):
+            if not profile_has_pay(pay):
                 draft["step"] = "pay_kbz"
                 save_state(state)
                 send_message(
@@ -3826,29 +3925,10 @@ def handle_profile_step(chat_id, text, state, user=None):
                     "KBZPay number? Send it, or /skip.",
                 )
             else:
+                draft.pop("pay_reask", None)
                 draft["step"] = "photos"
                 save_state(state)
-                photos = data.get("photos", [])
-                if photos:
-                    if len(photos) >= 3:
-                        send_message(
-                            chat_id,
-                            "You already have 3 photos saved — /skip to "
-                            "keep them, or send new ones to swap them.",
-                        )
-                    else:
-                        send_message(
-                            chat_id,
-                            f"You have {len(photos)} photo(s) saved — "
-                            f"send {3 - len(photos)} more photo(s) of "
-                            "you, one by one. 3 are required to sell.",
-                        )
-                else:
-                    send_message(
-                        chat_id,
-                        "Last step: send 3 photos of you, one by one — "
-                        "they're required to sell.",
-                    )
+                send_photos_step_prompt(chat_id, data)
         return True
 
     if step == "confirm":
@@ -6136,6 +6216,27 @@ def handle_callback(query, state):
         save_state(state)
         send_message(user_id, "Profile setup cancelled — nothing was saved.")
         answer_callback(qid, "Cancelled.")
+        return
+
+    if data == "profpayedit":
+        # v7.5 — change the saved payment details: re-open the payment
+        # questions. The pay_reask flag stops the remember-pay skip for
+        # this whole re-entry pass; /skip on a step keeps the saved
+        # value for that step.
+        draft = (state.get("profile_draft") or {}).get(str(user_id))
+        if not draft:
+            answer_callback(qid, "Start with /profile first.")
+            return
+        draft["step"] = "pay_kbz"
+        draft["pay_reask"] = True
+        save_state(state)
+        send_message(
+            user_id,
+            "Change your payment details — your saved values are kept "
+            "if you /skip a step.\n\n"
+            "KBZPay number? Send it, or /skip if you don't use KBZPay.",
+        )
+        answer_callback(qid, "Change payment details.")
         return
 
     # ---- /sell: member self-service product cards ----

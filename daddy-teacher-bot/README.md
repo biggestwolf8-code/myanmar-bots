@@ -421,6 +421,19 @@ Matches `/start`, `/start@DaddyTeacherBot`, and `/start` with
 arguments; a `/start` addressed to a different bot is still
 ignored. All flows still run in the DM only.
 
+## v7.5 — the bot remembers payment details
+
+`/profile` no longer re-asks payment questions when the answer is
+already known. Admins get their known accounts (KBZPay, WavePay,
+AYAPay, USDT from the bot's constants) filled in automatically and
+jump straight to the photos step. Other members reuse the payment
+details saved on their profile and also jump straight to photos.
+Only a brand-new member with nothing saved is asked. A draft
+already sitting in the payment questions is rescued the same way
+on the next message. The confirm screen has a fourth button,
+"✏️ Change payment details", which re-opens the questions
+(`/skip` on a step keeps the saved value).
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
