@@ -1101,6 +1101,14 @@ AUCTION_MAX_VIDEO_S = 1800
 POOL_MIN_PRICE_KS = 50000
 POOL_MAX_PRICE_KS = 500000
 POOL_MIN_CONTRIB_KS = 1000
+# Quick-pick contribution amounts on the join prompt — the member
+# taps one, or types a different amount (any whole amount from the
+# 1,000 Ks minimum). The price itself is fixed once set at creation
+# and never changes.
+POOL_JOIN_AMOUNTS = (1000, 5000, 10000, 20000, 50000)
+# Optional 5-second sneak preview (teaser) a seller can add to a
+# pool or auction video: a short clip, shown unblurred on the card.
+TEASER_MAX_VIDEO_S = 5
 
 
 def fmt_countdown(seconds):
@@ -1188,14 +1196,28 @@ def auction_card_keyboard(auction):
 
 
 def post_auction_to_group(state, auction):
-    """Post an auction card to the group: the seller's chosen cover
-    photo (UNBLURRED) with the auction text as caption, or plain
-    text if there is no cover. Returns (message_id, err)."""
+    """Post an auction card to the group: the 5-second teaser video
+    if one was set, else the seller's chosen cover photo
+    (UNBLURRED) with the auction text as caption, or plain text if
+    there is neither. A failed teaser send falls back to the cover,
+    then to text — the card always posts. Returns (message_id, err)."""
     group = state.get("group") or GROUP_CHAT_ID
     if not group:
         return None, "no group set"
     text = auction_card_text(auction)
     kb = auction_card_keyboard(auction)
+    if auction.get("teaser_file_id"):
+        r = api(
+            "sendVideo",
+            {
+                "chat_id": group,
+                "video": auction["teaser_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+        if r.get("ok"):
+            return r["result"]["message_id"], None
     if auction.get("cover_file_id"):
         r = send_photo_with_fallback(
             group, auction["cover_file_id"], text, reply_markup=kb
@@ -1209,14 +1231,14 @@ def post_auction_to_group(state, auction):
 
 def edit_auction_card(state, auction):
     """Refresh the group card after a bid (or when it ends with no
-    bids): new current bid + bidder + time left. Photo cards are
-    edited by caption, text cards by text."""
+    bids): new current bid + bidder + time left. Video and photo
+    cards are edited by caption, text cards by text."""
     group = state.get("group") or GROUP_CHAT_ID
     if not group or not auction.get("message_id"):
         return
     text = auction_card_text(auction)
     kb = auction_card_keyboard(auction)
-    if auction.get("cover_file_id"):
+    if auction.get("teaser_file_id") or auction.get("cover_file_id"):
         api(
             "editMessageCaption",
             {
@@ -1319,9 +1341,25 @@ def _cover_choice_draft(state, user_id, kind):
     return draft
 
 
+def send_teaser_prompt(chat_id, kind):
+    """After the cover is settled: offer an optional 5-second sneak
+    preview — a short video clip that plays unblurred on the card.
+    The full video still only goes privately to the people who paid
+    (pool fill / auction win); the teaser never replaces that."""
+    noun = "pool" if kind == "pool" else "auction"
+    send_message(
+        chat_id,
+        "Add a 5-second sneak preview? Send a short video (5 seconds "
+        f"or less) — it plays unblurred on the {noun} card. Or /skip "
+        "to post without one. The full video still only goes "
+        "privately to the people who paid.",
+    )
+
+
 def send_auction_preview(chat_id, user_id, draft):
-    """Show the seller exactly what will post: the cover photo
-    UNBLURRED, the auction text, Post / Cancel buttons."""
+    """Show the seller exactly what will post: the 5-second teaser
+    video if one was set, else the cover photo UNBLURRED, else
+    plain text — plus the Post / Cancel buttons."""
     profile = get_profile(user_id)
     preview = {
         "seller_name": draft.get("seller_name", "Seller"),
@@ -1346,6 +1384,18 @@ def send_auction_preview(chat_id, user_id, draft):
             ]
         ]
     }
+    if draft.get("teaser_file_id"):
+        r = api(
+            "sendVideo",
+            {
+                "chat_id": chat_id,
+                "video": draft["teaser_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+        if r.get("ok"):
+            return
     if draft.get("cover_file_id"):
         # The cover may be a video thumbnail, which Telegram
         # refuses as a photo file_id — the helper downloads and
@@ -1362,9 +1412,9 @@ def send_pool_info(chat_id, pool):
     """The FULL contributor list for one pool, in a DM: every
     member with their running total, highest first. The group card
     only shows the top 10 (caption limit), so this is where the
-    whole list lives. Works for live and filled pools. The pool's
-    seller — and only the seller — also gets a "Change amount"
-    button here, to retarget a live pool."""
+    whole list lives. Works for live and filled pools. The pool
+    price is fixed once set at creation — it can never be changed
+    here or anywhere else."""
     price = int(pool.get("price") or POOL_MIN_PRICE_KS)
     raised = pool_raised(pool)
     joined = len(pool.get("contributors") or [])
@@ -1394,22 +1444,7 @@ def send_pool_info(chat_id, pool):
             c.get("name") or "Someone"
         )
         lines.append(f"{i}. {who} — {fmt_ks(int(c.get('ks') or 0))}")
-    kb = None
-    if (
-        str(chat_id) == str(pool.get("seller"))
-        and pool.get("status") == "live"
-    ):
-        kb = {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "💰 Change amount",
-                        "callback_data": f"poolprice:{pool['id']}",
-                    }
-                ]
-            ]
-        }
-    send_message(chat_id, "\n".join(lines), reply_markup=kb)
+    send_message(chat_id, "\n".join(lines))
 
 
 def start_auction(chat_id, user_id, state, user=None):
@@ -1480,12 +1515,13 @@ def handle_auction_step(chat_id, user_id, text, state, user=None):
     if step == "cover":
         if text == "/skip":
             # Back to the thumbnail when there is one; otherwise
-            # the card posts with no cover photo.
+            # the card posts with no cover photo. Then the teaser
+            # step, then the preview.
             if draft.get("thumb_file_id"):
                 draft["cover_file_id"] = draft["thumb_file_id"]
-            draft["step"] = "confirm"
+            draft["step"] = "teaser"
             save_state(state)
-            send_auction_preview(chat_id, user_id, draft)
+            send_teaser_prompt(chat_id, "auction")
             return True
         if draft.get("thumb_file_id"):
             hint = (
@@ -1498,6 +1534,18 @@ def handle_auction_step(chat_id, user_id, text, state, user=None):
                 "photo."
             )
         send_message(chat_id, hint)
+        return True
+    if step == "teaser":
+        if text == "/skip":
+            draft["step"] = "confirm"
+            save_state(state)
+            send_auction_preview(chat_id, user_id, draft)
+            return True
+        send_message(
+            chat_id,
+            "Send a short video (5 seconds or less) for the teaser, "
+            "or /skip to post without one.",
+        )
         return True
     return False
 
@@ -2127,14 +2175,28 @@ def pool_card_keyboard(pool):
 
 
 def post_pool_to_group(state, pool):
-    """Post a pool card to the group: the seller's chosen cover
-    photo (UNBLURRED) with the pool text as caption, or plain text
-    if there is no cover. Returns (message_id, err)."""
+    """Post a pool card to the group: the 5-second teaser video if
+    one was set, else the seller's chosen cover photo (UNBLURRED)
+    with the pool text as caption, or plain text if there is
+    neither. A failed teaser send falls back to the cover, then to
+    text — the card always posts. Returns (message_id, err)."""
     group = state.get("group") or GROUP_CHAT_ID
     if not group:
         return None, "no group set"
     text = pool_card_text(pool)
     kb = pool_card_keyboard(pool)
+    if pool.get("teaser_file_id"):
+        r = api(
+            "sendVideo",
+            {
+                "chat_id": group,
+                "video": pool["teaser_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+        if r.get("ok"):
+            return r["result"]["message_id"], None
     if pool.get("cover_file_id"):
         r = send_photo_with_fallback(
             group, pool["cover_file_id"], text, reply_markup=kb
@@ -2148,14 +2210,14 @@ def post_pool_to_group(state, pool):
 
 def edit_pool_card(state, pool):
     """Refresh the group card after someone joins: new count +
-    remaining. Photo cards are edited by caption, text cards by
-    text."""
+    remaining. Video and photo cards are edited by caption, text
+    cards by text."""
     group = state.get("group") or GROUP_CHAT_ID
     if not group or not pool.get("message_id"):
         return
     text = pool_card_text(pool)
     kb = pool_card_keyboard(pool)
-    if pool.get("cover_file_id"):
+    if pool.get("teaser_file_id") or pool.get("cover_file_id"):
         api(
             "editMessageCaption",
             {
@@ -2410,9 +2472,9 @@ def send_join_prompt(chat_id, pool):
         )
     text += (
         "\nHow much do you want to put in? Minimum "
-        f"{fmt_ks(POOL_MIN_CONTRIB_KS)} — tap Join and send the "
-        "amount in Ks. If less is left than you offer, only what's "
-        "needed is taken. When the total raised hits "
+        f"{fmt_ks(POOL_MIN_CONTRIB_KS)} — tap 🤝 Join, then pick an "
+        "amount — or type your own. If less is left than you offer, "
+        "only what's needed is taken. When the total raised hits "
         f"{fmt_ks(price)}, the video is sent privately to everyone "
         "who paid — it is NEVER revealed in the group."
     )
@@ -2432,9 +2494,9 @@ def send_join_prompt(chat_id, pool):
 
 def pool_preview_text(user_id, draft):
     """The preview message for a pool draft: what will post, plus
-    the Post / Cancel / Change amount buttons. Shared by the first
-    send and by in-place refreshes after a price change, so the
-    preview always shows the draft's current price."""
+    the Post / Cancel buttons. The pool price is fixed once set at
+    the price step — it can never be changed — and the preview
+    shows the draft's real typed price."""
     profile = get_profile(user_id)
     preview = {
         "seller_name": draft.get("seller_name", "Seller"),
@@ -2456,72 +2518,38 @@ def pool_preview_text(user_id, draft):
                 {"text": "✅ Post pool", "callback_data": "poolpost"},
                 {"text": "❌ Cancel", "callback_data": "poolcancel"},
             ],
-            [
-                {
-                    "text": "💰 Change amount",
-                    "callback_data": "poolpriceedit",
-                },
-            ],
         ]
     }
     return text, kb
 
 
 def send_pool_preview(chat_id, user_id, draft, state):
-    """Show the seller exactly what will post: the cover photo
-    UNBLURRED, the pool text, Post / Cancel / Change amount
-    buttons. Remembers the message id (and whether it went as a
-    photo or as text) on the draft so a price change can edit this
-    preview in place instead of sending a new one."""
+    """Show the seller exactly what will post: the 5-second teaser
+    video if one was set, else the cover photo UNBLURRED, else
+    plain text — plus the Post / Cancel buttons."""
     text, kb = pool_preview_text(user_id, draft)
+    if draft.get("teaser_file_id"):
+        r = api(
+            "sendVideo",
+            {
+                "chat_id": chat_id,
+                "video": draft["teaser_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+        if r.get("ok"):
+            return
     if draft.get("cover_file_id"):
         # The cover may be a video thumbnail, which Telegram
         # refuses as a photo file_id — the helper downloads and
         # re-uploads it, and only falls back to text as a last
         # resort, so the seller still sees the cover.
-        r = send_photo_with_fallback(
+        send_photo_with_fallback(
             chat_id, draft["cover_file_id"], text, reply_markup=kb
         )
     else:
-        r = send_message(chat_id, text, reply_markup=kb)
-    if r.get("ok"):
-        result = r.get("result") or {}
-        draft["preview_message_id"] = result.get("message_id")
-        draft["preview_is_photo"] = "photo" in result
-        save_state(state)
-
-
-def edit_pool_preview(chat_id, user_id, draft, state):
-    """Refresh the seller's pool preview in place after a price
-    change: edit the caption (photo preview) or the text (text
-    preview). If the edit fails — the message is gone, or there
-    never was one — send a fresh preview instead."""
-    text, kb = pool_preview_text(user_id, draft)
-    mid = draft.get("preview_message_id")
-    if mid:
-        if draft.get("preview_is_photo"):
-            r = api(
-                "editMessageCaption",
-                {
-                    "chat_id": chat_id,
-                    "message_id": mid,
-                    "caption": text,
-                    "reply_markup": kb,
-                },
-            )
-        else:
-            r = api(
-                "editMessageText",
-                {
-                    "chat_id": chat_id,
-                    "message_id": mid,
-                    "text": text,
-                    "reply_markup": kb,
-                },
-            )
-        if r.get("ok"):
-            return
-    send_pool_preview(chat_id, user_id, draft, state)
+        send_message(chat_id, text, reply_markup=kb)
 
 
 def start_pool(chat_id, user_id, state, user=None):
@@ -2572,27 +2600,6 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
     if not draft:
         return False
     step = draft.get("step")
-    if step == "confirm" and draft.get("price_edit"):
-        # The seller tapped "Change amount" on the preview and is
-        # typing a new target price. A valid price updates the
-        # draft and refreshes the preview in place; anything else
-        # is rejected and the edit stays open. The preview's own
-        # Post button still posts at the current price.
-        price = parse_pool_price(text)
-        if price is None:
-            send_message(
-                chat_id,
-                "Type the new pool price as a whole number in Ks, "
-                f"between {fmt_ks(POOL_MIN_PRICE_KS)} and "
-                f"{fmt_ks(POOL_MAX_PRICE_KS)} — or tap ✅ Post pool "
-                "on the preview to post at the current price.",
-            )
-            return True
-        draft["price"] = price
-        draft.pop("price_edit", None)
-        save_state(state)
-        edit_pool_preview(chat_id, user_id, draft, state)
-        return True
     if step == "product":
         send_message(
             chat_id, "Tap a product above to pick it — or /cancel to stop."
@@ -2620,7 +2627,8 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
             f"{fmt_ks(price)}, the video goes privately to everyone "
             "who paid — it is NEVER revealed in the group. After the "
             "video, you'll choose the cover — the video's thumbnail, "
-            "or your own photo.\n\n"
+            "or your own photo — and you can add a 5-second sneak "
+            "preview.\n\n"
             "Or /cancel.",
         )
         return True
@@ -2641,12 +2649,13 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
     if step == "cover":
         if text == "/skip":
             # Back to the thumbnail when there is one; otherwise
-            # the card posts with no cover photo.
+            # the card posts with no cover photo. Then the teaser
+            # step, then the preview.
             if draft.get("thumb_file_id"):
                 draft["cover_file_id"] = draft["thumb_file_id"]
-            draft["step"] = "confirm"
+            draft["step"] = "teaser"
             save_state(state)
-            send_pool_preview(chat_id, user_id, draft, state)
+            send_teaser_prompt(chat_id, "pool")
             return True
         if draft.get("thumb_file_id"):
             hint = (
@@ -2659,6 +2668,18 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
                 "photo."
             )
         send_message(chat_id, hint)
+        return True
+    if step == "teaser":
+        if text == "/skip":
+            draft["step"] = "confirm"
+            save_state(state)
+            send_pool_preview(chat_id, user_id, draft, state)
+            return True
+        send_message(
+            chat_id,
+            "Send a short video (5 seconds or less) for the teaser, "
+            "or /skip to post without one.",
+        )
         return True
     return False
 
@@ -4806,8 +4827,12 @@ def handle_flow_media(msg, state):
         if document:
             adraft = (state.get("auction_draft") or {}).get(str(user_id))
             pdraft = (state.get("pool_draft") or {}).get(str(user_id))
-            draft = adraft if adraft and adraft.get("step") == "video" else (
-                pdraft if pdraft and pdraft.get("step") == "video" else None
+            draft = adraft if adraft and adraft.get("step") in (
+                "video", "teaser"
+            ) else (
+                pdraft if pdraft and pdraft.get("step") in (
+                    "video", "teaser"
+                ) else None
             )
             if draft:
                 send_message(
@@ -4955,9 +4980,9 @@ def handle_flow_media(msg, state):
             return True
         if photo:
             adraft["cover_file_id"] = photo[-1]["file_id"]
-            adraft["step"] = "confirm"
+            adraft["step"] = "teaser"
             save_state(state)
-            send_auction_preview(chat_id, user_id, adraft)
+            send_teaser_prompt(chat_id, "auction")
             return True
     if adraft and adraft.get("step") == "cover":
         if video:
@@ -4969,6 +4994,31 @@ def handle_flow_media(msg, state):
             return True
         if photo:
             adraft["cover_file_id"] = photo[-1]["file_id"]
+            adraft["step"] = "teaser"
+            save_state(state)
+            send_teaser_prompt(chat_id, "auction")
+            return True
+    if adraft and adraft.get("step") == "teaser":
+        # Optional 5-second sneak preview: a short video clip,
+        # shown unblurred on the card. Longer clips are rejected;
+        # /skip posts without one.
+        if photo:
+            send_message(
+                chat_id,
+                "That was a photo — the teaser needs to be a short "
+                "video. Send a video (5 seconds or less), or /skip.",
+            )
+            return True
+        if video:
+            dur = video.get("duration")
+            if dur is not None and dur > TEASER_MAX_VIDEO_S:
+                send_message(
+                    chat_id,
+                    "Keep the teaser to 5 seconds — send a shorter "
+                    "clip, or /skip.",
+                )
+                return True
+            adraft["teaser_file_id"] = video["file_id"]
             adraft["step"] = "confirm"
             save_state(state)
             send_auction_preview(chat_id, user_id, adraft)
@@ -5030,9 +5080,9 @@ def handle_flow_media(msg, state):
             return True
         if photo:
             pdraft["cover_file_id"] = photo[-1]["file_id"]
-            pdraft["step"] = "confirm"
+            pdraft["step"] = "teaser"
             save_state(state)
-            send_pool_preview(chat_id, user_id, pdraft, state)
+            send_teaser_prompt(chat_id, "pool")
             return True
     if pdraft and pdraft.get("step") == "cover":
         if video:
@@ -5044,6 +5094,31 @@ def handle_flow_media(msg, state):
             return True
         if photo:
             pdraft["cover_file_id"] = photo[-1]["file_id"]
+            pdraft["step"] = "teaser"
+            save_state(state)
+            send_teaser_prompt(chat_id, "pool")
+            return True
+    if pdraft and pdraft.get("step") == "teaser":
+        # Optional 5-second sneak preview: a short video clip,
+        # shown unblurred on the card. Longer clips are rejected;
+        # /skip posts without one.
+        if photo:
+            send_message(
+                chat_id,
+                "That was a photo — the teaser needs to be a short "
+                "video. Send a video (5 seconds or less), or /skip.",
+            )
+            return True
+        if video:
+            dur = video.get("duration")
+            if dur is not None and dur > TEASER_MAX_VIDEO_S:
+                send_message(
+                    chat_id,
+                    "Keep the teaser to 5 seconds — send a shorter "
+                    "clip, or /skip.",
+                )
+                return True
+            pdraft["teaser_file_id"] = video["file_id"]
             pdraft["step"] = "confirm"
             save_state(state)
             send_pool_preview(chat_id, user_id, pdraft, state)
@@ -5483,7 +5558,6 @@ def handle_message(msg, state):
         state.get("auction_draft", {}).pop(str(user_id), None)
         state.get("pool_draft", {}).pop(str(user_id), None)
         state.get("pool_join_draft", {}).pop(str(user_id), None)
-        state.get("pool_price_edit", {}).pop(str(user_id), None)
         state.get("bid_draft", {}).pop(str(user_id), None)
         state.get("topup_mm_draft", {}).pop(str(user_id), None)
         pending = (state.get("pending_usdt") or {}).get(str(user_id))
@@ -5653,54 +5727,6 @@ def handle_message(msg, state):
         send_message(chat_id, msg)
         return
 
-    # v7.10 — the seller typed a new target price for a LIVE pool
-    # (tapped "Change amount" on /poolinfo). A valid price updates
-    # the pool and the group card in place; if the new price is
-    # below what's already raised, the pool fills straight away.
-    ppe_draft = (state.get("pool_price_edit") or {}).get(str(user_id))
-    if ppe_draft and not text.startswith("/"):
-        pid = ppe_draft.get("pool")
-        pool = (state.get("pools") or {}).get(pid)
-        if not pool:
-            state.get("pool_price_edit", {}).pop(str(user_id), None)
-            save_state(state)
-            send_message(chat_id, "That pool is gone.")
-            return
-        price = parse_pool_price(text)
-        if price is None:
-            send_message(
-                chat_id,
-                "Type the new price as a whole number in Ks, between "
-                f"{fmt_ks(POOL_MIN_PRICE_KS)} and "
-                f"{fmt_ks(POOL_MAX_PRICE_KS)} — or /cancel to keep the "
-                "current price.",
-            )
-            return
-        state.get("pool_price_edit", {}).pop(str(user_id), None)
-        if pool.get("status") != "live":
-            save_state(state)
-            send_message(
-                chat_id,
-                "That pool is already finished — the amount can't be "
-                "changed.",
-            )
-            return
-        pool["price"] = price
-        save_state(state)
-        if pool_raised(pool) >= price:
-            # Lowered below what's raised: the pool fills now, with
-            # the seller credited the new price.
-            _complete_pool(state, pool)
-            return
-        edit_pool_card(state, pool)
-        send_pool_info(chat_id, pool)
-        send_message(
-            chat_id,
-            f"✅ Pool price changed to {fmt_ks(price)} — the group "
-            "card is updated.",
-        )
-        return
-
     mm_draft = (state.get("topup_mm_draft") or {}).get(str(user_id))
     if mm_draft and not text.startswith("/"):
         handle_topup_mm_step(chat_id, user_id, text, state, user=msg.get("from", {}))
@@ -5732,9 +5758,13 @@ def handle_message(msg, state):
     if a_draft and (
         not text.startswith("/")
         # v7.10 — /skip only reaches the auction flow at the cover
-        # step, where handle_auction_step handles it. Anywhere else
-        # a slash command must NOT be swallowed as flow text.
-        or (text == "/skip" and a_draft.get("step") == "cover")
+        # or teaser step, where handle_auction_step handles it.
+        # Anywhere else a slash command must NOT be swallowed as
+        # flow text.
+        or (
+            text == "/skip"
+            and a_draft.get("step") in ("cover", "teaser")
+        )
     ):
         handle_auction_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
@@ -5743,8 +5773,11 @@ def handle_message(msg, state):
     if p_draft and (
         not text.startswith("/")
         # v7.10 — same guarded /skip routing as auctions: only at
-        # the cover step.
-        or (text == "/skip" and p_draft.get("step") == "cover")
+        # the cover or teaser step.
+        or (
+            text == "/skip"
+            and p_draft.get("step") in ("cover", "teaser")
+        )
     ):
         handle_pool_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
@@ -7231,12 +7264,9 @@ def handle_callback(query, state):
             )
             return
         draft["cover_file_id"] = draft.get("thumb_file_id")
-        draft["step"] = "confirm"
+        draft["step"] = "teaser"
         save_state(state)
-        if kind == "pool":
-            send_pool_preview(user_id, user_id, draft, state)
-        else:
-            send_auction_preview(user_id, user_id, draft)
+        send_teaser_prompt(user_id, kind)
         answer_callback(qid, "Using the video's thumbnail.")
         return
 
@@ -7292,6 +7322,7 @@ def handle_callback(query, state):
             "product": draft["product"],
             "video_file_id": draft["video_file_id"],
             "cover_file_id": draft.get("cover_file_id"),
+            "teaser_file_id": draft.get("teaser_file_id"),
             "duration_s": draft.get("duration_s"),
             "duration_min": draft.get("duration_min"),
             "start": AUCTION_START_KS,
@@ -7335,27 +7366,6 @@ def handle_callback(query, state):
         answer_callback(qid, "Cancelled.")
         return
 
-    if data == "poolpriceedit":
-        draft = (state.get("pool_draft") or {}).get(str(user_id))
-        if not draft or draft.get("step") != "confirm" or not draft.get(
-            "video_file_id"
-        ):
-            answer_callback(qid, "No pool to change — /pool to start.")
-            return
-        draft["price_edit"] = True
-        save_state(state)
-        send_message(
-            user_id,
-            "Type the new pool price as a whole number in Ks, between "
-            f"{fmt_ks(POOL_MIN_PRICE_KS)} and "
-            f"{fmt_ks(POOL_MAX_PRICE_KS)}. The preview updates when you "
-            "send it — or tap ✅ Post pool on the preview to post at "
-            "the current price "
-            f"({fmt_ks(int(draft.get('price') or POOL_MIN_PRICE_KS))}).",
-        )
-        answer_callback(qid, "Type the new price.")
-        return
-
     if data == "poolpost":
         draft = (state.get("pool_draft") or {}).get(str(user_id))
         if not draft or draft.get("step") != "confirm" or not draft.get(
@@ -7391,6 +7401,7 @@ def handle_callback(query, state):
             "product": draft["product"],
             "video_file_id": draft["video_file_id"],
             "cover_file_id": draft.get("cover_file_id"),
+            "teaser_file_id": draft.get("teaser_file_id"),
             "duration_s": draft.get("duration_s"),
             "duration_min": draft.get("duration_min"),
             "price": int(draft.get("price") or POOL_MIN_PRICE_KS),
@@ -7432,41 +7443,6 @@ def handle_callback(query, state):
         save_state(state)
         send_message(user_id, "Cancelled — nothing was posted.")
         answer_callback(qid, "Cancelled.")
-        return
-
-    if data.startswith("poolprice:"):
-        pid = data.split(":", 1)[1]
-        pool = (state.get("pools") or {}).get(pid)
-        if not pool:
-            answer_callback(qid, "That pool is gone.")
-            return
-        if pool.get("status") != "live":
-            answer_callback(
-                qid,
-                "That pool is already finished — the amount can't be changed.",
-                show_alert=True,
-            )
-            return
-        if str(user_id) != str(pool.get("seller")):
-            answer_callback(
-                qid, "Only the seller can change the amount.",
-                show_alert=True,
-            )
-            return
-        state.setdefault("pool_price_edit", {})[str(user_id)] = {
-            "pool": pid,
-        }
-        save_state(state)
-        send_message(
-            user_id,
-            "Type the new target price for this pool — a whole number "
-            f"in Ks, between {fmt_ks(POOL_MIN_PRICE_KS)} and "
-            f"{fmt_ks(POOL_MAX_PRICE_KS)}. Current price: "
-            f"{fmt_ks(int(pool.get('price') or POOL_MIN_PRICE_KS))}, "
-            f"raised so far: {fmt_ks(pool_raised(pool))}. If you lower "
-            "it below what's raised, the pool fills straight away.",
-        )
-        answer_callback(qid, "Type the new price.")
         return
 
     if data.startswith("aucbidamt:"):
@@ -7542,11 +7518,106 @@ def handle_callback(query, state):
             "pool": pid
         }
         save_state(state)
+        mine = next(
+            (
+                int(c.get("ks") or 0)
+                for c in pool.get("contributors") or []
+                if str(c.get("id")) == str(user_id)
+            ),
+            0,
+        )
+        text = (
+            "How much do you want to put in? Minimum "
+            f"{fmt_ks(POOL_MIN_CONTRIB_KS)} — tap an amount, or type "
+            "a different one. If less is left than you offer, only "
+            "what's needed is taken. Or /cancel."
+        )
+        if mine:
+            text = (
+                f"You've put in {fmt_ks(mine)} so far — add more?\n\n"
+                + text
+            )
+        rows = []
+        pairs = [
+            POOL_JOIN_AMOUNTS[i:i + 2]
+            for i in range(0, len(POOL_JOIN_AMOUNTS), 2)
+        ]
+        for pair in pairs:
+            rows.append(
+                [
+                    {
+                        "text": fmt_ks(amount),
+                        "callback_data": (
+                            f"pooljoinamt:{pid}:{amount}"
+                        ),
+                    }
+                    for amount in pair
+                ]
+            )
+        rows.append(
+            [
+                {
+                    "text": "⌨️ Type a different amount",
+                    "callback_data": f"pooljointype:{pid}",
+                }
+            ]
+        )
+        send_message(
+            user_id, text, reply_markup={"inline_keyboard": rows}
+        )
+        answer_callback(qid, "Pick an amount.")
+        return
+
+    if data.startswith("pooljoinamt:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            answer_callback(qid, "Unknown button.")
+            return
+        _, pid, amount_s = parts
+        pool = (state.get("pools") or {}).get(pid)
+        if not pool:
+            answer_callback(qid, "That pool is gone.", show_alert=True)
+            return
+        try:
+            amount = int(amount_s)
+        except ValueError:
+            answer_callback(qid, "Unknown amount.")
+            return
+        # The tap consumes the join draft, so a later typed message
+        # can't contribute a second time by accident.
+        state.get("pool_join_draft", {}).pop(str(user_id), None)
+        ok, msg = join_pool(
+            state, pool, user_id, amount, user=query.get("from", {})
+        )
+        save_state(state)
+        send_message(user_id, msg)
+        answer_callback(qid, "You're in!" if ok else "Couldn't join.")
+        return
+
+    if data.startswith("pooljointype:"):
+        pid = data.split(":", 1)[1]
+        pool = (state.get("pools") or {}).get(pid)
+        if not pool:
+            answer_callback(qid, "That pool is gone.", show_alert=True)
+            return
+        if pool.get("status") != "live":
+            answer_callback(
+                qid, "That pool is closed.", show_alert=True
+            )
+            return
+        if str(user_id) == str(pool.get("seller")):
+            answer_callback(
+                qid, "You can't join your own pool.", show_alert=True
+            )
+            return
+        state.setdefault("pool_join_draft", {})[str(user_id)] = {
+            "pool": pid
+        }
+        save_state(state)
         send_message(
             user_id,
-            "How much do you want to put in? Minimum "
-            f"{fmt_ks(POOL_MIN_CONTRIB_KS)} — send the amount in Ks, "
-            "or /cancel.",
+            "Send the amount in Ks — minimum "
+            f"{fmt_ks(POOL_MIN_CONTRIB_KS)}, or /cancel.",
         )
         answer_callback(qid, "Send your amount.")
         return
