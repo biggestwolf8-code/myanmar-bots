@@ -95,6 +95,22 @@ v3 — cash-out + sell USDT (rate 1 USDT = 4,500 Ks):
   THE 4,500 RATE IS FOR CASH-OUT / SELL-USDT ONLY. Product prices,
   packs, Stars and top-ups still use the 1 USD = 5,000 Ks anchor.
 
+v6 — auction house + seller titles:
+  /auction posts a video auction instead of a fixed-price card:
+  starting bid fixed at 5,000 Ks, 15 minutes only, bids from bot
+  balance only (escrowed; outbid bidders are refunded at once).
+  The cover is the video's own thumbnail, UNBLURRED. The highest
+  bidder wins the video privately in DM — never revealed in the
+  group, unless an admin wins (then it IS revealed in the group).
+  Unsold auction posts stay up 24 hours, then are deleted; a sold
+  auction's post is deleted at once. The deadline + 24-hour sweeps
+  run inside the polling loop — no external cron.
+  Seller titles by completed sales (market + auction, packs don't
+  count), computed live at render time: 0 New Seller, 1–4 Seller,
+  5–9 Rising Star, 10–24 Top Seller, 25–49 Star Seller, 50+ Legend.
+  Shown as "<title> • <N> sold" on profiles, cards, /sellers and
+  /board.
+
 No watermarking, no protect_content — these are plain text posts.
 """
 
@@ -214,6 +230,10 @@ def load_state():
             "cards": {},
             "card_seq": 0,
             "card_draft": {},
+            "auctions": {},
+            "auction_seq": 0,
+            "auction_draft": {},
+            "bid_draft": {},
         },
     )
 
@@ -428,6 +448,50 @@ def fmt_age_role(age, role):
     return f"{a} • {r}"
 
 
+# ------------------------------------------------------- seller titles ----
+
+TITLE_TIERS = (
+    (50, "💎 Legend"),
+    (25, "👑 Star Seller"),
+    (10, "🔥 Top Seller"),
+    (5, "🌟 Rising Star"),
+    (1, "🛍️ Seller"),
+    (0, "🆕 New Seller"),
+)
+
+
+def count_sales(seller_id):
+    """Completed marketplace sales by one seller: market sales +
+    auction sales, both status "paid". Class session packs do NOT
+    count. Computed live from the sales records every time, so a
+    title upgrades automatically as the seller sells more — no
+    stored title to go stale."""
+    sid = str(seller_id)
+    total = 0
+    for p in load_json_file(PURCHASES_PATH, []):
+        if (
+            p.get("kind") in ("market", "auction")
+            and p.get("status") == "paid"
+            and str(p.get("seller")) == sid
+        ):
+            total += 1
+    return total
+
+
+def seller_title(sales):
+    for minimum, title in TITLE_TIERS:
+        if sales >= minimum:
+            return title
+    return "🆕 New Seller"
+
+
+def seller_title_line(seller_id):
+    """'🔥 Top Seller • 12 sold' — shown on the seller's profile and
+    on every post they make."""
+    n = count_sales(seller_id)
+    return f"{seller_title(n)} • {n} sold"
+
+
 def profile_missing_fields(profile):
     """What a seller still has to fill in before they can /sell:
     age, role, and 3 photos."""
@@ -451,6 +515,7 @@ def profile_summary_text(profile):
         f"Age: {profile.get('age') or '—'} • "
         f"Role: {profile.get('role') or '—'}"
     )
+    lines.append(seller_title_line(profile.get("user_id")))
     lines.append("Products:")
     for key, price in (profile.get("products") or {}).items():
         lines.append(f"• {PRODUCTS.get(key, key)} — {fmt_ks(price)}")
@@ -467,6 +532,7 @@ def seller_card_text(profile):
         f"Age: {profile.get('age') or '—'} • "
         f"Role: {profile.get('role') or '—'}"
     )
+    lines.append(seller_title_line(profile.get("user_id")))
     lines.append("")
     lines.append("Products:")
     for key, price in (profile.get("products") or {}).items():
@@ -534,7 +600,8 @@ def sellers_board_text(live_profiles):
         lines.append("")
         lines.append(
             f"👤 {profile.get('name', 'Seller')}, "
-            f"{fmt_age_role(profile.get('age'), profile.get('role'))}"
+            f"{fmt_age_role(profile.get('age'), profile.get('role'))} • "
+            f"{seller_title_line(profile.get('user_id'))}"
         )
         for key, price in (profile.get("products") or {}).items():
             lines.append(f"   • {PRODUCTS.get(key, key)} — {fmt_ks(price)}")
@@ -583,7 +650,8 @@ def sell_card_text(card):
     version is revealed in the group when someone buys it."""
     lines = [
         f"🛍️ {card.get('seller_name', 'Seller')}, "
-        f"{fmt_age_role(card.get('age'), card.get('role'))} — "
+        f"{fmt_age_role(card.get('age'), card.get('role'))} • "
+        f"{seller_title_line(card.get('seller'))} — "
         f"{PRODUCTS.get(card.get('product'), card.get('product', ''))}",
         "",
     ]
@@ -796,6 +864,596 @@ def reveal_card_purchase(state, card_id, option_name, buyer_name):
     return True
 
 
+# ------------------------------------------------------- auction house ----
+
+# Every auction starts at 5,000 Ks; a new bid must beat the current
+# bid by at least 1,000 Ks. An auction runs 15 minutes only. An
+# unsold auction post stays up 24 hours after posting, then the
+# sweep deletes it. Fixed-price cards are never auto-deleted.
+AUCTION_START_KS = 5000
+AUCTION_MIN_INCREMENT_KS = 1000
+AUCTION_DURATION_S = 15 * 60
+AUCTION_POST_TTL_S = 24 * 3600
+
+
+def fmt_countdown(seconds):
+    """mm:ss left on an auction, e.g. 14:32."""
+    seconds = max(0, int(seconds))
+    return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def auction_card_text(auction, now=None):
+    """The auction card posted to the group. The cover photo is the
+    video's own thumbnail, UNBLURRED (unlike v5 fixed-price cards).
+    The winner gets the video privately — never revealed in the group,
+    unless an admin wins."""
+    now = int(time.time()) if now is None else int(now)
+    title = seller_title_line(auction.get("seller"))
+    lines = [
+        f"🔨 AUCTION — {auction.get('seller_name', 'Seller')}, "
+        f"{fmt_age_role(auction.get('age'), auction.get('role'))} • "
+        f"{title} — "
+        f"{PRODUCTS.get(auction.get('product'), auction.get('product', ''))}",
+        "",
+        f"Starting bid: {fmt_ks(auction.get('start', AUCTION_START_KS))}",
+    ]
+    if auction.get("current_bidder"):
+        lines.append(
+            f"Current bid: {fmt_ks(auction['current_bid'])} by "
+            f"{auction.get('current_bidder_name', 'Someone')}"
+        )
+    else:
+        lines.append("Current bid: No bids yet")
+    if auction.get("status") == "live":
+        lines.append(
+            f"Ends in: {fmt_countdown(auction.get('ends_at', 0) - now)}"
+        )
+    elif auction.get("status") == "ended":
+        lines.append("⏰ Auction ended — no bids.")
+    lines.append("")
+    lines.append(
+        "Highest bidder wins the video privately — it is NOT revealed "
+        "in the group. (If an admin wins, it is revealed in the group.)"
+    )
+    lines.append("")
+    lines.append("Tap 💰 Bid to bid from your bot balance.")
+    return "\n".join(lines)
+
+
+def auction_card_keyboard(auction):
+    """Bid (deep link into the bot DM — works for members who never
+    started the bot), Seller profile, Remove. The Bid button is gone
+    once the auction is no longer live."""
+    rows = []
+    if auction.get("status") == "live":
+        rows.append(
+            [
+                {
+                    "text": "💰 Bid",
+                    "url": (
+                        f"https://t.me/{bot_username()}"
+                        f"?start=auction_{auction['id']}"
+                    ),
+                }
+            ]
+        )
+    rows.append(
+        [
+            {
+                "text": "👤 Seller profile",
+                "url": (
+                    f"https://t.me/{bot_username()}"
+                    f"?start=seller_{auction['seller']}"
+                ),
+            }
+        ]
+    )
+    rows.append(
+        [{"text": "🗑️ Remove", "callback_data": f"aucdel:{auction['id']}"}]
+    )
+    return {"inline_keyboard": rows}
+
+
+def post_auction_to_group(state, auction):
+    """Post an auction card to the group: the cover photo (the video's
+    own thumbnail, UNBLURRED) with the auction text as caption, or
+    plain text if there is no cover. Returns (message_id, err)."""
+    group = state.get("group") or GROUP_CHAT_ID
+    if not group:
+        return None, "no group set"
+    text = auction_card_text(auction)
+    kb = auction_card_keyboard(auction)
+    if auction.get("cover_file_id"):
+        r = api(
+            "sendPhoto",
+            {
+                "chat_id": group,
+                "photo": auction["cover_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+    else:
+        r = send_message(group, text, reply_markup=kb)
+    if not r.get("ok"):
+        return None, r.get("description", "unknown error")
+    return r["result"]["message_id"], None
+
+
+def edit_auction_card(state, auction):
+    """Refresh the group card after a bid (or when it ends with no
+    bids): new current bid + bidder + time left. Photo cards are
+    edited by caption, text cards by text."""
+    group = state.get("group") or GROUP_CHAT_ID
+    if not group or not auction.get("message_id"):
+        return
+    text = auction_card_text(auction)
+    kb = auction_card_keyboard(auction)
+    if auction.get("cover_file_id"):
+        api(
+            "editMessageCaption",
+            {
+                "chat_id": group,
+                "message_id": auction["message_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+    else:
+        api(
+            "editMessageText",
+            {
+                "chat_id": group,
+                "message_id": auction["message_id"],
+                "text": text,
+                "reply_markup": kb,
+            },
+        )
+
+
+def _seller_ready(chat_id, user_id, state):
+    """Shared gates for /sell and /auction: a live profile, complete
+    (age, role, 3 photos), and the group linked. Sends the right
+    message and returns the profile, or None when the seller can't
+    post yet."""
+    profile = get_profile(user_id)
+    if not profile:
+        send_message(
+            chat_id,
+            "You don't have a seller profile yet — make one with "
+            "/profile first. It goes live straight away.",
+        )
+        return None
+    if profile.get("status") != "live":
+        if profile.get("status") == "removed":
+            send_message(
+                chat_id,
+                "Your profile was removed by an admin — make a new "
+                "one with /profile and you can post again.",
+            )
+        else:
+            send_message(
+                chat_id,
+                "Your profile isn't live yet — make a new one with "
+                "/profile and it goes live straight away.",
+            )
+        return None
+    # Sellers with an older profile (no age / role / photos) finish
+    # it first — age, role and 3 photos are required to post.
+    if profile_missing_fields(profile):
+        start_profile_completion(chat_id, user_id, state)
+        return None
+    group = state.get("group") or GROUP_CHAT_ID
+    if not group:
+        send_message(
+            chat_id,
+            "The group isn't linked yet — ask an admin to link it "
+            "(/setgroup), then try again.",
+        )
+        return None
+    return profile
+
+
+def send_auction_preview(chat_id, user_id, draft):
+    """Show the seller exactly what will post: the cover photo
+    UNBLURRED, the auction text, Post / Cancel buttons."""
+    profile = get_profile(user_id)
+    preview = {
+        "seller_name": draft.get("seller_name", "Seller"),
+        "age": (profile or {}).get("age"),
+        "role": (profile or {}).get("role"),
+        "seller": str(user_id),
+        "product": draft.get("product"),
+        "start": AUCTION_START_KS,
+        "current_bidder": None,
+        "ends_at": int(time.time()) + AUCTION_DURATION_S,
+        "status": "live",
+    }
+    text = "This is what will post to the group:\n\n" + auction_card_text(
+        preview
+    )
+    kb = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Post auction", "callback_data": "auctpost"},
+                {"text": "❌ Cancel", "callback_data": "auctcancel"},
+            ]
+        ]
+    }
+    if draft.get("cover_file_id"):
+        api(
+            "sendPhoto",
+            {
+                "chat_id": chat_id,
+                "photo": draft["cover_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+    else:
+        send_message(chat_id, text, reply_markup=kb)
+
+
+def start_auction(chat_id, user_id, state, user=None):
+    """Entry for /auction. Same gates as /sell (live profile, complete
+    profile, group linked), then the seller picks a product and the
+    auction flow starts."""
+    profile = _seller_ready(chat_id, user_id, state)
+    if profile is None:
+        return
+    products = profile.get("products", {})
+    if not products:
+        send_message(
+            chat_id,
+            "Your profile has no products — update it with /profile "
+            "first.",
+        )
+        return
+    state.get("card_draft", {}).pop(str(user_id), None)
+    state.setdefault("auction_draft", {})[str(user_id)] = {
+        "step": "product",
+        "seller_name": profile.get("name", "Seller"),
+    }
+    save_state(state)
+    rows = [
+        [
+            {
+                "text": f"{PRODUCTS.get(k, k)} — {fmt_ks(v)}",
+                "callback_data": f"aucprod:{k}",
+            }
+        ]
+        for k, v in products.items()
+    ]
+    send_message(
+        chat_id,
+        "🔨 What are you auctioning? Pick a product from your profile.",
+        reply_markup={"inline_keyboard": rows},
+    )
+
+
+def handle_auction_step(chat_id, user_id, text, state, user=None):
+    """Text nudges during the /auction flow. Media is handled by
+    handle_flow_media; this just answers stray text. Returns True if
+    the message was consumed."""
+    draft = (state.get("auction_draft") or {}).get(str(user_id))
+    if not draft:
+        return False
+    step = draft.get("step")
+    if step == "product":
+        send_message(
+            chat_id, "Tap a product above to pick it — or /cancel to stop."
+        )
+        return True
+    if step == "video":
+        send_message(
+            chat_id, "Send the auction video now — or /cancel to stop."
+        )
+        return True
+    if step == "cover":
+        send_message(
+            chat_id, "Send a cover photo for the video — or /cancel to stop."
+        )
+        return True
+    return False
+
+
+def parse_bid_amount(text):
+    """A typed auction bid: a whole number of Ks, no range cap (the
+    minimum-bid rule is checked in place_auction_bid)."""
+    cleaned = (text or "").replace(",", "").replace(" ", "").strip()
+    if not cleaned.isdigit():
+        return None
+    return int(cleaned)
+
+
+def send_bid_prompt(chat_id, auction):
+    """The DM bid screen for one auction: current bid, minimum next
+    bid, the bidder's balance, quick bids (+1,000 / +5,000 / +10,000
+    over the current bid) and a typed-amount option. Bids come from
+    the bot balance only."""
+    current = (
+        auction.get("current_bid")
+        if auction.get("current_bidder")
+        else auction.get("start", AUCTION_START_KS)
+    )
+    min_next = current + AUCTION_MIN_INCREMENT_KS
+    balance = get_balance(chat_id)
+    left = max(0, auction.get("ends_at", 0) - int(time.time()))
+    seller_name = auction.get("seller_name", "Seller")
+    product = PRODUCTS.get(auction.get("product"), auction.get("product", ""))
+    if auction.get("current_bidder"):
+        cur_line = (
+            f"Current bid: {fmt_ks(current)} by "
+            f"{auction.get('current_bidder_name', 'Someone')}"
+        )
+    else:
+        cur_line = (
+            "No bids yet — starting bid "
+            f"{fmt_ks(auction.get('start', AUCTION_START_KS))}"
+        )
+    text = (
+        f"🔨 Auction — {seller_name}'s {product}\n\n"
+        f"{cur_line}\n"
+        f"Minimum next bid: {fmt_ks(min_next)}\n"
+        f"Ends in: {fmt_countdown(left)}\n"
+        f"Your balance: {fmt_ks(balance)}\n\n"
+        "Bids come from your bot balance only — top up with /topup "
+        "first if you're short. If someone outbids you, your bid is "
+        "refunded to your balance automatically.\n\n"
+        "Win and the video is yours privately in this chat."
+    )
+    rows = []
+    for amount in (min_next, current + 5000, current + 10000):
+        rows.append(
+            [
+                {
+                    "text": f"💰 Bid {fmt_ks(amount)}",
+                    "callback_data": f"aucbidamt:{auction['id']}:{amount}",
+                }
+            ]
+        )
+    rows.append(
+        [
+            {
+                "text": "✏️ Type an amount",
+                "callback_data": f"aucbidtype:{auction['id']}",
+            }
+        ]
+    )
+    rows.append([{"text": "💰 Top up balance", "callback_data": "topup"}])
+    send_message(chat_id, text, reply_markup={"inline_keyboard": rows})
+
+
+def place_auction_bid(state, auction, bidder_id, amount, user=None):
+    """Validate and apply one auction bid (balance only, escrowed).
+    Returns (ok, message for the bidder). On a valid bid the previous
+    leader is refunded immediately, the card is updated, and the
+    seller is told."""
+    now = int(time.time())
+    if auction.get("status") != "live" or now >= auction.get("ends_at", 0):
+        return False, "That auction has ended."
+    if str(bidder_id) == str(auction.get("seller")):
+        return False, "You can't bid on your own auction."
+    if str(bidder_id) == str(auction.get("current_bidder")):
+        return (
+            False,
+            "You're already the highest bidder — wait to be outbid first.",
+        )
+    current = (
+        auction.get("current_bid")
+        if auction.get("current_bidder")
+        else auction.get("start", AUCTION_START_KS)
+    )
+    min_next = current + AUCTION_MIN_INCREMENT_KS
+    if amount < min_next:
+        return False, f"Minimum bid is {fmt_ks(min_next)}."
+    balance = get_balance(bidder_id)
+    if balance < amount:
+        return (
+            False,
+            f"Your balance is {fmt_ks(balance)} — top up with /topup "
+            "first, then bid again.",
+        )
+    prev_bidder = auction.get("current_bidder")
+    prev_bid = int(auction.get("current_bid", 0))
+    if change_balance(bidder_id, -amount) is None:
+        return False, "Not enough balance — top up with /topup first."
+    if prev_bidder:
+        change_balance(prev_bidder, prev_bid)
+        send_message(
+            prev_bidder,
+            f"😕 You've been outbid on "
+            f"{auction.get('seller_name', 'Seller')}'s "
+            f"{PRODUCTS.get(auction.get('product'), auction.get('product', ''))} "
+            f"auction — your {fmt_ks(prev_bid)} was refunded to your "
+            "balance.",
+        )
+    product = PRODUCTS.get(auction.get("product"), auction.get("product", ""))
+    auction["current_bid"] = amount
+    auction["current_bidder"] = str(bidder_id)
+    auction["current_bidder_name"] = (
+        (user or {}).get("first_name")
+        or (user or {}).get("username")
+        or "Someone"
+    )
+    auction["current_bidder_username"] = (user or {}).get("username", "")
+    save_state(state)
+    edit_auction_card(state, auction)
+    send_message(
+        auction["seller"],
+        f"💰 New bid: {fmt_ks(amount)} on your {product} auction by "
+        f"{auction['current_bidder_name']}.",
+    )
+    return (
+        True,
+        f"✅ You're the highest bidder at {fmt_ks(amount)} for "
+        f"{product}! If someone outbids you, your bid is refunded "
+        "automatically.",
+    )
+
+
+def _refund_auction_leader(state, auction):
+    """Give the current highest bidder their escrowed bid back."""
+    bidder = auction.get("current_bidder")
+    bid = int(auction.get("current_bid", 0))
+    if bidder and bid:
+        change_balance(bidder, bid)
+        send_message(
+            bidder,
+            f"↩️ Your bid of {fmt_ks(bid)} on "
+            f"{auction.get('seller_name', 'Seller')}'s "
+            f"{PRODUCTS.get(auction.get('product'), auction.get('product', ''))} "
+            "auction was refunded — the auction was removed.",
+        )
+    auction["current_bidder"] = None
+    auction["current_bid"] = auction.get("start", AUCTION_START_KS)
+
+
+def _delete_auction_card(state, auction):
+    """Delete the auction card message from the group, if it is still
+    there."""
+    group = state.get("group") or GROUP_CHAT_ID
+    if group and auction.get("message_id"):
+        api(
+            "deleteMessage",
+            {"chat_id": group, "message_id": auction["message_id"]},
+        )
+
+
+def _close_auction(state, auction, now):
+    """The 15-minute deadline hit. With a winner: the escrowed bid
+    goes to the seller and the video is delivered privately to the
+    winner — unless an admin won, in which case it is revealed in
+    the whole group. With no bids: close the auction, leave the post
+    up (the 24-hour sweep deletes it later)."""
+    group = state.get("group") or GROUP_CHAT_ID
+    bidder = auction.get("current_bidder")
+    bid = int(auction.get("current_bid", 0))
+    seller = str(auction.get("seller"))
+    product = PRODUCTS.get(auction.get("product"), auction.get("product", ""))
+    winner_name = auction.get("current_bidder_name") or "Someone"
+    if bidder:
+        change_balance(seller, bid)
+        record_event(
+            {
+                "kind": "auction",
+                "buyer": str(bidder),
+                "buyer_username": auction.get("current_bidder_username", ""),
+                "seller": seller,
+                "seller_name": auction.get("seller_name", "Seller"),
+                "product": auction.get("product"),
+                "ks": bid,
+                "method": "Balance (auction)",
+                "status": "paid",
+                "ts": now,
+            }
+        )
+        auction["status"] = "sold"
+        if is_admin(bidder):
+            if group:
+                api(
+                    "sendVideo",
+                    {
+                        "chat_id": group,
+                        "video": auction["video_file_id"],
+                        "caption": (
+                            f"🔨 Auction won by {winner_name} — revealed "
+                            f"in the group: {auction.get('seller_name', 'Seller')}'s "
+                            f"{product} for {fmt_ks(bid)}"
+                        ),
+                        "protect_content": True,
+                    },
+                )
+                send_message(
+                    bidder,
+                    f"🎉 You won the auction for {product} at "
+                    f"{fmt_ks(bid)} — revealed in the group for everyone "
+                    "to see.",
+                )
+            else:
+                api(
+                    "sendVideo",
+                    {
+                        "chat_id": bidder,
+                        "video": auction["video_file_id"],
+                        "caption": (
+                            f"🎉 You won the auction! "
+                            f"{auction.get('seller_name', 'Seller')}'s "
+                            f"{product} — {fmt_ks(bid)}."
+                        ),
+                        "protect_content": True,
+                    },
+                )
+                send_message(
+                    bidder,
+                    f"🎉 You won the auction for {product} at "
+                    f"{fmt_ks(bid)}. The group isn't linked, so here it "
+                    "is privately.",
+                )
+        else:
+            api(
+                "sendVideo",
+                {
+                    "chat_id": bidder,
+                    "video": auction["video_file_id"],
+                    "caption": (
+                        f"🎉 You won the auction! "
+                        f"{auction.get('seller_name', 'Seller')}'s "
+                        f"{product} — {fmt_ks(bid)}. This video is yours "
+                        "privately."
+                    ),
+                    "protect_content": True,
+                },
+            )
+            send_message(
+                bidder,
+                f"🎉 You won the auction for {product} at "
+                f"{fmt_ks(bid)}! The video is in your private chat — "
+                "enjoy. 🙏",
+            )
+        send_message(
+            seller,
+            f"💰 Your {product} auction sold for {fmt_ks(bid)} to "
+            f"{winner_name} — credited to your balance.",
+        )
+        _delete_auction_card(state, auction)
+    else:
+        auction["status"] = "ended"
+        edit_auction_card(state, auction)
+    save_state(state)
+
+
+def sweep_auctions(state, now=None):
+    """Deadline sweep for auctions — runs every polling iteration, so
+    no external cron is needed. Closes 15-minute auctions at their
+    deadline and deletes unsold auction posts 24 hours after posting.
+    Fixed-price cards are never touched. `now` is injectable for
+    tests. Returns True if anything changed."""
+    now = int(time.time()) if now is None else int(now)
+    changed = False
+    for auction in list((state.get("auctions") or {}).values()):
+        status = auction.get("status")
+        if status == "live":
+            profile = get_profile(auction.get("seller"))
+            if not profile or profile.get("status") != "live":
+                _refund_auction_leader(state, auction)
+                _delete_auction_card(state, auction)
+                auction["status"] = "removed"
+                changed = True
+                continue
+            if now >= auction.get("ends_at", 0):
+                _close_auction(state, auction, now)
+                changed = True
+        elif status == "ended":
+            if now >= auction.get("posted_at", 0) + AUCTION_POST_TTL_S:
+                _delete_auction_card(state, auction)
+                auction["status"] = "expired"
+                changed = True
+    if changed:
+        save_state(state)
+    return changed
+
+
 def send_sellers_list(chat_id):
     profiles = load_profiles()
     live = [p for p in profiles.values() if p.get("status") == "live"]
@@ -816,7 +1474,8 @@ def send_sellers_list(chat_id):
         )
         lines.append(
             f"👤 {p.get('name', 'Seller')}, "
-            f"{fmt_age_role(p.get('age'), p.get('role'))} — {products}"
+            f"{fmt_age_role(p.get('age'), p.get('role'))} • "
+            f"{seller_title_line(p.get('user_id'))} — {products}"
         )
         rows.append(
             [
@@ -933,40 +1592,8 @@ def start_sell(chat_id, user_id, state, user=None):
     """Entry for /sell (and the 'Post to group' button). Any member
     with a LIVE profile can post — no approval, no Zoom class needed.
     The group must be linked, or the seller is told plainly."""
-    profile = get_profile(user_id)
-    if not profile:
-        send_message(
-            chat_id,
-            "You don't have a seller profile yet — make one with "
-            "/profile first. It goes live straight away.",
-        )
-        return
-    if profile.get("status") != "live":
-        if profile.get("status") == "removed":
-            send_message(
-                chat_id,
-                "Your profile was removed by an admin — make a new "
-                "one with /profile and you can post again.",
-            )
-        else:
-            send_message(
-                chat_id,
-                "Your profile isn't live yet — make a new one with "
-                "/profile and it goes live straight away.",
-            )
-        return
-    # Sellers with an older profile (no age / role / photos) finish
-    # it first — age, role and 3 photos are required to post.
-    if profile_missing_fields(profile):
-        start_profile_completion(chat_id, user_id, state)
-        return
-    group = state.get("group") or GROUP_CHAT_ID
-    if not group:
-        send_message(
-            chat_id,
-            "The group isn't linked yet — ask an admin to link it "
-            "(/setgroup), then try /sell again.",
-        )
+    profile = _seller_ready(chat_id, user_id, state)
+    if profile is None:
         return
     products = profile.get("products", {})
     if not products:
@@ -976,6 +1603,7 @@ def start_sell(chat_id, user_id, state, user=None):
             "first.",
         )
         return
+    state.get("auction_draft", {}).pop(str(user_id), None)
     state.setdefault("card_draft", {})[str(user_id)] = {
         "step": "product",
         "seller_name": profile.get("name", "Seller"),
@@ -995,6 +1623,30 @@ def start_sell(chat_id, user_id, state, user=None):
         "What are you posting to the group? Pick a product from "
         "your profile.",
         reply_markup={"inline_keyboard": rows},
+    )
+
+
+def send_optname_prompt(chat_id, draft, profile):
+    """Ask the seller to name the first option of a fixed-price card
+    (or take the profile price with one tap)."""
+    key = draft.get("product")
+    price = (profile.get("products") or {}).get(key)
+    send_message(
+        chat_id,
+        f"Name your first option for {PRODUCTS.get(key, key)} — e.g. "
+        "A, B, C, D, or a size or flavour.\n\n"
+        f"Or post it at your profile price ({fmt_ks(price)}) with "
+        "one tap below.",
+        reply_markup={
+            "inline_keyboard": [
+                [
+                    {
+                        "text": f"Use profile price — {fmt_ks(price)}",
+                        "callback_data": "sellprof",
+                    }
+                ]
+            ]
+        },
     )
 
 
@@ -2609,6 +3261,48 @@ def handle_flow_media(msg, state):
             save_state(state)
             send_sell_preview(chat_id, user_id, cdraft)
             return True
+
+    # ---- auction video / cover photo ----
+    adraft = (state.get("auction_draft") or {}).get(str(user_id))
+    if adraft and adraft.get("step") == "video":
+        if photo:
+            send_message(
+                chat_id,
+                "Auctions are for videos — send a video for the auction.",
+            )
+            return True
+        if video:
+            adraft["video_file_id"] = video["file_id"]
+            thumb = video.get("thumb") or {}
+            if thumb.get("file_id"):
+                adraft["cover_file_id"] = thumb["file_id"]
+                adraft["step"] = "confirm"
+                save_state(state)
+                send_auction_preview(chat_id, user_id, adraft)
+            else:
+                adraft["step"] = "cover"
+                save_state(state)
+                send_message(
+                    chat_id,
+                    "Got the video — it has no cover photo, so send "
+                    "one now (this is the unblurred cover everyone "
+                    "sees on the auction card).",
+                )
+            return True
+    if adraft and adraft.get("step") == "cover":
+        if video:
+            send_message(
+                chat_id,
+                "That was a video — the cover needs to be a photo. "
+                "Send a cover photo.",
+            )
+            return True
+        if photo:
+            adraft["cover_file_id"] = photo[-1]["file_id"]
+            adraft["step"] = "confirm"
+            save_state(state)
+            send_auction_preview(chat_id, user_id, adraft)
+            return True
     return False
 
 
@@ -2723,6 +3417,27 @@ def handle_start(chat_id, text, state, user=None):
         )
         return
 
+    if arg.startswith("auction_"):
+        aid = arg[len("auction_"):]
+        auction = (state.get("auctions") or {}).get(aid)
+        if not auction or auction.get("status") != "live":
+            send_message(
+                chat_id,
+                "That auction has ended — check the group for the latest one.",
+            )
+            return
+        if int(time.time()) >= auction.get("ends_at", 0):
+            send_message(
+                chat_id,
+                "That auction has ended — check the group for the latest one.",
+            )
+            return
+        if str(chat_id) == str(auction.get("seller")):
+            send_message(chat_id, "That's your own auction.")
+            return
+        send_bid_prompt(chat_id, auction)
+        return
+
     if arg == "balance":
         show_balance(chat_id)
         return
@@ -2766,6 +3481,8 @@ def handle_start(chat_id, text, state, user=None):
         "options (A, B, C, D) with your own prices and a product "
         "photo or video. Cards show only a blurred sneak peek; the "
         "full version is revealed in the group when someone buys it. "
+        "🔨 Or run an auction with /auction — starting bid 5,000 Ks, "
+        "15 minutes, highest bidder wins the video privately. "
         "Browse with /sellers, check your balance with /balance.\n\n"
         "💸 Cash out your balance as USDT with /cashout, or sell your "
         "USDT to Arkar with /sellusdt — both at 1 USDT = 4,500 Ks.",
@@ -2789,6 +3506,14 @@ def handle_help(chat_id):
         "and add a product photo or video. The card shows only a "
         "blurred sneak peek; the full version is revealed in the "
         "group when someone buys it. "
+        "Or run a video auction with /auction: starting bid 5,000 Ks, "
+        "15 minutes, bids from your bot balance — highest bidder wins "
+        "the video privately (an admin win is revealed in the group "
+        "instead). The cover is the video's own thumbnail, unblurred. "
+        "Unsold auction posts are deleted after 24 hours. "
+        "Sellers earn a title from their sales — New Seller, Seller, "
+        "Rising Star, Top Seller, Star Seller, Legend — shown with "
+        "their sales count on their profile and every post. "
         "Buyers tap an option on the card and pay. Buyers pay from "
         "their bot balance, with Stars, with USDT, or directly to "
         "the seller (receipt photo or USDT hash). Top up with /topup.\n\n"
@@ -2806,6 +3531,7 @@ def handle_help(chat_id):
         "/profile — make/edit your seller profile\n"
         "/myprofile — your profile + its status\n"
         "/sell — post a product card to the group\n"
+        "/auction — post a video auction (start 5,000 Ks, 15 minutes)\n"
         "/sellers — live sellers\n"
         "/balance — your bot balance\n"
         "/topup — top up by Stars or USDT\n"
@@ -2884,6 +3610,8 @@ def handle_message(msg, state):
         state.get("cashout_draft", {}).pop(str(user_id), None)
         state.get("sell_draft", {}).pop(str(user_id), None)
         state.get("card_draft", {}).pop(str(user_id), None)
+        state.get("auction_draft", {}).pop(str(user_id), None)
+        state.get("bid_draft", {}).pop(str(user_id), None)
         pending = (state.get("pending_usdt") or {}).get(str(user_id))
         if pending and pending.get("kind") == "sellusdt":
             state["pending_usdt"].pop(str(user_id), None)
@@ -2934,6 +3662,10 @@ def handle_message(msg, state):
         start_sell(chat_id, user_id, state, user=msg.get("from", {}))
         return
 
+    if text == "/auction":
+        start_auction(chat_id, user_id, state, user=msg.get("from", {}))
+        return
+
     if text == "/sellers":
         send_sellers_list(chat_id)
         return
@@ -2964,6 +3696,29 @@ def handle_message(msg, state):
         )
         return
 
+    b_draft = (state.get("bid_draft") or {}).get(str(user_id))
+    if b_draft and not text.startswith("/"):
+        amount = parse_bid_amount(text)
+        if amount is None:
+            send_message(
+                chat_id,
+                "Send your bid as a whole number in Ks, or /cancel.",
+            )
+            return
+        auction = (state.get("auctions") or {}).get(b_draft.get("auction"))
+        if not auction:
+            state.get("bid_draft", {}).pop(str(user_id), None)
+            save_state(state)
+            send_message(chat_id, "That auction is gone.")
+            return
+        ok, msg = place_auction_bid(
+            state, auction, user_id, amount, user=msg.get("from", {})
+        )
+        state.get("bid_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(chat_id, msg)
+        return
+
     co_draft = (state.get("cashout_draft") or {}).get(str(user_id))
     if co_draft and (not text.startswith("/") or text == "/keep"):
         handle_cashout_step(chat_id, user_id, text, state, user=msg.get("from", {}))
@@ -2979,6 +3734,11 @@ def handle_message(msg, state):
         not text.startswith("/") or text in ("/done", "/skip")
     ):
         handle_card_step(chat_id, user_id, text, state, user=msg.get("from", {}))
+        return
+
+    a_draft = (state.get("auction_draft") or {}).get(str(user_id))
+    if a_draft and not text.startswith("/"):
+        handle_auction_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
 
     draft = (state.get("profile_draft") or {}).get(str(user_id))
@@ -3258,6 +4018,19 @@ def handle_message(msg, state):
                     f"{fmt_time(p['ts'])} — {name} — sold "
                     f"{p.get('usdt')} USDT → {fmt_ks(p.get('mmk', 0))} — "
                     f"{p['status']}"
+                )
+            elif kind == "auction":
+                buyer = (
+                    f"@{p['buyer_username']}"
+                    if p.get("buyer_username")
+                    else p["buyer"]
+                )
+                item = PRODUCTS.get(p["product"], p["product"])
+                lines.append(
+                    f"{fmt_time(p['ts'])} — {buyer} → "
+                    f"{p.get('seller_name', p['seller'])} — "
+                    f"🔨 Auction {item} — "
+                    f"{fmt_ks(p['ks'])} — {p['method']} — {p['status']}"
                 )
             else:
                 name = (
@@ -3597,12 +4370,20 @@ def handle_callback(query, state):
                             "message_id": card["message_id"],
                         },
                     )
+        # And their live auctions — refund the highest bidder first.
+        for auction in (state.get("auctions") or {}).values():
+            if str(auction.get("seller")) == str(target) and auction.get(
+                "status"
+            ) == "live":
+                _refund_auction_leader(state, auction)
+                _delete_auction_card(state, auction)
+                auction["status"] = "removed"
         save_state(state)
         send_message(
             target,
             "❌ Your seller profile was removed by an admin — your "
-            "cards are off the group and you can't post new ones "
-            "until you make a new profile with /profile.",
+            "cards and auctions are off the group and you can't post "
+            "new ones until you make a new profile with /profile.",
         )
         answer_callback(qid, "Seller removed — cards taken down.")
         return
@@ -3780,27 +4561,73 @@ def handle_callback(query, state):
             return
         draft["product"] = key
         draft["options"] = []
-        draft["step"] = "optname"
+        draft["step"] = "type"
         save_state(state)
-        price = profile["products"][key]
         send_message(
             user_id,
-            f"Name your first option for {PRODUCTS.get(key, key)} — e.g. "
-            "A, B, C, D, or a size or flavour.\n\n"
-            f"Or post it at your profile price ({fmt_ks(price)}) with "
-            "one tap below.",
+            f"Posting {PRODUCTS.get(key, key)} — fixed price card or "
+            "auction?\n\n"
+            "🛍️ Fixed price card: name your options (A, B, C, D) with "
+            "your own prices — buyers tap an option to buy it.\n"
+            "🔨 Auction: starting bid 5,000 Ks, 15 minutes, highest "
+            "bidder wins the video privately.",
             reply_markup={
                 "inline_keyboard": [
                     [
                         {
-                            "text": f"Use profile price — {fmt_ks(price)}",
-                            "callback_data": "sellprof",
+                            "text": "🛍️ Fixed price card",
+                            "callback_data": "selltype:fixed",
                         }
-                    ]
+                    ],
+                    [
+                        {
+                            "text": "🔨 Auction",
+                            "callback_data": "selltype:auction",
+                        }
+                    ],
                 ]
             },
         )
-        answer_callback(qid, "Name your first option.")
+        answer_callback(qid, "Fixed price or auction?")
+        return
+
+    # ---- /sell: fixed price card or auction? ----
+    if data.startswith("selltype:"):
+        kind = data.split(":", 1)[1]
+        draft = (state.get("card_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "type":
+            answer_callback(qid, "No card in progress — /sell to start.")
+            return
+        if kind == "fixed":
+            draft["step"] = "optname"
+            save_state(state)
+            profile = get_profile(user_id)
+            send_optname_prompt(user_id, draft, profile)
+            answer_callback(qid, "Name your first option.")
+            return
+        if kind == "auction":
+            product = draft.get("product")
+            state.get("card_draft", {}).pop(str(user_id), None)
+            state.setdefault("auction_draft", {})[str(user_id)] = {
+                "step": "video",
+                "seller_name": draft.get("seller_name", "Seller"),
+                "product": product,
+            }
+            save_state(state)
+            send_message(
+                user_id,
+                f"🔨 Auction for {PRODUCTS.get(product, product)} — send "
+                "the video now.\n\n"
+                "Starting bid is fixed at 5,000 Ks. The auction runs 15 "
+                "minutes once posted. The highest bidder wins the video "
+                "privately — it is NOT revealed in the group (unless an "
+                "admin wins). The cover photo is the video's own "
+                "thumbnail, unblurred.\n\n"
+                "Or /cancel.",
+            )
+            answer_callback(qid, "Send the video.")
+            return
+        answer_callback(qid, "Unknown choice.")
         return
 
     if data == "sellprof":
@@ -3942,6 +4769,197 @@ def handle_callback(query, state):
                 {"chat_id": chat, "message_id": card["message_id"]},
             )
         answer_callback(qid, "Card removed.")
+        return
+
+    # ---- auctions: post, bid, remove ----
+    if data.startswith("aucprod:"):
+        key = data.split(":", 1)[1]
+        draft = (state.get("auction_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "product":
+            answer_callback(qid, "No auction in progress — /auction to start.")
+            return
+        profile = get_profile(user_id)
+        if not profile or profile.get("status") != "live":
+            answer_callback(
+                qid, "Your profile is not live any more.", show_alert=True
+            )
+            return
+        if key not in (profile.get("products") or {}):
+            answer_callback(
+                qid, "That product is not on your profile.", show_alert=True
+            )
+            return
+        draft["product"] = key
+        draft["step"] = "video"
+        save_state(state)
+        send_message(
+            user_id,
+            f"🔨 Auction for {PRODUCTS.get(key, key)} — send the video now.\n\n"
+            "Starting bid is fixed at 5,000 Ks. The auction runs 15 "
+            "minutes once posted. The highest bidder wins the video "
+            "privately — it is NOT revealed in the group (unless an "
+            "admin wins). The cover photo is the video's own thumbnail, "
+            "unblurred.\n\n"
+            "Or /cancel.",
+        )
+        answer_callback(qid, "Send the video.")
+        return
+
+    if data == "auctpost":
+        draft = (state.get("auction_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "confirm" or not draft.get(
+            "video_file_id"
+        ):
+            answer_callback(qid, "No auction to post — /auction to start.")
+            return
+        profile = get_profile(user_id)
+        if not profile or profile.get("status") != "live":
+            state.get("auction_draft", {}).pop(str(user_id), None)
+            save_state(state)
+            answer_callback(
+                qid, "Your profile is not live any more.", show_alert=True
+            )
+            return
+        group = state.get("group") or GROUP_CHAT_ID
+        if not group:
+            answer_callback(
+                qid,
+                "The group isn't linked yet — ask an admin.",
+                show_alert=True,
+            )
+            return
+        state["auction_seq"] = state.get("auction_seq", 0) + 1
+        aid = f"a{state['auction_seq']}"
+        now = int(time.time())
+        auction = {
+            "id": aid,
+            "seller": str(user_id),
+            "seller_name": profile.get("name", "Seller"),
+            "age": profile.get("age"),
+            "role": profile.get("role"),
+            "product": draft["product"],
+            "video_file_id": draft["video_file_id"],
+            "cover_file_id": draft.get("cover_file_id"),
+            "start": AUCTION_START_KS,
+            "current_bid": AUCTION_START_KS,
+            "current_bidder": None,
+            "current_bidder_name": "",
+            "current_bidder_username": "",
+            "ends_at": now + AUCTION_DURATION_S,
+            "posted_at": now,
+            "message_id": None,
+            "status": "live",
+        }
+        state.setdefault("auctions", {})[aid] = auction
+        save_state(state)
+        mid, err = post_auction_to_group(state, auction)
+        if err:
+            auction["status"] = "failed"
+            save_state(state)
+            send_message(
+                user_id,
+                "Posting failed — is the bot an admin in the group? "
+                f"Telegram said: {err}",
+            )
+            answer_callback(qid, "Posting failed.")
+            return
+        auction["message_id"] = mid
+        state.get("auction_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(
+            user_id,
+            "✅ Auction posted to the group! 15 minutes — highest "
+            "bidder wins the video privately.",
+        )
+        answer_callback(qid, "Posted.")
+        return
+
+    if data == "auctcancel":
+        state.get("auction_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(user_id, "Cancelled — nothing was posted.")
+        answer_callback(qid, "Cancelled.")
+        return
+
+    if data.startswith("aucbidamt:"):
+        parts = data.split(":")
+        if len(parts) != 3:
+            answer_callback(qid, "Unknown button.")
+            return
+        _, aid, amount_s = parts
+        auction = (state.get("auctions") or {}).get(aid)
+        if not auction:
+            answer_callback(qid, "That auction is gone.", show_alert=True)
+            return
+        try:
+            amount = int(amount_s)
+        except ValueError:
+            answer_callback(qid, "Unknown amount.")
+            return
+        ok, msg = place_auction_bid(
+            state, auction, user_id, amount, user=query.get("from", {})
+        )
+        if ok:
+            answer_callback(qid, "Bid placed.")
+            send_message(user_id, msg)
+        else:
+            answer_callback(qid, msg, show_alert=True)
+        return
+
+    if data.startswith("aucbidtype:"):
+        aid = data.split(":", 1)[1]
+        auction = (state.get("auctions") or {}).get(aid)
+        if not auction or auction.get("status") != "live":
+            answer_callback(qid, "That auction has ended.", show_alert=True)
+            return
+        if str(user_id) == str(auction.get("seller")):
+            answer_callback(qid, "That's your own auction.", show_alert=True)
+            return
+        current = (
+            auction.get("current_bid")
+            if auction.get("current_bidder")
+            else auction.get("start", AUCTION_START_KS)
+        )
+        state.setdefault("bid_draft", {})[str(user_id)] = {"auction": aid}
+        save_state(state)
+        send_message(
+            user_id,
+            "How much do you bid? Minimum is "
+            f"{fmt_ks(current + AUCTION_MIN_INCREMENT_KS)} — send the "
+            "amount in Ks, or /cancel.",
+        )
+        answer_callback(qid, "Send your bid.")
+        return
+
+    if data.startswith("aucdel:"):
+        aid = data.split(":", 1)[1]
+        auction = (state.get("auctions") or {}).get(aid)
+        if not auction:
+            answer_callback(qid, "That auction is gone.", show_alert=True)
+            return
+        if str(user_id) != str(auction.get("seller")) and not is_admin(
+            user_id
+        ):
+            answer_callback(
+                qid,
+                "Only the seller or an admin can remove this.",
+                show_alert=True,
+            )
+            return
+        if auction.get("status") != "live":
+            answer_callback(qid, "Already removed.", show_alert=True)
+            return
+        _refund_auction_leader(state, auction)
+        _delete_auction_card(state, auction)
+        auction["status"] = "removed"
+        save_state(state)
+        if str(user_id) != str(auction.get("seller")):
+            send_message(
+                auction["seller"],
+                "❌ Your auction was removed by an admin — the highest "
+                "bidder was refunded.",
+            )
+        answer_callback(qid, "Auction removed.")
         return
 
     # ---- marketplace: browse / buy ----
@@ -4522,6 +5540,15 @@ def main():
                         dirty = True
             except Exception as e:
                 print(f"update error: {e}", flush=True)
+        # Auction deadlines + 24-hour post expiry run here, every
+        # polling iteration — no external cron is needed.
+        before_sweep = json.dumps(state, sort_keys=True)
+        try:
+            sweep_auctions(state)
+        except Exception as e:
+            print(f"auction sweep error: {e}", flush=True)
+        if json.dumps(state, sort_keys=True) != before_sweep:
+            dirty = True
         if dirty:
             save_state(state)
 

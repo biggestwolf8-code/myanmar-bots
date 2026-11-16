@@ -38,6 +38,7 @@ Students:
 - `/profile` — make/edit your seller profile (guided steps)
 - `/myprofile` — your profile + its status
 - `/sell` — post a product card to the group (live profile only)
+- `/auction` — post a video auction to the group (live profile only)
 - `/sellers` — live sellers + their products
 - `/balance` — your bot balance
 - `/topup` — top up by Stars ($1/$2/$5/$10/$20) or USDT
@@ -219,6 +220,51 @@ approved, not when it is sent). Cards with no media have nothing
 to reveal; old v4 cards (no media on record) are handled
 gracefully.
 
+## v6 — auction house + seller titles
+
+**Auction house** — `/auction` (or pick "🔨 Auction" after choosing
+a product in `/sell`) posts a video auction instead of a fixed-price
+card. Same gates as `/sell`: a live profile and a linked group.
+- **Flow** — `/auction` → pick a product → send the video → the
+  cover photo is the video's own thumbnail, **unblurred** (if the
+  video has no thumbnail, the seller sends a cover photo) → confirm
+  the preview → the bot posts the auction card to the group.
+- **Rules** — starting bid is fixed at **5,000 Ks**. The auction
+  runs **15 minutes only**. A new bid must beat the current bid by
+  at least **1,000 Ks** (quick bids: +1,000 / +5,000 / +10,000 over
+  the current bid, or a typed amount). Bids come from the bidder's
+  **bot balance only** — top up with `/topup` (Stars/USDT) first if
+  short. A bid is escrowed: the bidder's balance is debited at once
+  and the previous highest bidder is refunded immediately. The
+  seller cannot bid on their own auction, and the current leader
+  cannot bid again until someone outbids them.
+- **Winning** — at the 15-minute deadline the escrowed bid goes to
+  the seller's balance and the video is sent **privately to the
+  winner's DM** (`protect_content`) — it is NOT revealed in the
+  group. **Exception: if an admin wins, the video IS revealed in
+  the whole group** (posted there with `protect_content`). The
+  auction card is deleted at once when someone wins.
+- **No bids** — the auction closes, the post stays up, and the
+  24-hour sweep deletes it 24 hours after posting. Fixed-price
+  cards are never auto-deleted.
+- **Removed mid-auction** — if the seller is removed (admin) the
+  highest bidder is refunded and the card is deleted.
+- **Sweeps** — the deadline + 24-hour sweeps run inside the
+  polling loop (`sweep_auctions` every iteration) — no external
+  cron. Auction sales are recorded in `purchases.json` (kind
+  `auction`) and shown in `/sales`.
+
+**Seller titles** — every seller gets a title from their completed
+sales, computed live at render time from the sales records (market
+sales + auction sales, both status `paid`; class session packs do
+NOT count), so titles upgrade automatically — no stored title to
+go stale:
+- 0 sold: 🆕 New Seller · 1–4: 🛍️ Seller · 5–9: 🌟 Rising Star ·
+  10–24: 🔥 Top Seller · 25–49: 👑 Star Seller · 50+: 💎 Legend
+- Shown as "\<title\> • \<N\> sold" on the seller's profile card,
+  `/myprofile`, every fixed-price card, every auction card, the
+  `/sellers` list and the `/board` lines.
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
@@ -252,12 +298,17 @@ Environment variables:
 
 JSON files in `DATA_DIR` (same pattern as daddy-bot):
 `state.json` (group, sessions, pending payments, receipts, profile
-drafts, cashouts, sellusdt, cards, card drafts), `credits.json`,
+drafts, cashouts, sellusdt, cards, card drafts, auctions, auction
+drafts, bid drafts), `credits.json`,
 `purchases.json` (kinds: `pack`, `market`, `topup`, `cashout`,
-`sellusdt`; market sales carry an `option` field when bought from a
+`sellusdt`, `auction`; market sales carry an `option` field when bought from a
 card option), `used_tx.json`, `users.json`, `profiles.json` (seller
 profiles + status; each profile also holds `age`, `role`, `photos`
 — 3 file_ids), `balances.json` (user id → balance in Ks). Cards in
 `state.json` also hold `age`/`role` (snapshot), `media_type`,
 `media_file_id` (full version), `preview_file_id` (blurred) and
-`revealed` (false until the first completed purchase).
+`revealed` (false until the first completed purchase). Auctions in
+`state.json` hold `video_file_id`, `cover_file_id` (video thumbnail,
+unblurred), `start` (5,000), `current_bid` / `current_bidder`,
+`ends_at`, `posted_at`, `message_id` and `status`
+(`live` / `ended` / `sold` / `expired` / `removed`).
