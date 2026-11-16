@@ -121,7 +121,7 @@ v7 — group-buy pool ("fundraiser pool"):
   DM — it is NEVER revealed in the group. The pool card is deleted
   at once. No deadline — a pool stays open until it fills; if the
   seller or an admin removes it, every contributor is refunded
-  what they put in. Pool videos must be 1 to 5 minutes (same rule
+  what they put in. Pool videos must be 1 to 30 minutes (same rule
   as auctions); the cover is the video's own thumbnail, UNBLURRED.
   A completed pool counts as ONE sale for the seller's title.
 
@@ -1045,14 +1045,14 @@ def reveal_card_purchase(state, card_id, option_name, buyer_name):
 # bid by at least 1,000 Ks. An auction runs 15 minutes only. An
 # unsold auction post stays up 24 hours after posting, then the
 # sweep deletes it. Fixed-price cards are never auto-deleted.
-# Auction videos must be 1 to 5 minutes long; the card shows the
+# Auction videos must be 1 to 30 minutes long; the card shows the
 # length in whole minutes (e.g. "⏱️ 3 min").
 AUCTION_START_KS = 5000
 AUCTION_MIN_INCREMENT_KS = 1000
 AUCTION_DURATION_S = 15 * 60
 AUCTION_POST_TTL_S = 24 * 3600
 AUCTION_MIN_VIDEO_S = 60
-AUCTION_MAX_VIDEO_S = 300
+AUCTION_MAX_VIDEO_S = 1800
 
 # Group-buy pool ("fundraiser pool"): an expensive video at a
 # SELLER-SET price, 50,000–500,000 Ks. Each member contributes
@@ -1063,7 +1063,7 @@ AUCTION_MAX_VIDEO_S = 300
 # the video goes privately to every contributor — NEVER revealed
 # in the group. No deadline; removing the pool refunds every
 # contributor the exact amount they put in. Pool videos use the
-# same 1–5 minute rule as auctions (AUCTION_MIN/MAX_VIDEO_S).
+# same 1–30 minute rule as auctions (AUCTION_MIN/MAX_VIDEO_S).
 POOL_MIN_PRICE_KS = 50000
 POOL_MAX_PRICE_KS = 500000
 POOL_MIN_CONTRIB_KS = 1000
@@ -1381,7 +1381,7 @@ def handle_auction_step(chat_id, user_id, text, state, user=None):
     if step == "video":
         send_message(
             chat_id,
-            "Send the auction video now (1 to 5 minutes) — or /cancel "
+            "Send the auction video now (1 to 30 minutes) — or /cancel "
             "to stop.",
         )
         return True
@@ -2425,7 +2425,7 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
         send_message(
             chat_id,
             f"🤝 Pool for {PRODUCTS.get(draft.get('product'), draft.get('product', ''))} — "
-            f"price {fmt_ks(price)} — send the video now (1 to 5 "
+            f"price {fmt_ks(price)} — send the video now (1 to 30 "
             "minutes).\n\n"
             "When the total raised hits "
             f"{fmt_ks(price)}, the video goes privately to everyone "
@@ -2437,7 +2437,7 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
     if step == "video":
         send_message(
             chat_id,
-            "Send the pool video now (1 to 5 minutes) — or /cancel "
+            "Send the pool video now (1 to 30 minutes) — or /cancel "
             "to stop.",
         )
         return True
@@ -3459,8 +3459,13 @@ def send_role_prompt(chat_id, keep=False):
 
 def profile_after_role(chat_id, draft, data, state, username):
     """After the role is set: a short 'complete your profile' flow
-    jumps straight to photos (or confirm); the full flow goes on to
-    products."""
+    jumps straight to photos (or confirm); an edit-menu draft goes
+    back to the menu; the full flow goes on to products."""
+    if draft.get("edit_menu"):
+        draft["step"] = "menu"
+        save_state(state)
+        send_profile_edit_menu(chat_id)
+        return
     if draft.get("complete"):
         if len(data.get("photos") or []) < 3:
             draft["step"] = "photos"
@@ -3476,6 +3481,8 @@ def profile_after_role(chat_id, draft, data, state, username):
             send_profile_confirm(chat_id, data, username)
     else:
         draft["step"] = "products"
+        # Show the seller's current products as already picked.
+        draft["selected"] = list(data.get("products", {}))
         save_state(state)
         send_message(
             chat_id,
@@ -3541,7 +3548,65 @@ def start_profile_completion(chat_id, user_id, state):
         )
 
 
-def start_profile(chat_id, user, state):
+def send_age_prompt(chat_id, draft, data):
+    """The age question. When editing and an age is already saved,
+    it says /skip keeps it."""
+    age = data.get("age")
+    if draft.get("editing") and age is not None:
+        send_message(
+            chat_id,
+            "How old are you? Send your age as a number. "
+            f"Or /skip to keep {age}.",
+        )
+    else:
+        send_message(
+            chat_id,
+            "How old are you? Send your age as a number.",
+        )
+
+
+def send_profile_edit_menu(chat_id):
+    """v7.7 — first-class profile editing: pick one section to
+    change, or review the profile. Only shown for an existing
+    profile; brand-new profiles keep the linear flow."""
+    send_message(
+        chat_id,
+        "What do you want to change?",
+        reply_markup={
+            "inline_keyboard": [
+                [
+                    {"text": "📝 Name", "callback_data": "profmenu:name"},
+                    {"text": "🎂 Age", "callback_data": "profmenu:age"},
+                ],
+                [
+                    {"text": "🏷️ Role", "callback_data": "profmenu:role"},
+                    {
+                        "text": "🛍️ Products & prices",
+                        "callback_data": "profmenu:products",
+                    },
+                ],
+                [
+                    {
+                        "text": "💳 Payment details",
+                        "callback_data": "profmenu:pay",
+                    },
+                    {
+                        "text": "📷 Photos",
+                        "callback_data": "profmenu:photos",
+                    },
+                ],
+                [
+                    {
+                        "text": "✅ Done — review profile",
+                        "callback_data": "profmenu:done",
+                    }
+                ],
+            ]
+        },
+    )
+
+
+def start_profile(chat_id, user, state, force_linear=False):
     existing = get_profile(chat_id)
     # A removed profile starts fresh — the seller makes a new one.
     if existing and existing.get("status") == "removed":
@@ -3556,6 +3621,18 @@ def start_profile(chat_id, user, state):
             "products": dict(existing.get("products", {})),
             "pay": dict(existing.get("pay", {})),
         }
+    if existing and not force_linear:
+        # v7.7 — editing an existing profile opens the edit menu,
+        # not the full flow from the name step.
+        state.setdefault("profile_draft", {})[str(chat_id)] = {
+            "step": "menu",
+            "data": data,
+            "editing": True,
+            "edit_menu": True,
+        }
+        save_state(state)
+        send_profile_edit_menu(chat_id)
+        return
     state.setdefault("profile_draft", {})[str(chat_id)] = {
         "step": "name",
         "data": data,
@@ -3722,6 +3799,86 @@ def try_skip_pay_steps(chat_id, draft, data, state):
     return False
 
 
+def price_prompt_for(draft, data, key):
+    """The price question for one product. When editing and the
+    product already has a price, it shows it and /skip keeps it."""
+    base = (
+        f"Price for {PRODUCTS.get(key, key)} in Ks "
+        f"({PRICE_MIN_KS:,}–{PRICE_MAX_KS:,})"
+    )
+    saved = (data.get("products") or {}).get(key)
+    if draft.get("editing") and saved is not None:
+        return (
+            base + f" — currently {fmt_ks(saved)}: send a new price, "
+            "or /skip to keep it."
+        )
+    return base + ":"
+
+
+def price_step_next(chat_id, draft, data, state):
+    """After one price is set (or kept): ask for the next product's
+    price, or finish the price section. In edit-menu mode the
+    section ends back at the menu; otherwise the v7.5 payment skip
+    applies and then the payment questions."""
+    queue = draft.get("price_queue", [])
+    if queue:
+        nxt = queue.pop(0)
+        draft["price_for"] = nxt
+        draft["price_queue"] = queue
+        save_state(state)
+        send_message(chat_id, price_prompt_for(draft, data, nxt))
+        return
+    if draft.get("edit_menu"):
+        draft["step"] = "menu"
+        save_state(state)
+        send_profile_edit_menu(chat_id)
+        return
+    # v7.5 — remember payment details: skip the questions when
+    # the answer is already known (admin constants / saved pay).
+    if try_skip_pay_steps(chat_id, draft, data, state):
+        return
+    draft["step"] = "pay_kbz"
+    save_state(state)
+    send_message(
+        chat_id,
+        "Payment details — buyers pay YOU directly, so these "
+        "are your own accounts.\n\n"
+        "KBZPay number? Send it, or /skip if you don't use KBZPay.",
+    )
+
+
+def open_pay_edit(user_id, draft, state):
+    """Re-open the payment questions (v7.5 change-payments path).
+    The pay_reask flag stops the remember-pay skip for the whole
+    re-entry pass; /skip on a step keeps the saved value."""
+    draft["step"] = "pay_kbz"
+    draft["pay_reask"] = True
+    save_state(state)
+    send_message(
+        user_id,
+        "Change your payment details — your saved values are kept "
+        "if you /skip a step.\n\n"
+        "KBZPay number? Send it, or /skip if you don't use KBZPay.",
+    )
+
+
+def open_photos_edit(user_id, draft, state):
+    """Re-open the photos step (v7.6 change-photos path). The
+    draft's saved photos stay in place; once 3 are saved, new
+    photos swap the oldest out, and /clearphotos removes them all
+    so the set can be redone."""
+    draft["step"] = "photos"
+    save_state(state)
+    send_message(
+        user_id,
+        "Change your photos — the ones you have stay saved for "
+        "now. Send new ones to swap the oldest out once 3 are "
+        "saved, or /clearphotos to remove them all and start "
+        "over.",
+    )
+    send_photos_step_prompt(user_id, draft.get("data", {}))
+
+
 def handle_profile_step(chat_id, text, state, user=None):
     """One step of the guided /profile flow. Returns True if the message
     was consumed by the flow."""
@@ -3738,6 +3895,11 @@ def handle_profile_step(chat_id, text, state, user=None):
         send_message(chat_id, "Profile setup cancelled — nothing was saved.")
         return True
 
+    if step == "menu":
+        # v7.7 — edit menu: tap an option above.
+        send_profile_edit_menu(chat_id)
+        return True
+
     if step == "name":
         if text == "/skip":
             if not draft.get("editing") or not data.get("name"):
@@ -3752,12 +3914,14 @@ def handle_profile_step(chat_id, text, state, user=None):
             return True
         else:
             data["name"] = text
+        if draft.get("edit_menu"):
+            draft["step"] = "menu"
+            save_state(state)
+            send_profile_edit_menu(chat_id)
+            return True
         draft["step"] = "age"
         save_state(state)
-        send_message(
-            chat_id,
-            "How old are you? Send your age as a number.",
-        )
+        send_age_prompt(chat_id, draft, data)
         return True
 
     if step == "age":
@@ -3772,6 +3936,11 @@ def handle_profile_step(chat_id, text, state, user=None):
                 )
                 return True
             data["age"] = int(text)
+        if draft.get("edit_menu"):
+            draft["step"] = "menu"
+            save_state(state)
+            send_profile_edit_menu(chat_id)
+            return True
         draft["step"] = "role"
         save_state(state)
         send_role_prompt(chat_id, keep=bool(draft.get("editing")))
@@ -3820,9 +3989,14 @@ def handle_profile_step(chat_id, text, state, user=None):
         if text == "/skip":
             photos = data.get("photos", [])
             if len(photos) >= 3:
-                draft["step"] = "confirm"
-                save_state(state)
-                send_profile_confirm(chat_id, data, username)
+                if draft.get("edit_menu"):
+                    draft["step"] = "menu"
+                    save_state(state)
+                    send_profile_edit_menu(chat_id)
+                else:
+                    draft["step"] = "confirm"
+                    save_state(state)
+                    send_profile_confirm(chat_id, data, username)
             else:
                 send_message(
                     chat_id,
@@ -3848,6 +4022,20 @@ def handle_profile_step(chat_id, text, state, user=None):
 
     if step == "price":
         current = draft.get("price_for")
+        if text == "/skip":
+            saved = (data.get("products") or {}).get(current)
+            if saved is not None:
+                # v7.7 — keep the saved price, move on.
+                price_step_next(chat_id, draft, data, state)
+                return True
+            if draft.get("editing"):
+                send_message(
+                    chat_id,
+                    "Please send a price first.",
+                )
+                return True
+            # Brand-new profile: fall through to the number check,
+            # which refuses /skip with the usual message.
         price = parse_price_ks(text)
         if price is None:
             send_message(
@@ -3858,30 +4046,7 @@ def handle_profile_step(chat_id, text, state, user=None):
             )
             return True
         data.setdefault("products", {})[current] = price
-        queue = draft.get("price_queue", [])
-        if queue:
-            nxt = queue.pop(0)
-            draft["price_for"] = nxt
-            draft["price_queue"] = queue
-            save_state(state)
-            send_message(
-                chat_id,
-                f"Price for {PRODUCTS.get(nxt, nxt)} in Ks "
-                f"({PRICE_MIN_KS:,}–{PRICE_MAX_KS:,}):",
-            )
-        else:
-            # v7.5 — remember payment details: skip the questions when
-            # the answer is already known (admin constants / saved pay).
-            if try_skip_pay_steps(chat_id, draft, data, state):
-                return True
-            draft["step"] = "pay_kbz"
-            save_state(state)
-            send_message(
-                chat_id,
-                "Payment details — buyers pay YOU directly, so these "
-                "are your own accounts.\n\n"
-                "KBZPay number? Send it, or /skip if you don't use KBZPay.",
-            )
+        price_step_next(chat_id, draft, data, state)
         return True
 
     # v7.5 — a draft already sitting in the payment questions (e.g. the
@@ -3951,9 +4116,14 @@ def handle_profile_step(chat_id, text, state, user=None):
                 )
             else:
                 draft.pop("pay_reask", None)
-                draft["step"] = "photos"
-                save_state(state)
-                send_photos_step_prompt(chat_id, data)
+                if draft.get("edit_menu"):
+                    draft["step"] = "menu"
+                    save_state(state)
+                    send_profile_edit_menu(chat_id)
+                else:
+                    draft["step"] = "photos"
+                    save_state(state)
+                    send_photos_step_prompt(chat_id, data)
         return True
 
     if step == "confirm":
@@ -4454,6 +4624,10 @@ def handle_flow_media(msg, state):
                 f"Photo {len(photos)}/3 saved — send {3 - len(photos)} "
                 "more.",
             )
+        elif pdraft.get("edit_menu"):
+            pdraft["step"] = "menu"
+            save_state(state)
+            send_profile_edit_menu(chat_id)
         else:
             pdraft["step"] = "confirm"
             save_state(state)
@@ -4517,7 +4691,7 @@ def handle_flow_media(msg, state):
                 send_message(
                     chat_id,
                     f"That video is {dur // 60} min {dur % 60:02d} s — "
-                    "auction videos must be 1 to 5 minutes. Send "
+                    "auction videos must be 1 to 30 minutes. Send "
                     "another video.",
                 )
                 return True
@@ -4556,7 +4730,7 @@ def handle_flow_media(msg, state):
             send_auction_preview(chat_id, user_id, adraft)
             return True
 
-    # ---- pool video / cover photo (same 1–5 min rule as auctions) ----
+    # ---- pool video / cover photo (same 1–30 min rule as auctions) ----
     pdraft = (state.get("pool_draft") or {}).get(str(user_id))
     if pdraft and pdraft.get("step") == "video":
         if photo:
@@ -4573,7 +4747,7 @@ def handle_flow_media(msg, state):
                 send_message(
                     chat_id,
                     f"That video is {dur // 60} min {dur % 60:02d} s — "
-                    "pool videos must be 1 to 5 minutes. Send "
+                    "pool videos must be 1 to 30 minutes. Send "
                     "another video.",
                 )
                 return True
@@ -4899,7 +5073,7 @@ def handle_help(chat_id):
         "Or run a video auction with /auction: starting bid 5,000 Ks, "
         "15 minutes, bids from your bot balance — highest bidder wins "
         "the video privately (an admin win is revealed in the group "
-        "instead). Auction videos must be 1 to 5 minutes, and the card "
+        "instead). Auction videos must be 1 to 30 minutes, and the card "
         "shows the length in minutes. The cover is the video's own "
         "thumbnail, unblurred. "
         "Unsold auction posts are deleted after 24 hours. "
@@ -4915,7 +5089,7 @@ def handle_help(chat_id):
         "your price. The card shows a live money meter (Ks raised / "
         "your price) and how many people have joined. /poolinfo "
         "<pool id> shows the full contributor list. Pool videos "
-        "must be 1 to 5 minutes, and the card shows the length in "
+        "must be 1 to 30 minutes, and the card shows the length in "
         "minutes. The cover is the video's own thumbnail, unblurred. "
         "No deadline — a pool stays open until it fills, or the "
         "seller removes it (everyone is refunded what they put in). "
@@ -5072,18 +5246,25 @@ def handle_message(msg, state):
             "declined": "❌ Declined",
             "removed": "❌ Removed by an admin",
         }.get(profile.get("status"), profile.get("status", "?"))
-        kb = None
+        kb_rows = []
         if profile.get("status") == "live":
-            kb = {
-                "inline_keyboard": [
-                    [
-                        {
-                            "text": "📣 Post to group",
-                            "callback_data": "sellstart",
-                        }
-                    ]
+            kb_rows.append(
+                [
+                    {
+                        "text": "📣 Post to group",
+                        "callback_data": "sellstart",
+                    }
                 ]
-            }
+            )
+        kb_rows.append(
+            [
+                {
+                    "text": "✏️ Edit profile",
+                    "callback_data": "myprofile_edit",
+                }
+            ]
+        )
+        kb = {"inline_keyboard": kb_rows}
         send_photos_group(user_id, profile.get("photos") or [])
         send_message(
             chat_id,
@@ -6155,16 +6336,74 @@ def handle_callback(query, state):
         if not selected:
             answer_callback(qid, "Pick at least one product first.", show_alert=True)
             return
+        # v7.7 — drop products the seller unchecked.
+        data = draft.setdefault("data", {})
+        data["products"] = {
+            k: v for k, v in (data.get("products") or {}).items()
+            if k in selected
+        }
         draft["step"] = "price"
         draft["price_for"] = selected[0]
         draft["price_queue"] = selected[1:]
         save_state(state)
         send_message(
             user_id,
-            f"Price for {PRODUCTS.get(selected[0], selected[0])} in Ks "
-            f"({PRICE_MIN_KS:,}–{PRICE_MAX_KS:,}):",
+            price_prompt_for(draft, data, selected[0]),
         )
         answer_callback(qid)
+        return
+
+    # ---- profile editing menu (v7.7) ----
+    if data.startswith("profmenu:"):
+        key = data.split(":", 1)[1]
+        draft = (state.get("profile_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "menu":
+            answer_callback(qid, "No edit menu open — /profile to start.")
+            return
+        pdata = draft.setdefault("data", {})
+        if key == "name":
+            draft["step"] = "name"
+            save_state(state)
+            send_message(
+                user_id,
+                "What's your display name? Send a new one, or /skip to "
+                f"keep \"{pdata.get('name', '')}\".",
+            )
+            answer_callback(qid, "Change name.")
+        elif key == "age":
+            draft["step"] = "age"
+            save_state(state)
+            send_age_prompt(user_id, draft, pdata)
+            answer_callback(qid, "Change age.")
+        elif key == "role":
+            draft["step"] = "role"
+            save_state(state)
+            send_role_prompt(user_id, keep=True)
+            answer_callback(qid, "Change role.")
+        elif key == "products":
+            draft["step"] = "products"
+            draft["selected"] = list(pdata.get("products", {}))
+            save_state(state)
+            send_message(
+                user_id,
+                "What do you sell? Tap each product you offer, "
+                "then Done.",
+                reply_markup=profile_draft_keyboard(draft),
+            )
+            answer_callback(qid, "Change products.")
+        elif key == "pay":
+            open_pay_edit(user_id, draft, state)
+            answer_callback(qid, "Change payment details.")
+        elif key == "photos":
+            open_photos_edit(user_id, draft, state)
+            answer_callback(qid, "Change photos.")
+        elif key == "done":
+            draft["step"] = "confirm"
+            save_state(state)
+            send_profile_confirm(user_id, pdata, username)
+            answer_callback(qid, "Review your profile.")
+        else:
+            answer_callback(qid, "Unknown option.")
         return
 
     # ---- profile submit / restart / cancel ----
@@ -6232,7 +6471,8 @@ def handle_callback(query, state):
     if data == "profedit":
         state.get("profile_draft", {}).pop(str(user_id), None)
         save_state(state)
-        start_profile(user_id, query.get("from", {}), state)
+        start_profile(user_id, query.get("from", {}), state,
+                      force_linear=True)
         answer_callback(qid, "Starting over.")
         return
 
@@ -6252,15 +6492,7 @@ def handle_callback(query, state):
         if not draft:
             answer_callback(qid, "Start with /profile first.")
             return
-        draft["step"] = "pay_kbz"
-        draft["pay_reask"] = True
-        save_state(state)
-        send_message(
-            user_id,
-            "Change your payment details — your saved values are kept "
-            "if you /skip a step.\n\n"
-            "KBZPay number? Send it, or /skip if you don't use KBZPay.",
-        )
+        open_pay_edit(user_id, draft, state)
         answer_callback(qid, "Change payment details.")
         return
 
@@ -6273,17 +6505,25 @@ def handle_callback(query, state):
         if not draft:
             answer_callback(qid, "Start with /profile first.")
             return
-        draft["step"] = "photos"
-        save_state(state)
-        send_message(
-            user_id,
-            "Change your photos — the ones you have stay saved for "
-            "now. Send new ones to swap the oldest out once 3 are "
-            "saved, or /clearphotos to remove them all and start "
-            "over.",
-        )
-        send_photos_step_prompt(user_id, draft.get("data", {}))
+        open_photos_edit(user_id, draft, state)
         answer_callback(qid, "Change photos.")
+        return
+
+    if data == "myprofile_edit":
+        # v7.7 — edit from /myprofile: same editing draft as /profile.
+        profile = get_profile(user_id)
+        if not profile:
+            answer_callback(
+                qid, "No profile yet — make one with /profile."
+            )
+            send_message(
+                user_id,
+                "You don't have a seller profile yet — make one "
+                "with /profile.",
+            )
+            return
+        start_profile(user_id, query.get("from", {}), state)
+        answer_callback(qid, "Edit your profile.")
         return
 
     # ---- /sell: member self-service product cards ----
@@ -6578,7 +6818,7 @@ def handle_callback(query, state):
         send_message(
             user_id,
             f"🔨 Auction for {PRODUCTS.get(key, key)} — send the video now "
-            "(1 to 5 minutes).\n\n"
+            "(1 to 30 minutes).\n\n"
             "Starting bid is fixed at 5,000 Ks. The auction runs 15 "
             "minutes once posted. The highest bidder wins the video "
             "privately — it is NOT revealed in the group (unless an "
