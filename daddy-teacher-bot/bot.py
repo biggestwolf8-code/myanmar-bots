@@ -3621,6 +3621,12 @@ def send_profile_confirm(chat_id, data, username=""):
                         "callback_data": "profpayedit",
                     }
                 ],
+                [
+                    {
+                        "text": "📷 Change photos",
+                        "callback_data": "profphotoedit",
+                    }
+                ],
             ]
         },
     )
@@ -3651,20 +3657,26 @@ def send_photos_step_prompt(chat_id, data):
             send_message(
                 chat_id,
                 "You already have 3 photos saved — /skip to "
-                "keep them, or send new ones to swap them.",
+                "keep them, or send new ones to swap them.\n\n"
+                "Send /clearphotos to remove the saved ones and "
+                "start over.",
             )
         else:
             send_message(
                 chat_id,
                 f"You have {len(photos)} photo(s) saved — "
                 f"send {3 - len(photos)} more photo(s) of "
-                "you, one by one. 3 are required to sell.",
+                "you, one by one. 3 are required to sell.\n\n"
+                "Send /clearphotos to remove the saved ones and "
+                "start over.",
             )
     else:
         send_message(
             chat_id,
             "Last step: send 3 photos of you, one by one — "
-            "they're required to sell.",
+            "they're required to sell.\n\n"
+            "Send /clearphotos to remove the saved ones and "
+            "start over.",
         )
 
 
@@ -3794,6 +3806,17 @@ def handle_profile_step(chat_id, text, state, user=None):
         return True
 
     if step == "photos":
+        if text == "/clearphotos":
+            # v7.6 — reselect photos mid-flow: remove the saved ones
+            # and start the set over. Harmless with 0 saved.
+            data["photos"] = []
+            save_state(state)
+            send_message(
+                chat_id,
+                "Saved photos cleared — send 3 photos of you, "
+                "one by one.",
+            )
+            return True
         if text == "/skip":
             photos = data.get("photos", [])
             if len(photos) >= 3:
@@ -3809,7 +3832,9 @@ def handle_profile_step(chat_id, text, state, user=None):
             return True
         send_message(
             chat_id,
-            "Send a photo of you — I need 3 in total, one by one.",
+            "Send a photo of you — I need 3 in total, one by one.\n\n"
+            "Send /clearphotos to remove the saved ones and "
+            "start over.",
         )
         return True
 
@@ -6237,6 +6262,28 @@ def handle_callback(query, state):
             "KBZPay number? Send it, or /skip if you don't use KBZPay.",
         )
         answer_callback(qid, "Change payment details.")
+        return
+
+    if data == "profphotoedit":
+        # v7.6 — change the profile photos: go back to the photos
+        # step. The draft's saved photos stay in place; once 3 are
+        # saved, new photos swap the oldest out, and /clearphotos
+        # removes them all so the set can be redone.
+        draft = (state.get("profile_draft") or {}).get(str(user_id))
+        if not draft:
+            answer_callback(qid, "Start with /profile first.")
+            return
+        draft["step"] = "photos"
+        save_state(state)
+        send_message(
+            user_id,
+            "Change your photos — the ones you have stay saved for "
+            "now. Send new ones to swap the oldest out once 3 are "
+            "saved, or /clearphotos to remove them all and start "
+            "over.",
+        )
+        send_photos_step_prompt(user_id, draft.get("data", {}))
+        answer_callback(qid, "Change photos.")
         return
 
     # ---- /sell: member self-service product cards ----

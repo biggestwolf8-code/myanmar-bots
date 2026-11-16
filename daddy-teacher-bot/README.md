@@ -434,6 +434,19 @@ on the next message. The confirm screen has a fourth button,
 "✏️ Change payment details", which re-opens the questions
 (`/skip` on a step keeps the saved value).
 
+## v7.6 — reselect profile photos
+
+A saved photo can now be removed mid-flow: at the photos step,
+`/clearphotos` clears the draft's saved photos and the set starts
+over ("Saved photos cleared — send 3 photos of you, one by one.").
+It works with 1, 2 or 3 photos saved and is harmless with 0. The
+photos prompts mention the command. The confirm screen has a
+"📷 Change photos" button, which goes back to the photos step
+with the saved photos still in place — new photos swap the oldest
+out once 3 are saved. Appending while fewer than 3 are saved,
+the oldest-out swap at 3, and `/skip` at the photos step are all
+unchanged.
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
