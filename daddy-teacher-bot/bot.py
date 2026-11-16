@@ -421,12 +421,36 @@ def seller_pay_methods(profile):
     return methods
 
 
+def fmt_age_role(age, role):
+    """'28 • Top', or '—' for anything missing."""
+    a = str(age) if age else "—"
+    r = str(role) if role else "—"
+    return f"{a} • {r}"
+
+
+def profile_missing_fields(profile):
+    """What a seller still has to fill in before they can /sell:
+    age, role, and 3 photos."""
+    missing = []
+    if not profile.get("age"):
+        missing.append("age")
+    if not profile.get("role"):
+        missing.append("role")
+    if len(profile.get("photos") or []) < 3:
+        missing.append("photos")
+    return missing
+
+
 def profile_summary_text(profile):
     lines = [f"👤 {profile.get('name', 'Seller')}"]
     if profile.get("username"):
         lines.append(
             f"@{profile['username']} | ID {profile.get('user_id', '?')}"
         )
+    lines.append(
+        f"Age: {profile.get('age') or '—'} • "
+        f"Role: {profile.get('role') or '—'}"
+    )
     lines.append("Products:")
     for key, price in (profile.get("products") or {}).items():
         lines.append(f"• {PRODUCTS.get(key, key)} — {fmt_ks(price)}")
@@ -439,6 +463,10 @@ def seller_card_text(profile):
     lines = [f"🛍 {html.escape(str(profile.get('name', 'Seller')))}"]
     if profile.get("username"):
         lines.append(f"@{profile['username']}")
+    lines.append(
+        f"Age: {profile.get('age') or '—'} • "
+        f"Role: {profile.get('role') or '—'}"
+    )
     lines.append("")
     lines.append("Products:")
     for key, price in (profile.get("products") or {}).items():
@@ -504,7 +532,10 @@ def sellers_board_text(live_profiles):
     )
     for profile in live_profiles:
         lines.append("")
-        lines.append(f"👤 {profile.get('name', 'Seller')}")
+        lines.append(
+            f"👤 {profile.get('name', 'Seller')}, "
+            f"{fmt_age_role(profile.get('age'), profile.get('role'))}"
+        )
         for key, price in (profile.get("products") or {}).items():
             lines.append(f"   • {PRODUCTS.get(key, key)} — {fmt_ks(price)}")
     lines.append("")
@@ -547,14 +578,23 @@ def market_item_label(product, option=None):
 
 def sell_card_text(card):
     """The shopping card posted to the group for one seller product
-    with its named options."""
+    with its named options. Every card carries the seller's profile
+    (name, age, role). With media it is a sneak peek only — the full
+    version is revealed in the group when someone buys it."""
     lines = [
-        f"🛍️ {card.get('seller_name', 'Seller')} — "
+        f"🛍️ {card.get('seller_name', 'Seller')}, "
+        f"{fmt_age_role(card.get('age'), card.get('role'))} — "
         f"{PRODUCTS.get(card.get('product'), card.get('product', ''))}",
         "",
     ]
     for opt in card.get("options", []):
         lines.append(f"• {opt['name']} — {fmt_ks(opt['price'])}")
+    if card.get("media_type"):
+        lines.append("")
+        lines.append(
+            "👀 Sneak peek only — the full version is revealed in "
+            "the group when someone buys it."
+        )
     lines.append("")
     lines.append("Tap an option to buy it.")
     return "\n".join(lines)
@@ -596,6 +636,166 @@ def sell_card_keyboard(card):
     return {"inline_keyboard": rows}
 
 
+ROLE_OPTIONS = ("Top", "Bottom", "Verse")
+
+
+def download_file_bytes(file_id):
+    """Download a Telegram file (photo/video) as bytes, via getFile."""
+    r = api("getFile", {"file_id": file_id})
+    if not r.get("ok"):
+        return None
+    path = (r.get("result") or {}).get("file_path")
+    if not path:
+        return None
+    try:
+        resp = requests.get(
+            f"https://api.telegram.org/file/bot{BOT_TOKEN}/{path}",
+            timeout=60,
+        )
+    except Exception as e:
+        print(f"file download error: {e}", flush=True)
+        return None
+    if resp.status_code != 200:
+        return None
+    return resp.content
+
+
+def make_blurred_preview(image_bytes):
+    """Blur a photo so no detail is visible: shrink it hard, blow it
+    back up, then a strong Gaussian blur. Returns JPEG bytes or None."""
+    try:
+        from io import BytesIO
+
+        from PIL import Image, ImageFilter
+
+        im = Image.open(BytesIO(image_bytes)).convert("RGB")
+        w, h = im.size
+        scale = min(1.0, 1024 / max(w, h))
+        if scale < 1.0:
+            im = im.resize(
+                (max(1, int(w * scale)), max(1, int(h * scale))),
+                Image.LANCZOS,
+            )
+            w, h = im.size
+        small = im.resize(
+            (max(1, w // 16), max(1, h // 16)), Image.LANCZOS
+        )
+        pix = small.resize((w, h), Image.LANCZOS)
+        blurred = pix.filter(
+            ImageFilter.GaussianBlur(radius=max(10, min(w, h) // 16))
+        )
+        out = BytesIO()
+        blurred.save(out, format="JPEG", quality=85)
+        return out.getvalue()
+    except Exception as e:
+        print(f"blur error: {e}", flush=True)
+        return None
+
+
+def blur_photo_file_id(file_id):
+    """Download a photo and return blurred JPEG bytes, or None."""
+    raw = download_file_bytes(file_id)
+    if not raw:
+        return None
+    return make_blurred_preview(raw)
+
+
+def send_photo_file(chat_id, filename, data, caption=None,
+                    reply_markup=None):
+    """Upload photo bytes via sendPhoto. Returns the api result."""
+    payload = {"chat_id": str(chat_id)}
+    if caption:
+        payload["caption"] = caption
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)
+    files = {"photo": (filename, data, "image/jpeg")}
+    return api("sendPhoto", payload, files=files)
+
+
+def send_photos_group(chat_id, file_ids):
+    """Send up to 3 photos as a media group. Returns True if sent."""
+    ids = [f for f in (file_ids or []) if f][:3]
+    if not ids:
+        return False
+    media = [{"type": "photo", "media": fid} for fid in ids]
+    r = api("sendMediaGroup", {"chat_id": chat_id, "media": media})
+    return bool(r.get("ok"))
+
+
+def send_seller_card(chat_id, profile):
+    """A seller's profile card: their 3 photos as a media group
+    first, then the text card with products and payment details."""
+    send_photos_group(chat_id, profile.get("photos") or [])
+    send_message(
+        chat_id,
+        seller_card_text(profile),
+        parse_mode="HTML",
+        reply_markup=seller_card_keyboard(profile),
+    )
+
+
+def post_card_to_group(state, card):
+    """Post a /sell card to the group. With a blurred preview it goes
+    as a photo (caption = card text); otherwise plain text. Returns
+    (message_id, err) like post_to_group."""
+    group = state.get("group") or GROUP_CHAT_ID
+    if not group:
+        return None, "no group set"
+    text = sell_card_text(card)
+    kb = sell_card_keyboard(card)
+    if card.get("preview_file_id"):
+        r = api(
+            "sendPhoto",
+            {
+                "chat_id": group,
+                "photo": card["preview_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+    else:
+        r = send_message(group, text, reply_markup=kb)
+    if not r.get("ok"):
+        return None, r.get("description", "unknown error")
+    return r["result"]["message_id"], None
+
+
+def reveal_card_purchase(state, card_id, option_name, buyer_name):
+    """On the FIRST completed purchase of a card, post the full media
+    to the group for everyone to see. Later purchases do nothing.
+    Returns True if a reveal was posted."""
+    card = (state.get("cards") or {}).get(card_id)
+    if not card or card.get("revealed"):
+        return False
+    media = card.get("media_file_id")
+    if not media:
+        return False
+    group = state.get("group") or GROUP_CHAT_ID
+    if not group:
+        return False
+    product = PRODUCTS.get(card.get("product"), card.get("product", ""))
+    opt = f" ({option_name})" if option_name else ""
+    caption = (
+        f"🔓 Revealed: {card.get('seller_name', 'Seller')}'s "
+        f"{product}{opt} — bought by {buyer_name or 'Someone'}"
+    )
+    if card.get("media_type") == "video":
+        r = api(
+            "sendVideo",
+            {"chat_id": group, "video": media, "caption": caption},
+        )
+    else:
+        r = api(
+            "sendPhoto",
+            {"chat_id": group, "photo": media, "caption": caption},
+        )
+    if not r.get("ok"):
+        return False
+    card["revealed"] = True
+    save_state(state)
+    return True
+
+
 def send_sellers_list(chat_id):
     profiles = load_profiles()
     live = [p for p in profiles.values() if p.get("status") == "live"]
@@ -614,7 +814,10 @@ def send_sellers_list(chat_id):
             f"{PRODUCTS.get(k, k)} {fmt_ks(v)}"
             for k, v in (p.get("products") or {}).items()
         )
-        lines.append(f"👤 {p.get('name', 'Seller')} — {products}")
+        lines.append(
+            f"👤 {p.get('name', 'Seller')}, "
+            f"{fmt_age_role(p.get('age'), p.get('role'))} — {products}"
+        )
         rows.append(
             [
                 {
@@ -752,6 +955,11 @@ def start_sell(chat_id, user_id, state, user=None):
                 "/profile and it goes live straight away.",
             )
         return
+    # Sellers with an older profile (no age / role / photos) finish
+    # it first — age, role and 3 photos are required to post.
+    if profile_missing_fields(profile):
+        start_profile_completion(chat_id, user_id, state)
+        return
     group = state.get("group") or GROUP_CHAT_ID
     if not group:
         send_message(
@@ -790,32 +998,74 @@ def start_sell(chat_id, user_id, state, user=None):
     )
 
 
-def send_sell_preview(chat_id, user_id, draft):
-    """Show the seller exactly what will post to the group, with
-    Post / Cancel buttons."""
-    card = {
-        "seller_name": draft.get("seller_name", "Seller"),
-        "product": draft.get("product"),
-        "options": draft.get("options", []),
-    }
+def card_options_done(chat_id, user_id, draft, state):
+    """Options are set — ask for the product photo/video (or skip)."""
+    draft["step"] = "media"
+    save_state(state)
     send_message(
         chat_id,
-        "This is what will post to the group:\n\n" + sell_card_text(card),
-        reply_markup={
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "✅ Post to group",
-                        "callback_data": "sellpost",
-                    },
-                    {
-                        "text": "❌ Cancel",
-                        "callback_data": "sellcancel",
-                    },
-                ]
-            ]
-        },
+        "Last step: send the product photo or video (the full "
+        "version — buyers only see a blurred sneak peek until "
+        "someone buys it).\n\n"
+        "Send a photo or a video now, or /skip for a text-only card.",
     )
+
+
+def send_sell_preview(chat_id, user_id, draft):
+    """Show the seller exactly what will post to the group, with
+    Post / Cancel buttons. With media, the preview is the blurred
+    sneak peek photo — blurred once here and stored on the draft so
+    the group card can reuse it."""
+    profile = get_profile(user_id)
+    card = {
+        "seller_name": draft.get("seller_name", "Seller"),
+        "age": (profile or {}).get("age"),
+        "role": (profile or {}).get("role"),
+        "product": draft.get("product"),
+        "options": draft.get("options", []),
+        "media_type": draft.get("media_type"),
+    }
+    text = "This is what will post to the group:\n\n" + sell_card_text(card)
+    kb = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "✅ Post to group",
+                    "callback_data": "sellpost",
+                },
+                {
+                    "text": "❌ Cancel",
+                    "callback_data": "sellcancel",
+                },
+            ]
+        ]
+    }
+    if draft.get("preview_source_file_id") and not draft.get(
+        "preview_file_id"
+    ):
+        blurred = blur_photo_file_id(draft["preview_source_file_id"])
+        if blurred:
+            r = send_photo_file(
+                chat_id, "preview.jpg", blurred, caption=text,
+                reply_markup=kb,
+            )
+            if r.get("ok"):
+                draft["preview_file_id"] = r["result"]["photo"][-1][
+                    "file_id"
+                ]
+                return
+    if draft.get("preview_file_id"):
+        api(
+            "sendPhoto",
+            {
+                "chat_id": chat_id,
+                "photo": draft["preview_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+    else:
+        send_message(chat_id, text, reply_markup=kb)
 
 
 def handle_card_step(chat_id, user_id, text, state, user=None):
@@ -836,9 +1086,7 @@ def handle_card_step(chat_id, user_id, text, state, user=None):
     if step == "optname":
         if text == "/done":
             if draft.get("options"):
-                draft["step"] = "confirm"
-                save_state(state)
-                send_sell_preview(chat_id, user_id, draft)
+                card_options_done(chat_id, user_id, draft, state)
             else:
                 send_message(
                     chat_id,
@@ -879,9 +1127,7 @@ def handle_card_step(chat_id, user_id, text, state, user=None):
         )
         draft.pop("opt_name", None)
         if len(draft["options"]) >= MAX_CARD_OPTIONS:
-            draft["step"] = "confirm"
-            save_state(state)
-            send_sell_preview(chat_id, user_id, draft)
+            card_options_done(chat_id, user_id, draft, state)
             return True
         draft["step"] = "optname"
         save_state(state)
@@ -902,6 +1148,27 @@ def handle_card_step(chat_id, user_id, text, state, user=None):
                     ]
                 ]
             },
+        )
+        return True
+
+    if step == "media":
+        if text == "/skip":
+            draft["step"] = "confirm"
+            save_state(state)
+            send_sell_preview(chat_id, user_id, draft)
+            return True
+        send_message(
+            chat_id,
+            "Send the product photo or video, or /skip for a "
+            "text-only card.",
+        )
+        return True
+
+    if step == "preview_photo":
+        send_message(
+            chat_id,
+            "Send a preview photo for the video — this is the sneak "
+            "peek everyone sees in the group.",
         )
         return True
     return False
@@ -1412,6 +1679,115 @@ def profile_draft_keyboard(draft):
     return {"inline_keyboard": rows}
 
 
+def send_role_prompt(chat_id, keep=False):
+    text = "What's your role? Tap one, or type your own (1–30 characters)."
+    if keep:
+        text += " Or /skip to keep it."
+    send_message(
+        chat_id,
+        text,
+        reply_markup={
+            "inline_keyboard": [
+                [
+                    {"text": "Top", "callback_data": "role:Top"},
+                    {"text": "Bottom", "callback_data": "role:Bottom"},
+                    {"text": "Verse", "callback_data": "role:Verse"},
+                ],
+                [
+                    {
+                        "text": "Something else…",
+                        "callback_data": "role:other",
+                    }
+                ],
+            ]
+        },
+    )
+
+
+def profile_after_role(chat_id, draft, data, state, username):
+    """After the role is set: a short 'complete your profile' flow
+    jumps straight to photos (or confirm); the full flow goes on to
+    products."""
+    if draft.get("complete"):
+        if len(data.get("photos") or []) < 3:
+            draft["step"] = "photos"
+            save_state(state)
+            send_message(
+                chat_id,
+                f"Send {3 - len(data.get('photos') or [])} photo(s) of "
+                "you, one by one — 3 are required to sell.",
+            )
+        else:
+            draft["step"] = "confirm"
+            save_state(state)
+            send_profile_confirm(chat_id, data, username)
+    else:
+        draft["step"] = "products"
+        save_state(state)
+        send_message(
+            chat_id,
+            "What do you sell? Tap each product you offer, then Done.",
+            reply_markup=profile_draft_keyboard(draft),
+        )
+
+
+def start_profile_completion(chat_id, user_id, state):
+    """Short flow for a live seller whose profile is missing age,
+    role or photos (needed before /sell). Walks only the missing
+    pieces, then confirms."""
+    profile = get_profile(user_id)
+    if not profile:
+        return
+    missing = profile_missing_fields(profile)
+    data = {
+        "name": profile.get("name", ""),
+        "age": profile.get("age"),
+        "role": profile.get("role"),
+        "photos": list(profile.get("photos") or []),
+        "products": dict(profile.get("products", {})),
+        "pay": dict(profile.get("pay", {})),
+    }
+    step = (
+        "age"
+        if "age" in missing
+        else "role" if "role" in missing else "photos"
+    )
+    state.setdefault("profile_draft", {})[str(chat_id)] = {
+        "step": step,
+        "data": data,
+        "editing": True,
+        "complete": True,
+    }
+    save_state(state)
+    bits = []
+    if "age" in missing:
+        bits.append("your age")
+    if "role" in missing:
+        bits.append("your role")
+    if "photos" in missing:
+        bits.append(
+            f"{3 - len(data['photos'])} photo(s) of you"
+        )
+    intro = (
+        "Before you post, finish your profile — I still need "
+        + " and ".join(bits)
+        + ".\n\n"
+    )
+    if step == "age":
+        send_message(
+            chat_id, intro + "How old are you? Send your age as a number."
+        )
+    elif step == "role":
+        send_message(chat_id, intro + "What's your role?")
+        send_role_prompt(chat_id)
+    else:
+        send_message(
+            chat_id,
+            intro + "Send 3 photos of you, one by one — they're "
+            "required to sell.",
+        )
+
+
 def start_profile(chat_id, user, state):
     existing = get_profile(chat_id)
     # A removed profile starts fresh — the seller makes a new one.
@@ -1421,6 +1797,9 @@ def start_profile(chat_id, user, state):
     if existing:
         data = {
             "name": existing.get("name", ""),
+            "age": existing.get("age"),
+            "role": existing.get("role"),
+            "photos": list(existing.get("photos") or []),
             "products": dict(existing.get("products", {})),
             "pay": dict(existing.get("pay", {})),
         }
@@ -1448,10 +1827,14 @@ def start_profile(chat_id, user, state):
 
 
 def send_profile_confirm(chat_id, data, username=""):
+    if data.get("photos"):
+        send_photos_group(chat_id, data["photos"])
     text = "Check your profile:\n\n" + profile_summary_text(
         {
             "name": data.get("name", ""),
             "username": username,
+            "age": data.get("age"),
+            "role": data.get("role"),
             "products": data.get("products", {}),
             "pay": data.get("pay", {}),
         }
@@ -1514,12 +1897,76 @@ def handle_profile_step(chat_id, text, state, user=None):
             return True
         else:
             data["name"] = text
-        draft["step"] = "products"
+        draft["step"] = "age"
         save_state(state)
         send_message(
             chat_id,
-            "What do you sell? Tap each product you offer, then Done.",
-            reply_markup=profile_draft_keyboard(draft),
+            "How old are you? Send your age as a number.",
+        )
+        return True
+
+    if step == "age":
+        if text == "/skip":
+            if not draft.get("editing") or not data.get("age"):
+                send_message(chat_id, "Please send your age first (a number).")
+                return True
+        else:
+            if not text.isdigit() or not (1 <= int(text) <= 120):
+                send_message(
+                    chat_id, "Your age as a number, please — e.g. 25."
+                )
+                return True
+            data["age"] = int(text)
+        draft["step"] = "role"
+        save_state(state)
+        send_role_prompt(chat_id, keep=bool(draft.get("editing")))
+        return True
+
+    if step == "role":
+        if text == "/skip":
+            if not draft.get("editing") or not data.get("role"):
+                send_message(
+                    chat_id, "Tap a role below, or type your own."
+                )
+                return True
+        elif len(text) < 1 or len(text) > 30:
+            send_message(
+                chat_id,
+                "Role is 1–30 characters — tap a button or type it.",
+            )
+            return True
+        else:
+            data["role"] = text.strip()
+        profile_after_role(chat_id, draft, data, state, username)
+        return True
+
+    if step == "role_text":
+        if len(text) < 1 or len(text) > 30:
+            send_message(
+                chat_id, "Role is 1–30 characters — try again, or /cancel."
+            )
+            return True
+        data["role"] = text.strip()
+        profile_after_role(chat_id, draft, data, state, username)
+        return True
+
+    if step == "photos":
+        if text == "/skip":
+            photos = data.get("photos", [])
+            if len(photos) >= 3:
+                draft["step"] = "confirm"
+                save_state(state)
+                send_profile_confirm(chat_id, data, username)
+            else:
+                send_message(
+                    chat_id,
+                    f"Photos are required to sell — send "
+                    f"{3 - len(photos)} more photo(s) of you, or /cancel.",
+                )
+            return True
+        send_message(
+            chat_id,
+            "Send a photo of you — I need 3 in total, one by one.",
         )
         return True
 
@@ -1626,9 +2073,29 @@ def handle_profile_step(chat_id, text, state, user=None):
                     "KBZPay number? Send it, or /skip.",
                 )
             else:
-                draft["step"] = "confirm"
+                draft["step"] = "photos"
                 save_state(state)
-                send_profile_confirm(chat_id, data, username)
+                photos = data.get("photos", [])
+                if photos:
+                    if len(photos) >= 3:
+                        send_message(
+                            chat_id,
+                            "You already have 3 photos saved — /skip to "
+                            "keep them, or send new ones to swap them.",
+                        )
+                    else:
+                        send_message(
+                            chat_id,
+                            f"You have {len(photos)} photo(s) saved — "
+                            f"send {3 - len(photos)} more photo(s) of "
+                            "you, one by one. 3 are required to sell.",
+                        )
+                else:
+                    send_message(
+                        chat_id,
+                        "Last step: send 3 photos of you, one by one — "
+                        "they're required to sell.",
+                    )
         return True
 
     if step == "confirm":
@@ -1677,7 +2144,8 @@ def credit_pack(user_id, username, key, method, tx_hash=None):
     return total
 
 
-def handle_successful_payment(chat_id, user_id, sp, user=None):
+def handle_successful_payment(chat_id, user_id, sp, user=None,
+                              state=None):
     payload = sp.get("invoice_payload", "")
     parts = payload.split(":")
     if not parts or parts[0] not in ("pack", "topup", "mkt"):
@@ -1714,8 +2182,11 @@ def handle_successful_payment(chat_id, user_id, sp, user=None):
         except ValueError:
             return
         option = None
+        card_id = None
         if len(parts) == 7:
-            card = load_state().get("cards", {}).get(parts[5])
+            card_id = parts[5]
+            st = state if state is not None else load_state()
+            card = st.get("cards", {}).get(card_id)
             if card and card.get("status") == "live":
                 try:
                     option = card["options"][int(parts[6])]["name"]
@@ -1736,6 +2207,12 @@ def handle_successful_payment(chat_id, user_id, sp, user=None):
             user_id, username, seller_id, seller_name, product, price,
             "Stars", "paid", option=option,
         )
+        if card_id is not None:
+            st = state if state is not None else load_state()
+            reveal_card_purchase(
+                st, card_id, option,
+                (user or {}).get("first_name") or "Someone",
+            )
         seller_total = get_balance(seller_id)
         send_message(
             user_id,
@@ -1861,6 +2338,11 @@ def handle_usdt_hash(chat_id, user_id, tx_hash, state, user=None):
             user_id, username, seller_id, seller_name, product, price,
             method, "paid", tx_hash, option=option,
         )
+        if pending.get("card"):
+            reveal_card_purchase(
+                state, pending["card"], option,
+                (user or {}).get("first_name") or "Someone",
+            )
         send_message(
             user_id,
             f"✅ USDT confirmed on-chain — you bought "
@@ -1984,6 +2466,8 @@ def forward_receipt_to_admins(user_id, user, key, message_id, state, market=None
                 "option": market.get("option", ""),
                 "price_ks": market["price_ks"],
                 "method": market.get("method", "Myanmar pay"),
+                "card": market.get("card"),
+                "buyer_name": (user or {}).get("first_name", ""),
             }
         )
         note = (
@@ -2036,6 +2520,96 @@ def forward_receipt_to_admins(user_id, user, key, message_id, state, market=None
             },
         )
     return rid
+
+
+def handle_flow_media(msg, state):
+    """Photos/videos that belong to a guided flow (profile photos,
+    card media, card preview photo). Returns True if consumed — the
+    message must NOT fall through to receipt handling."""
+    chat_id = msg["chat"]["id"]
+    user_id = msg.get("from", {}).get("id")
+    photo = msg.get("photo")
+    video = msg.get("video")
+    if not photo and not video:
+        return False
+
+    # ---- profile photos (3 required) ----
+    pdraft = (state.get("profile_draft") or {}).get(str(user_id))
+    if pdraft and pdraft.get("step") == "photos":
+        if video:
+            send_message(
+                chat_id,
+                "That was a video — I need a photo of you. Send a photo.",
+            )
+            return True
+        fid = photo[-1]["file_id"]
+        data = pdraft.setdefault("data", {})
+        photos = data.setdefault("photos", [])
+        if len(photos) >= 3:
+            # Already has 3 — a new photo swaps the oldest one out.
+            photos.pop(0)
+            photos.append(fid)
+            save_state(state)
+            send_message(
+                chat_id,
+                "Photo updated — you still have 3. Send /skip to "
+                "finish, or keep sending to swap more.",
+            )
+            return True
+        photos.append(fid)
+        save_state(state)
+        if len(photos) < 3:
+            send_message(
+                chat_id,
+                f"Photo {len(photos)}/3 saved — send {3 - len(photos)} "
+                "more.",
+            )
+        else:
+            pdraft["step"] = "confirm"
+            save_state(state)
+            send_profile_confirm(
+                chat_id, data,
+                (msg.get("from", {}) or {}).get("username", ""),
+            )
+        return True
+
+    # ---- card media / preview photo ----
+    cdraft = (state.get("card_draft") or {}).get(str(user_id))
+    if cdraft and cdraft.get("step") == "media":
+        if photo:
+            cdraft["media_type"] = "photo"
+            cdraft["media_file_id"] = photo[-1]["file_id"]
+            cdraft["preview_source_file_id"] = photo[-1]["file_id"]
+            cdraft["step"] = "confirm"
+            save_state(state)
+            send_sell_preview(chat_id, user_id, cdraft)
+        elif video:
+            cdraft["media_type"] = "video"
+            cdraft["media_file_id"] = video["file_id"]
+            cdraft["step"] = "preview_photo"
+            save_state(state)
+            send_message(
+                chat_id,
+                "Got the video. Now send a preview photo for it — "
+                "this is the blurred sneak peek everyone sees in the "
+                "group until someone buys it.",
+            )
+        return True
+    if cdraft and cdraft.get("step") == "preview_photo":
+        if video:
+            send_message(
+                chat_id,
+                "That was a video — the preview needs to be a photo. "
+                "Send a preview photo.",
+            )
+            return True
+        if photo:
+            cdraft["preview_source_file_id"] = photo[-1]["file_id"]
+            cdraft["step"] = "confirm"
+            save_state(state)
+            send_sell_preview(chat_id, user_id, cdraft)
+            return True
+    return False
 
 
 def handle_receipt_photo(msg, state):
@@ -2111,12 +2685,7 @@ def handle_start(chat_id, text, state, user=None):
         if not profile or profile.get("status") != "live":
             send_message(chat_id, "That seller is not live right now.")
             return
-        send_message(
-            chat_id,
-            seller_card_text(profile),
-            parse_mode="HTML",
-            reply_markup=seller_card_keyboard(profile),
-        )
+        send_seller_card(chat_id, profile)
         return
 
     if arg.startswith("card_"):
@@ -2192,10 +2761,12 @@ def handle_start(chat_id, text, state, user=None):
         "Tap a pack to pay — Stars, USDT, or KBZPay / WavePay / AYAPay.\n\n"
         "🛍 Plus the market — members sell products (milk, eggplant, "
         "peaches, donut, HD). Make your seller profile with /profile "
-        "(it goes live straight away), post a card to the group with "
-        "/sell — name your own options (A, B, C, D) with your own "
-        "prices — browse with /sellers, check your balance with "
-        "/balance.\n\n"
+        "— age, role and 3 photos of you, then it goes live straight "
+        "away. Post a card to the group with /sell — name your own "
+        "options (A, B, C, D) with your own prices and a product "
+        "photo or video. Cards show only a blurred sneak peek; the "
+        "full version is revealed in the group when someone buys it. "
+        "Browse with /sellers, check your balance with /balance.\n\n"
         "💸 Cash out your balance as USDT with /cashout, or sell your "
         "USDT to Arkar with /sellusdt — both at 1 USDT = 4,500 Ks.",
         reply_markup=pack_keyboard(url_buttons=False),
@@ -2211,9 +2782,13 @@ def handle_help(chat_id):
         "Receipts go to the admins for approval.\n\n"
         "Market — members sell products (milk, eggplant, peaches, "
         "donut, HD, 5,000–50,000 Ks each). Make a profile with "
-        "/profile — it goes live straight away, no approval needed. "
+        "/profile — age, role and 3 photos of you, then it goes live "
+        "straight away, no approval needed. "
         "Post a product card to the group with /sell: name your own "
-        "options (A, B, C, D) with your own prices, up to 4 per card. "
+        "options (A, B, C, D) with your own prices, up to 4 per card, "
+        "and add a product photo or video. The card shows only a "
+        "blurred sneak peek; the full version is revealed in the "
+        "group when someone buys it. "
         "Buyers tap an option on the card and pay. Buyers pay from "
         "their bot balance, with Stars, with USDT, or directly to "
         "the seller (receipt photo or USDT hash). Top up with /topup.\n\n"
@@ -2288,8 +2863,16 @@ def handle_message(msg, state):
 
     sp = msg.get("successful_payment")
     if sp:
-        handle_successful_payment(chat_id, user_id, sp, user=msg.get("from", {}))
+        handle_successful_payment(
+            chat_id, user_id, sp, user=msg.get("from", {}), state=state
+        )
         return
+
+    # Photos/videos for a guided flow (profile photos, card media)
+    # are consumed by that flow — never treat them as receipts.
+    if msg.get("photo") or msg.get("video"):
+        if handle_flow_media(msg, state):
+            return
 
     if msg.get("photo") and not is_admin(chat_id):
         handle_receipt_photo(msg, state)
@@ -2339,6 +2922,7 @@ def handle_message(msg, state):
                     ]
                 ]
             }
+        send_photos_group(user_id, profile.get("photos") or [])
         send_message(
             chat_id,
             f"Your profile — {status}:\n\n" + profile_summary_text(profile),
@@ -2391,7 +2975,9 @@ def handle_message(msg, state):
         return
 
     card_draft = (state.get("card_draft") or {}).get(str(user_id))
-    if card_draft and (not text.startswith("/") or text == "/done"):
+    if card_draft and (
+        not text.startswith("/") or text in ("/done", "/skip")
+    ):
         handle_card_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
 
@@ -2768,6 +3354,13 @@ def handle_callback(query, state):
                     seller_name, product, price, method, "paid",
                     option=option,
                 )
+                if receipt.get("card"):
+                    reveal_card_purchase(
+                        state, receipt["card"], option,
+                        receipt.get("buyer_name")
+                        or receipt.get("username")
+                        or "Someone",
+                    )
                 send_message(
                     cust_id,
                     f"✅ Payment confirmed — you bought "
@@ -3014,6 +3607,33 @@ def handle_callback(query, state):
         answer_callback(qid, "Seller removed — cards taken down.")
         return
 
+    # ---- profile setup: role picker ----
+    if data.startswith("role:"):
+        value = data.split(":", 1)[1]
+        draft = (state.get("profile_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "role":
+            answer_callback(qid, "No role picker open — /profile to start.")
+            return
+        if value == "other":
+            draft["step"] = "role_text"
+            save_state(state)
+            send_message(
+                user_id,
+                "Type your role (1–30 characters) — e.g. top, bottom, "
+                "verse, or anything else.",
+            )
+            answer_callback(qid, "Type your role.")
+            return
+        if value not in ROLE_OPTIONS:
+            answer_callback(qid, "Unknown role.")
+            return
+        draft.setdefault("data", {})["role"] = value
+        profile_after_role(
+            user_id, draft, draft["data"], state, username
+        )
+        answer_callback(qid, f"Role: {value}.")
+        return
+
     # ---- profile setup: product picker ----
     if data.startswith("prodtoggle:"):
         key = data.split(":", 1)[1]
@@ -3071,6 +3691,9 @@ def handle_callback(query, state):
             "user_id": str(user_id),
             "username": username,
             "name": pdata.get("name", ""),
+            "age": pdata.get("age"),
+            "role": pdata.get("role"),
+            "photos": list(pdata.get("photos") or []),
             "products": pdata.get("products", {}),
             "pay": pdata.get("pay", {}),
             "status": "live",
@@ -3201,10 +3824,8 @@ def handle_callback(query, state):
             )
             return
         draft["options"] = [{"name": PRODUCTS.get(key, key), "price": price}]
-        draft["step"] = "confirm"
-        save_state(state)
-        send_sell_preview(user_id, user_id, draft)
-        answer_callback(qid, "Preview ready.")
+        card_options_done(user_id, user_id, draft, state)
+        answer_callback(qid, "Now send the product photo or video.")
         return
 
     if data == "selldone":
@@ -3217,10 +3838,8 @@ def handle_callback(query, state):
                 qid, "Add at least one option first.", show_alert=True
             )
             return
-        draft["step"] = "confirm"
-        save_state(state)
-        send_sell_preview(user_id, user_id, draft)
-        answer_callback(qid, "Preview ready.")
+        card_options_done(user_id, user_id, draft, state)
+        answer_callback(qid, "Now send the product photo or video.")
         return
 
     if data == "sellpost":
@@ -3252,17 +3871,21 @@ def handle_callback(query, state):
             "id": cid,
             "seller": str(user_id),
             "seller_name": profile.get("name", "Seller"),
+            "age": profile.get("age"),
+            "role": profile.get("role"),
             "product": draft["product"],
             "options": draft["options"],
+            "media_type": draft.get("media_type"),
+            "media_file_id": draft.get("media_file_id"),
+            "preview_file_id": draft.get("preview_file_id"),
+            "revealed": False,
             "message_id": None,
             "ts": int(time.time()),
             "status": "live",
         }
         state.setdefault("cards", {})[cid] = card
         save_state(state)
-        mid, err = post_to_group(
-            state, sell_card_text(card), reply_markup=sell_card_keyboard(card)
-        )
+        mid, err = post_card_to_group(state, card)
         if err:
             card["status"] = "failed"
             save_state(state)
@@ -3333,12 +3956,7 @@ def handle_callback(query, state):
         if not profile or profile.get("status") != "live":
             answer_callback(qid, "That seller is not live right now.", show_alert=True)
             return
-        send_message(
-            user_id,
-            seller_card_text(profile),
-            parse_mode="HTML",
-            reply_markup=seller_card_keyboard(profile),
-        )
+        send_seller_card(user_id, profile)
         answer_callback(qid, "Seller card sent.")
         return
 
@@ -3431,6 +4049,12 @@ def handle_callback(query, state):
                 user_id, username, seller_id, seller_name, product, price,
                 "Balance", "paid", option=option,
             )
+            if card_id is not None:
+                reveal_card_purchase(
+                    state, card_id, option,
+                    (query.get("from") or {}).get("first_name")
+                    or "Someone",
+                )
             send_message(
                 user_id,
                 f"✅ Paid {fmt_ks(price)} from your balance for "

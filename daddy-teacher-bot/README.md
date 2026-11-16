@@ -67,11 +67,12 @@ Each seller sets their own price per product, typed in Ks,
 validated to 5,000–50,000 Ks.
 
 **Seller profiles** — `/profile` runs a guided setup in DM: display
-name → pick products (toggle buttons) → price per product → payment
-details (KBZPay, WavePay, AYAPay, USDT on BSC, bank name + account
-number; at least one required; `/skip` keeps the old value when
-editing). These are the seller's OWN payment details — the bot's
-class-pack details (above) stay separate and are Arkar's only.
+name → age → role → pick products (toggle buttons) → price per
+product → payment details (KBZPay, WavePay, AYAPay, USDT on BSC,
+bank name + account number; at least one required; `/skip` keeps
+the old value when editing) → 3 photos (required, see v5).
+These are the seller's OWN payment details — the bot's class-pack
+details (above) stay separate and are Arkar's only.
 
 **Profiles go live immediately** — there is no approval gate. (The
 Zoom-live approval gate was dropped 2026-11-16: members can start
@@ -145,11 +146,14 @@ group as a shopping card — no admin step, no Zoom class needed.
 2. Name your options — up to 4, seller types the names (like A, B,
    C, D, or a size/flavour), then a price for each, typed in Ks,
    validated 5,000–50,000 Ks. `/done` finishes early; the 4th option
-   goes straight to the preview. Or tap "Use profile price" to post
+   goes straight to the media step. Or tap "Use profile price" to post
    a single option at the product's profile price.
-3. Confirm the preview, and the bot posts the card to the group.
+3. (v5) Send one product photo or video for the sneak peek, or
+   `/skip` for a text-only card. A video also needs a preview photo.
+4. Confirm the preview, and the bot posts the card to the group.
 
-**The card** — "🛍️ \<seller\> — \<product\>" with one Buy button
+**The card** — "🛍️ \<name\>, \<age\> • \<role\> — \<product\>" (v5;
+in v4 it was just "🛍️ \<seller\> — \<product\>") with one Buy button
 per option ("\<name\> — \<price\> Ks"), a "👤 Seller profile"
 button, and a "🗑️ Remove" button. The Buy buttons are deep links
 into the bot (`/start card_<id>_<option>`), so they work even for
@@ -165,6 +169,55 @@ linked yet (`GROUP_CHAT_ID` / `/setgroup`), `/sell` says so plainly
 instead of failing. Cards are recorded in `state.json` (`cards`,
 with message id, seller, product, options and status) so sales can
 be linked back to the card they came from.
+
+## v5 — richer profiles + sneak-peek preview + reveal on purchase
+
+**Profile** — `/profile` now collects age, role and 3 photos, in
+that order after the display name (age → role → products → prices
+→ payment details → photos → confirm):
+- **Age** — typed as a number, validated numeric (no 18+ block).
+- **Role** — buttons Top / Bottom / Verse, or "Something else…"
+  for typed free text (1–30 chars). A typed role is also accepted
+  directly at the role step.
+- **3 photos** — the seller sends 3 photos of themselves, one by
+  one. `/skip` is NOT allowed until all 3 are saved; profile
+  creation cannot finish without them. (Editing with 3 already
+  saved: `/skip` keeps them; sending a new photo swaps the oldest.)
+- Profiles store `age`, `role`, `photos` (3 Telegram file_ids).
+  Every profile card shows them: the seller card sends the 3 photos
+  as a media group first, then the text card ("Age: 28 • Role:
+  Top"). `/myprofile` does the same; `/sellers` and `/board` lines
+  show "Name, 28 • Top".
+- **Older profiles** (made in v2–v4, no age/role/photos) show "—"
+  for the missing bits, and `/sell` prompts the seller to complete
+  their profile first — a short flow that walks only the missing
+  pieces (age → role → photos → confirm), instead of failing.
+
+**Cards carry the profile** — every shopping card reads
+"🛍️ \<name\>, \<age\> • \<role\> — \<product\>".
+
+**Sneak peek** — `/sell` has a media step after the options: the
+seller sends one product photo or video (the full version), or
+`/skip` for a text-only card. A video also needs a preview photo.
+The card posted to the group shows only a **blurred** preview
+(Pillow `GaussianBlur` after a hard downscale — details are not
+visible; the full media is never posted on the card). The blurred
+preview is made once at preview time and its file_id stored on the
+card; the card is posted with `sendPhoto` + caption when it has a
+preview, plain text otherwise. Needs `Pillow` in requirements.txt
+(the bot downloads the source photo via `getFile` + the Telegram
+file URL, blurs it in memory/temp only, uploads the preview).
+
+**Reveal on purchase** — the FIRST completed purchase of a card
+posts the full media to the group for everyone to see:
+"🔓 Revealed: \<seller\>'s \<product\> (\<option\>) — bought by
+\<buyer\>". The card is then marked `revealed` so later purchases
+do not re-post it. The reveal hooks into every completed-sale
+path: balance buy, Stars (`successful_payment`), USDT now,
+USDT-direct, and direct-receipt CONFIRM (only when the receipt is
+approved, not when it is sent). Cards with no media have nothing
+to reveal; old v4 cards (no media on record) are handled
+gracefully.
 
 ## Setup (Railway)
 
@@ -203,4 +256,8 @@ drafts, cashouts, sellusdt, cards, card drafts), `credits.json`,
 `purchases.json` (kinds: `pack`, `market`, `topup`, `cashout`,
 `sellusdt`; market sales carry an `option` field when bought from a
 card option), `used_tx.json`, `users.json`, `profiles.json` (seller
-profiles + status), `balances.json` (user id → balance in Ks).
+profiles + status; each profile also holds `age`, `role`, `photos`
+— 3 file_ids), `balances.json` (user id → balance in Ks). Cards in
+`state.json` also hold `age`/`role` (snapshot), `media_type`,
+`media_file_id` (full version), `preview_file_id` (blurred) and
+`revealed` (false until the first completed purchase).
