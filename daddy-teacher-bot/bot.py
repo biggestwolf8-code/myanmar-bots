@@ -66,8 +66,19 @@ v2 — seller profiles + peer-to-peer market:
   Buyers pay with their bot balance, Stars, USDT (to the bot, the
   seller gets the balance), or directly to the seller (receipt photo
   or USDT hash, confirmed by the seller or an admin). Top up with
-  /topup (Stars $1/$2/$5/$10/$20 or USDT). Cash-out is NOT built yet
-  — the balance ledger is ready for it, but nothing pays out.
+  /topup (Stars $1/$2/$5/$10/$20 or USDT).
+
+v3 — cash-out + sell USDT (rate 1 USDT = 4,500 Ks):
+  /cashout — a member cashes out bot balance as USDT at 1 USDT =
+  4,500 Ks (minimum 4,500 Ks, whole USDT only, leftovers stay in
+  the balance). An admin approves only after sending the USDT from
+  their own wallet; approving debits the balance.
+  /sellusdt — a member sells USDT they already hold to Arkar at the
+  same 4,500 rate: they send the USDT to Arkar's address, the bot
+  verifies it on-chain, then an admin confirms the MMK is paid to
+  the seller's profile payment details.
+  THE 4,500 RATE IS FOR CASH-OUT / SELL-USDT ONLY. Product prices,
+  packs, Stars and top-ups still use the 1 USD = 5,000 Ks anchor.
 
 No watermarking, no protect_content — these are plain text posts.
 """
@@ -130,6 +141,11 @@ PRICE_MIN_KS = 5000
 PRICE_MAX_KS = 50000
 TOPUP_USD_AMOUNTS = (1, 2, 5, 10, 20)
 
+# Cash-out / sell-USDT rate ONLY: 1 USDT = 4,500 Ks. This is NOT the
+# pricing anchor (KS_PER_USD = 5,000) — never use one for the other.
+KS_PER_USDT_CASHOUT = 4500
+CASHOUT_MIN_KS = 4500  # minimum cash-out: 1 USDT
+
 PRODUCTS = {
     "milk": "🥛 Milk",
     "eggplant": "🍆 Eggplant",
@@ -174,6 +190,12 @@ def load_state():
             "receipt_seq": 0,
             "draft_session": False,
             "profile_draft": {},
+            "cashouts": {},
+            "cashout_seq": 0,
+            "cashout_draft": {},
+            "sellusdt": {},
+            "sell_seq": 0,
+            "sell_draft": {},
         },
     )
 
@@ -610,6 +632,295 @@ def send_buy_options(user_id, profile, product, price):
         "bank / USDT and send a receipt."
     )
     send_message(user_id, text, reply_markup={"inline_keyboard": rows})
+
+
+# ------------------------------------------------- cash-out + sell USDT ----
+
+
+def cashout_usdt_for_ks(ks):
+    """Whole USDT a Ks amount cashes out to at the 4,500 rate, rounded
+    down. Any leftover Ks stays in the balance. (The 5,000 pricing
+    anchor is NOT used here.)"""
+    return int(ks) // KS_PER_USDT_CASHOUT
+
+
+def record_cashout(user_id, username, ks, usdt, address, status):
+    record_event(
+        {
+            "kind": "cashout",
+            "user": str(user_id),
+            "username": username or "",
+            "ks": ks,
+            "usdt": usdt,
+            "address": address or "",
+            "status": status,
+            "ts": int(time.time()),
+        }
+    )
+
+
+def record_sell_usdt(user_id, username, usdt, mmk, tx_hash, status):
+    record_event(
+        {
+            "kind": "sellusdt",
+            "user": str(user_id),
+            "username": username or "",
+            "usdt": usdt,
+            "mmk": mmk,
+            "tx": tx_hash or "",
+            "status": status,
+            "ts": int(time.time()),
+        }
+    )
+
+
+def start_cashout(chat_id, user_id, state):
+    balance = get_balance(user_id)
+    if balance < CASHOUT_MIN_KS:
+        send_message(
+            chat_id,
+            f"💸 Cash out your balance as USDT — 1 USDT = "
+            f"{CASHOUT_MIN_KS:,} Ks.\n\n"
+            f"Your balance is {fmt_ks(balance)} — you need at least "
+            f"{fmt_ks(CASHOUT_MIN_KS)} (1 USDT) to cash out.\n\n"
+            "Top up with /topup, or earn balance by selling in the market.",
+        )
+        return
+    usdt = cashout_usdt_for_ks(balance)
+    state.setdefault("cashout_draft", {})[str(user_id)] = {"step": "amount"}
+    save_state(state)
+    send_message(
+        chat_id,
+        f"💸 Cash out — your balance is {fmt_ks(balance)} "
+        f"(up to {usdt} USDT at 1 USDT = {CASHOUT_MIN_KS:,} Ks).\n\n"
+        "How many Ks do you want to cash out? Send the amount in Ks "
+        f"(minimum {CASHOUT_MIN_KS:,} — whole USDT only, so 4,500 Ks = "
+        "1 USDT, 9,000 = 2, and so on). Anything left over stays in "
+        "your balance.\n\n"
+        "Or /cancel.",
+    )
+
+
+def handle_cashout_step(chat_id, user_id, text, state, user=None):
+    """One step of the guided /cashout flow. Returns True if the
+    message was consumed by the flow."""
+    draft = (state.get("cashout_draft") or {}).get(str(user_id))
+    if not draft:
+        return False
+    step = draft.get("step")
+
+    if step == "amount":
+        cleaned = (text or "").replace(",", "").replace(" ", "").strip()
+        if not cleaned.isdigit():
+            send_message(
+                chat_id,
+                "Send the amount in Ks as a number (e.g. 45000), or /cancel.",
+            )
+            return True
+        amount = int(cleaned)
+        balance = get_balance(user_id)
+        if amount < CASHOUT_MIN_KS:
+            send_message(
+                chat_id,
+                f"Minimum cash-out is {fmt_ks(CASHOUT_MIN_KS)} (1 USDT) — "
+                "send a bigger amount, or /cancel.",
+            )
+            return True
+        if amount > balance:
+            send_message(
+                chat_id,
+                f"That's more than your balance ({fmt_ks(balance)}) — "
+                "send a smaller amount, or /cancel.",
+            )
+            return True
+        usdt = cashout_usdt_for_ks(amount)
+        ks_used = usdt * KS_PER_USDT_CASHOUT
+        leftover = amount - ks_used
+        draft.update(
+            {
+                "step": "address",
+                "amount_ks": amount,
+                "usdt": usdt,
+                "ks_used": ks_used,
+            }
+        )
+        save_state(state)
+        profile = get_profile(user_id)
+        profile_usdt = (profile or {}).get("pay", {}).get("usdt", "")
+        note = (
+            f"Cashing out {fmt_ks(amount)} → {usdt} USDT "
+            f"({fmt_ks(ks_used)} at 1 USDT = {CASHOUT_MIN_KS:,} Ks)."
+        )
+        if leftover:
+            note += (
+                f"\n{fmt_ks(leftover)} stays in your balance "
+                "(only whole USDT amounts pay out)."
+            )
+        if profile_usdt:
+            note += (
+                "\n\nWhere should I send the USDT?\nYour profile address "
+                f"is <code>{html.escape(profile_usdt)}</code> — send /keep "
+                "to use it, or send a new address."
+            )
+        else:
+            note += (
+                "\n\nWhere should I send the USDT? Send your USDT address "
+                "(BSC, starts with 0x, 42 characters)."
+            )
+        send_message(chat_id, note, parse_mode="HTML")
+        return True
+
+    if step == "address":
+        profile = get_profile(user_id)
+        profile_usdt = (profile or {}).get("pay", {}).get("usdt", "")
+        if text == "/keep":
+            if not profile_usdt:
+                send_message(
+                    chat_id,
+                    "No address on your profile — send your USDT address "
+                    "(starts with 0x, 42 characters).",
+                )
+                return True
+            address = profile_usdt
+        elif looks_like_usdt_address(text):
+            address = text.strip()
+        else:
+            send_message(
+                chat_id,
+                "That doesn't look like a USDT address — it starts with "
+                "0x and is 42 characters. Send it again, or /cancel.",
+            )
+            return True
+        usdt = draft["usdt"]
+        ks_used = draft["ks_used"]
+        state["cashout_seq"] = state.get("cashout_seq", 0) + 1
+        cid = f"co{state['cashout_seq']}"
+        state.setdefault("cashouts", {})[cid] = {
+            "id": cid,
+            "user": str(user_id),
+            "username": (user or {}).get("username", ""),
+            "ks": ks_used,
+            "usdt": usdt,
+            "address": address,
+            "status": "pending",
+            "ts": int(time.time()),
+        }
+        state.get("cashout_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(
+            chat_id,
+            f"✅ Cash-out request sent — {usdt} USDT to "
+            f"<code>{html.escape(address)}</code>.\n"
+            "An admin will send the USDT and confirm it here. I'll tell "
+            "you when it's paid.",
+            parse_mode="HTML",
+        )
+        for admin_id in sorted(ADMIN_IDS):
+            send_message(
+                admin_id,
+                f"💸 Cash-out request {cid} from {user_tag(user)}:\n\n"
+                f"• {fmt_ks(ks_used)} → {usdt} USDT\n"
+                f"• Send to: <code>{html.escape(address)}</code>\n"
+                f"• Balance now: {fmt_ks(get_balance(user_id))}\n\n"
+                "Approve ONLY after you have sent the USDT from your "
+                "wallet — approving debits the seller's balance.",
+                parse_mode="HTML",
+                reply_markup={
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "✅ Paid — USDT sent",
+                                "callback_data": f"cook:{cid}",
+                            },
+                            {
+                                "text": "❌ Decline",
+                                "callback_data": f"cono:{cid}",
+                            },
+                        ]
+                    ]
+                },
+            )
+        return True
+    return False
+
+
+def start_sell_usdt(chat_id, user_id, state):
+    state.setdefault("sell_draft", {})[str(user_id)] = {"step": "amount"}
+    save_state(state)
+    send_message(
+        chat_id,
+        "💎 Sell your USDT to Arkar — 1 USDT = "
+        f"{KS_PER_USDT_CASHOUT:,} Ks.\n\n"
+        "How much USDT do you want to sell? Send a whole number "
+        "(e.g. 5 for 5 USDT = 22,500 Ks).\n\n"
+        "Or /cancel.",
+    )
+
+
+def handle_sell_step(chat_id, user_id, text, state, user=None):
+    """One step of the guided /sellusdt flow. Returns True if the
+    message was consumed by the flow."""
+    draft = (state.get("sell_draft") or {}).get(str(user_id))
+    if not draft:
+        return False
+    step = draft.get("step")
+
+    if step == "amount":
+        cleaned = (text or "").replace(",", "").replace(" ", "").strip()
+        if not cleaned.isdigit() or int(cleaned) < 1:
+            send_message(
+                chat_id,
+                "Send the USDT amount as a whole number (1 or more), "
+                "or /cancel.",
+            )
+            return True
+        usdt = int(cleaned)
+        mmk = usdt * KS_PER_USDT_CASHOUT
+        state["sell_seq"] = state.get("sell_seq", 0) + 1
+        sid = f"su{state['sell_seq']}"
+        state.setdefault("sellusdt", {})[sid] = {
+            "id": sid,
+            "user": str(user_id),
+            "username": (user or {}).get("username", ""),
+            "usdt": usdt,
+            "mmk": mmk,
+            "tx": "",
+            "status": "awaiting_payment",
+            "ts": int(time.time()),
+        }
+        state.setdefault("pending_usdt", {})[str(user_id)] = {
+            "kind": "sellusdt",
+            "sell_id": sid,
+            "usdt": usdt,
+        }
+        draft.update({"step": "hash", "sell_id": sid, "usdt": usdt, "mmk": mmk})
+        save_state(state)
+        send_message(
+            chat_id,
+            f"Send {usdt} USDT on BSC (BEP20) to Arkar:\n\n"
+            f"<code>{USDT_ADDRESS}</code>\n\n"
+            f"🔗 <a href=\"{USDT_BSCSCAN_URL}\">View on BscScan</a>\n"
+            "⚠️ Send on BSC (BEP20) only.\n\n"
+            f"You'll get {fmt_ks(mmk)} for it ({usdt} USDT × "
+            f"{KS_PER_USDT_CASHOUT:,} Ks).\n\n"
+            "Then paste your transaction hash here (starts with 0x, "
+            "66 characters).",
+            parse_mode="HTML",
+            reply_markup=usdt_copy_keyboard(),
+        )
+        return True
+
+    if step == "hash":
+        if looks_like_tx_hash(text):
+            handle_usdt_hash(chat_id, user_id, text, state, user=user)
+            return True
+        send_message(
+            chat_id,
+            "Send the transaction hash (starts with 0x, 66 characters), "
+            "or /cancel.",
+        )
+        return True
+    return False
 
 
 # ------------------------------------------------------------------ API ---
@@ -1269,6 +1580,74 @@ def handle_usdt_hash(chat_id, user_id, tx_hash, state, user=None):
         )
         return
 
+    if kind == "sellusdt":
+        sell_id = pending.get("sell_id")
+        usdt = int(pending.get("usdt", 0))
+        ok, reason, _value = verify_usdt_tx(tx_hash, usdt * USDT_MIN)
+        if not ok:
+            send_message(chat_id, f"Not verified yet: {reason}")
+            return
+        mark_tx_used(tx_hash)
+        state["pending_usdt"].pop(str(user_id), None)
+        state.get("sell_draft", {}).pop(str(user_id), None)
+        sell = (state.get("sellusdt") or {}).get(sell_id)
+        if sell:
+            sell["tx"] = tx_hash
+            sell["status"] = "awaiting_mmk"
+            sell["verified_ts"] = int(time.time())
+        save_state(state)
+        mmk = usdt * KS_PER_USDT_CASHOUT
+        profile = get_profile(user_id)
+        pay = (profile or {}).get("pay", {})
+        pay_lines = []
+        if pay.get("kbz"):
+            pay_lines.append(f"KBZPay: <code>{html.escape(pay['kbz'])}</code>")
+        if pay.get("wave"):
+            pay_lines.append(f"WavePay: <code>{html.escape(pay['wave'])}</code>")
+        if pay.get("aya"):
+            pay_lines.append(f"AYAPay: <code>{html.escape(pay['aya'])}</code>")
+        if pay.get("bank_name") or pay.get("bank_acct"):
+            pay_lines.append(
+                f"Bank: {html.escape(str(pay.get('bank_name', '')))} — "
+                f"<code>{html.escape(str(pay.get('bank_acct', '')))}</code>"
+            )
+        note = (
+            f"💎 {user_tag(user)} sold {usdt} USDT to Arkar (verified "
+            f"on-chain, hash <code>{tx_hash[:10]}…</code>).\n\n"
+            f"Pay them {fmt_ks(mmk)} ({usdt} USDT × "
+            f"{KS_PER_USDT_CASHOUT:,} Ks) via their profile details:"
+        )
+        if pay_lines:
+            note += "\n" + "\n".join(pay_lines)
+        else:
+            note += (
+                "\nNo payment details on their profile — ask them how "
+                "to pay the MMK."
+            )
+        for admin_id in sorted(ADMIN_IDS):
+            send_message(
+                admin_id,
+                note,
+                parse_mode="HTML",
+                reply_markup={
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": f"✅ Paid {fmt_ks(mmk)} MMK",
+                                "callback_data": f"supaid:{sell_id}",
+                            }
+                        ]
+                    ]
+                },
+            )
+        send_message(
+            chat_id,
+            f"✅ USDT received and verified — {usdt} USDT.\n"
+            f"Arkar will send you {fmt_ks(mmk)}. I'll tell you when "
+            "it's paid.",
+        )
+        return
+
     # kind == "pack": original class-pack flow
     key = pending["pack"]
     p = PACKS[key]
@@ -1488,7 +1867,9 @@ def handle_start(chat_id, text, state, user=None):
         "Tap a pack to pay — Stars, USDT, or KBZPay / WavePay / AYAPay.\n\n"
         "🛍 Plus the market — members sell products (milk, eggplant, "
         "peaches, donut, HD). Make your seller profile with /profile, "
-        "browse with /sellers, check your balance with /balance.",
+        "browse with /sellers, check your balance with /balance.\n\n"
+        "💸 Cash out your balance as USDT with /cashout, or sell your "
+        "USDT to Arkar with /sellusdt — both at 1 USDT = 4,500 Ks.",
         reply_markup=pack_keyboard(url_buttons=False),
     )
 
@@ -1522,6 +1903,8 @@ def handle_help(chat_id):
         "/sellers — live sellers\n"
         "/balance — your bot balance\n"
         "/topup — top up by Stars or USDT\n"
+        "/cashout — cash out your balance as USDT (1 USDT = 4,500 Ks)\n"
+        "/sellusdt — sell your USDT to Arkar (1 USDT = 4,500 Ks)\n"
         f"{FOOTER}",
     )
 
@@ -1584,6 +1967,11 @@ def handle_message(msg, state):
     # ---- shared commands: everyone, admins included ----
     if text == "/cancel":
         state.get("profile_draft", {}).pop(str(user_id), None)
+        state.get("cashout_draft", {}).pop(str(user_id), None)
+        state.get("sell_draft", {}).pop(str(user_id), None)
+        pending = (state.get("pending_usdt") or {}).get(str(user_id))
+        if pending and pending.get("kind") == "sellusdt":
+            state["pending_usdt"].pop(str(user_id), None)
         state["draft_session"] = False
         save_state(state)
         send_message(chat_id, "Cancelled.")
@@ -1624,6 +2012,14 @@ def handle_message(msg, state):
         send_topup_options(user_id)
         return
 
+    if text == "/cashout":
+        start_cashout(chat_id, user_id, state)
+        return
+
+    if text == "/sellusdt":
+        start_sell_usdt(chat_id, user_id, state)
+        return
+
     if text == "/mysessions":
         total = get_credits(user_id)
         send_message(
@@ -1632,6 +2028,16 @@ def handle_message(msg, state):
             "Buy more below:",
             reply_markup=pack_keyboard(url_buttons=False),
         )
+        return
+
+    co_draft = (state.get("cashout_draft") or {}).get(str(user_id))
+    if co_draft and (not text.startswith("/") or text == "/keep"):
+        handle_cashout_step(chat_id, user_id, text, state, user=msg.get("from", {}))
+        return
+
+    su_draft = (state.get("sell_draft") or {}).get(str(user_id))
+    if su_draft and not text.startswith("/"):
+        handle_sell_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
 
     draft = (state.get("profile_draft") or {}).get(str(user_id))
@@ -1891,6 +2297,24 @@ def handle_message(msg, state):
                     f"${p.get('usd')} ({fmt_ks(p.get('ks', 0))}) — "
                     f"{p['method']} — {p['status']}"
                 )
+            elif kind == "cashout":
+                name = (
+                    f"@{p['username']}" if p.get("username") else p["user"]
+                )
+                lines.append(
+                    f"{fmt_time(p['ts'])} — {name} — cash-out "
+                    f"{fmt_ks(p.get('ks', 0))} → {p.get('usdt')} USDT — "
+                    f"{p['status']}"
+                )
+            elif kind == "sellusdt":
+                name = (
+                    f"@{p['username']}" if p.get("username") else p["user"]
+                )
+                lines.append(
+                    f"{fmt_time(p['ts'])} — {name} — sold "
+                    f"{p.get('usdt')} USDT → {fmt_ks(p.get('mmk', 0))} — "
+                    f"{p['status']}"
+                )
             else:
                 name = (
                     f"@{p['username']}" if p.get("username") else p["user"]
@@ -2036,6 +2460,96 @@ def handle_callback(query, state):
                 "mistake, message @SirArkar.",
             )
             answer_callback(qid, "Declined.")
+        return
+
+    # ---- cash-out decisions (admin confirms after sending USDT) ----
+    if data.startswith("cook:") or data.startswith("cono:"):
+        if not is_admin(user_id):
+            answer_callback(qid, "Admin only.", show_alert=True)
+            return
+        cid = data.split(":", 1)[1]
+        req = (state.get("cashouts") or {}).get(cid)
+        if not req:
+            answer_callback(qid, "Unknown cash-out request.", show_alert=True)
+            return
+        if req.get("status") != "pending":
+            answer_callback(qid, "Already handled.", show_alert=True)
+            return
+        seller_id = req["user"]
+        if data.startswith("cook:"):
+            ks_used = int(req["ks"])
+            if get_balance(seller_id) < ks_used:
+                req["status"] = "failed"
+                save_state(state)
+                send_message(
+                    seller_id,
+                    "Your cash-out request was cancelled — your balance "
+                    "no longer covers it. Please try again with /cashout.",
+                )
+                answer_callback(
+                    qid, "Balance no longer covers it — request cancelled.",
+                    show_alert=True,
+                )
+                return
+            change_balance(seller_id, -ks_used)
+            req["status"] = "paid"
+            req["decided_ts"] = int(time.time())
+            save_state(state)
+            record_cashout(
+                seller_id, req.get("username", ""), ks_used,
+                int(req["usdt"]), req.get("address", ""), "paid",
+            )
+            send_message(
+                seller_id,
+                f"✅ Paid: {req['usdt']} USDT sent to "
+                f"<code>{html.escape(req.get('address', ''))}</code>.\n"
+                f"Your balance is now {fmt_ks(get_balance(seller_id))}.",
+                parse_mode="HTML",
+            )
+            answer_callback(qid, "Paid — seller notified, balance debited.")
+        else:
+            req["status"] = "declined"
+            req["decided_ts"] = int(time.time())
+            save_state(state)
+            record_cashout(
+                seller_id, req.get("username", ""), int(req["ks"]),
+                int(req["usdt"]), req.get("address", ""), "declined",
+            )
+            send_message(
+                seller_id,
+                "❌ Your cash-out request was declined — your balance "
+                "is untouched. If you think this is a mistake, message "
+                "@SirArkar.",
+            )
+            answer_callback(qid, "Declined — balance untouched.")
+        return
+
+    # ---- sell-USDT: admin confirms the MMK is paid ----
+    if data.startswith("supaid:"):
+        if not is_admin(user_id):
+            answer_callback(qid, "Admin only.", show_alert=True)
+            return
+        sid = data.split(":", 1)[1]
+        sell = (state.get("sellusdt") or {}).get(sid)
+        if not sell:
+            answer_callback(qid, "Unknown sale.", show_alert=True)
+            return
+        if sell.get("status") != "awaiting_mmk":
+            answer_callback(qid, "Already handled.", show_alert=True)
+            return
+        sell["status"] = "paid"
+        sell["decided_ts"] = int(time.time())
+        save_state(state)
+        record_sell_usdt(
+            sell["user"], sell.get("username", ""), int(sell["usdt"]),
+            int(sell["mmk"]), sell.get("tx", ""), "paid",
+        )
+        send_message(
+            sell["user"],
+            f"✅ Paid — Arkar sent you {fmt_ks(sell['mmk'])} for "
+            f"{int(sell['usdt'])} USDT. Thanks! 🙏",
+        )
+        answer_callback(qid, "Seller notified.")
         return
 
     if data == "mysessions":

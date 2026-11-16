@@ -40,6 +40,8 @@ Students:
 - `/sellers` — live sellers + their products
 - `/balance` — your bot balance
 - `/topup` — top up by Stars ($1/$2/$5/$10/$20) or USDT
+- `/cashout` — cash out your balance as USDT (1 USDT = 4,500 Ks)
+- `/sellusdt` — sell your USDT to Arkar (1 USDT = 4,500 Ks)
 - `/id` — this chat's id (works in the group too)
 
 Admin (HenryRealGood 7061620871, SirArkar 8028025915):
@@ -93,9 +95,41 @@ then a product, and chooses how to pay:
 **Balances** — `/balance` shows the balance in Ks (and USD).
 `/topup` offers Stars ($1/$2/$5/$10/$20 invoices) or USDT (same
 amounts, on-chain verify to the bot's address; what actually arrives
-is credited). Balances can be spent on any live seller's products.
-Cash-out is NOT built — the ledger is ready for it, but nothing
-pays out yet. Do not promise cash-out to sellers until it exists.
+is credited). Balances can be spent on any live seller's products,
+or cashed out — see v3 below.
+
+## v3 — cash-out + sell USDT (rate 1 USDT = 4,500 Ks)
+
+**⚠️ Two different rates — do not mix them up:**
+- Product prices, packs, Stars and top-ups: **1 USD = 5,000 Ks**.
+- Cash-out and sell-USDT only: **1 USDT = 4,500 Ks**.
+
+**`/cashout`** — a member cashes out bot balance as USDT at
+1 USDT = 4,500 Ks. Minimum 4,500 Ks (1 USDT); whole USDT only —
+47,000 Ks cashes out as 10 USDT (45,000 Ks) and the other 2,000 Ks
+stays in the balance. Flow: `/cashout` → type the Ks amount →
+confirm the USDT payout address (defaults to the address on the
+seller's profile, `/keep` to use it, or type a new one) → request
+goes to both admins with Approve / Decline. **Approve only after
+the admin has sent the USDT from their own wallet** — approving
+debits the seller's balance by the cashed-out Ks and tells the
+seller "Paid: X USDT sent to <address>". Decline leaves the balance
+untouched. A second admin tap says "Already handled". Cash-outs are
+recorded in `state.json` (`cashouts`) and shown in `/sales`.
+
+**`/sellusdt`** — a member sells USDT they already hold to Arkar at
+1 USDT = 4,500 Ks. Flow: `/sellusdt` → type the USDT amount (whole
+numbers) → bot shows Arkar's USDT address
+(`0xffef0a1f5b075ed8763d7e0b13c9e3df04819222`, with the one-tap
+"📋 Copy USDT address" button) and the MMK due (amount × 4,500) →
+seller sends the USDT and pastes the transaction hash → bot
+verifies it on-chain (same `verify_usdt_tx`, to Arkar's address;
+already-used hashes are rejected) → on success both admins get the
+amount, the MMK due, and the seller's profile payment details
+(KBZPay / WavePay / AYAPay / bank) with a "Paid MMK" button →
+admin taps it after paying the MMK and the seller is notified. If
+the hash doesn't verify, the seller is told plainly and can retry.
+Sales are recorded in `state.json` (`sellusdt`) and shown in `/sales`.
 
 ## Setup (Railway)
 
@@ -130,6 +164,7 @@ Environment variables:
 
 JSON files in `DATA_DIR` (same pattern as daddy-bot):
 `state.json` (group, sessions, pending payments, receipts, profile
-drafts), `credits.json`, `purchases.json` (kinds: `pack`, `market`,
-`topup`), `used_tx.json`, `users.json`, `profiles.json` (seller
-profiles + status), `balances.json` (user id → balance in Ks).
+drafts, cashouts, sellusdt), `credits.json`, `purchases.json` (kinds:
+`pack`, `market`, `topup`, `cashout`, `sellusdt`), `used_tx.json`,
+`users.json`, `profiles.json` (seller profiles + status),
+`balances.json` (user id → balance in Ks).
