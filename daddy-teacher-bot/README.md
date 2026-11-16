@@ -308,8 +308,8 @@ Same gates as `/sell`: a live profile and a linked group.
   photo of their own, **unblurred** (if the video has no thumbnail,
   the seller sends a cover photo, or `/skip` to post with no cover)
   → confirm the preview → the bot posts the pool card to the group.
-  The preview has a "💰 Change amount" button, and `/poolinfo`
-  lets the seller change the amount on a live pool too (v7.10).
+  The pool price is fixed once typed — it can never be changed
+  (v7.10 briefly allowed changing it; removed in v7.11).
 - **Rules** — the price is **seller-set, 50,000–500,000 Ks**.
   Each member puts in **1,000 Ks or more per contribution, as
   often as they like** — every top-up adds to their running total
@@ -583,6 +583,59 @@ Ks minimum contribution, the 1–30 minute video rule, the 5,000 Ks
 starting bid, profiles, balances, cash-out, and the announcements
 are untouched.
 
+**Note (v7.11)** — the two pool-amount features above were removed
+at the owner's direction: the pool price is typed once at creation
+and never changes. The preview still shows the draft's real price
+(the v7.10 latent-bug fix was kept).
+
+## v7.11 — fixed pool price, contribution quick-picks, 5-second teaser
+
+**Correction — the pool price is fixed.** v7.10 let the seller
+change the pool price on the preview and on a live pool via
+`/poolinfo`. The owner corrected that: the pool target is typed
+once at creation (50,000–500,000 Ks) and then **never** changes —
+"the price cannot adjust" / "can't adjust the pool size". Both
+"💰 Change amount" buttons are gone (the `poolpriceedit` and
+`poolprice:` callbacks, the `price_edit` / `pool_price_edit`
+drafts, and the in-place preview editor went with them); a forged
+callback for either now just gets "Unknown button." The preview
+still shows the draft's real typed price, not always 50,000 Ks.
+
+**Contribution quick-picks** — what members *can* choose is their
+own contribution: each person picks an amount from 1,000 Ks and
+above. Tapping 🤝 Join now shows amount buttons — 1,000 / 5,000 /
+10,000 / 20,000 / 50,000 Ks — plus "⌨️ Type a different amount",
+which asks them to type an amount as before (any whole amount from
+the 1,000 Ks minimum). Tapping a button contributes exactly that
+amount through the same `join_pool` logic: minimum 1,000 Ks,
+balance-only, capped at exactly what's left (only what's needed is
+taken, and the member is told plainly). Repeat contributors see
+their running total above the buttons ("You've put in X Ks so far
+— add more?"). The money meter, contributor list and completion
+flow are unchanged.
+
+**5-second teaser** — after the cover is settled (and before the
+preview), the seller is asked: "Add a 5-second sneak preview?
+Send a short video (5 seconds or less), or /skip." A video of 5
+seconds or less is stored as `teaser_file_id` on the draft; a
+longer clip is rejected ("Keep the teaser to 5 seconds — send a
+shorter clip, or /skip."); a photo at this step gets a nudge to
+send a video instead. The teaser is shown **unblurred** — it is a
+deliberate 5-second teaser, not the full video. The seller's
+preview shows the teaser as the card media when one is set, and
+the group card posts the teaser **video** + caption + buttons
+instead of the cover photo; with no teaser the card uses the cover
+photo / text exactly as before. The full video is still only ever
+sent privately (pool fill / auction win) — the teaser never
+replaces that. Card edits after posting (pool joins, auction bids)
+work on video cards too (`editMessageCaption` on the stored
+message id), as well as on photo and text cards. Available for
+pools **and** auctions; `/skip` at the teaser step posts without
+one.
+
+Kept from v7.10: cover choice per post, 24-hour auctions, and the
+v7.8/v7.9 logging, anti-silence and thumbnail re-upload fixes.
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
@@ -627,7 +680,8 @@ profiles + status; each profile also holds `age`, `role`, `photos`
 `media_file_id` (full version), `preview_file_id` (blurred) and
 `revealed` (false until the first completed purchase). Auctions in
 `state.json` hold `video_file_id`, `cover_file_id` (seller-chosen
-cover: video thumbnail or own photo, unblurred), `start` (5,000),
+cover: video thumbnail or own photo, unblurred), `teaser_file_id`
+(optional 5-second teaser video), `start` (5,000),
 `current_bid` / `current_bidder`, `ends_at`, `ended_at`, `posted_at`,
 `message_id` and `status`
 (`live` / `ended` / `sold` / `expired` / `removed`).
