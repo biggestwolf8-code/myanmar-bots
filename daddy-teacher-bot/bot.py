@@ -97,14 +97,16 @@ v3 — cash-out + sell USDT (rate 1 USDT = 4,500 Ks):
 
 v6 — auction house + seller titles:
   /auction posts a video auction instead of a fixed-price card:
-  starting bid fixed at 5,000 Ks, 15 minutes only, bids from bot
+  starting bid fixed at 5,000 Ks, 24 hours only, bids from bot
   balance only (escrowed; outbid bidders are refunded at once).
-  The cover is the video's own thumbnail, UNBLURRED. The highest
+  The seller chooses the cover when posting — the video's
+  thumbnail, or a photo of their own. The highest
   bidder wins the video privately in DM — never revealed in the
   group, unless an admin wins (then it IS revealed in the group).
-  Unsold auction posts stay up 24 hours, then are deleted; a sold
-  auction's post is deleted at once. The deadline + 24-hour sweeps
-  run inside the polling loop — no external cron.
+  Unsold auction posts stay up 24 hours after the auction ends,
+  then are deleted; a sold auction's post is deleted at once. The
+  deadline + 24-hour sweeps run inside the polling loop — no
+  external cron.
   Seller titles by completed sales (market + auction, packs don't
   count), computed live at render time: 0 New Seller, 1–4 Seller,
   5–9 Rising Star, 10–24 Top Seller, 25–49 Star Seller, 50+ Legend.
@@ -122,7 +124,8 @@ v7 — group-buy pool ("fundraiser pool"):
   at once. No deadline — a pool stays open until it fills; if the
   seller or an admin removes it, every contributor is refunded
   what they put in. Pool videos must be 1 to 30 minutes (same rule
-  as auctions); the cover is the video's own thumbnail, UNBLURRED.
+  as auctions); the seller chooses the cover when posting — the
+  video's thumbnail, or a photo of their own.
   A completed pool counts as ONE sale for the seller's title.
 
 v7.2 — flexible pool contributions:
@@ -961,8 +964,12 @@ def send_photo_with_fallback(chat_id, photo_file_id, caption,
     thumbnail file_id CANNOT be used as a photo (Telegram:
     "can't use file of type Thumbnail as Photo"), so: (a) try the
     file_id directly; (b) download the file and re-upload the
-    bytes; (c) send the caption as a plain message. Returns the
-    api response dict of whichever send succeeded."""
+    bytes; (c) send the caption as a plain message. With no cover
+    at all (the seller skipped it) it goes straight to (c) — a
+    text card. Returns the api response dict of whichever send
+    succeeded."""
+    if not photo_file_id:
+        return send_message(chat_id, caption, reply_markup=reply_markup)
     payload = {"chat_id": chat_id, "photo": photo_file_id,
                "caption": caption}
     if reply_markup:
@@ -1068,14 +1075,15 @@ def reveal_card_purchase(state, card_id, option_name, buyer_name):
 # ------------------------------------------------------- auction house ----
 
 # Every auction starts at 5,000 Ks; a new bid must beat the current
-# bid by at least 1,000 Ks. An auction runs 15 minutes only. An
-# unsold auction post stays up 24 hours after posting, then the
-# sweep deletes it. Fixed-price cards are never auto-deleted.
+# bid by at least 1,000 Ks. An auction runs 24 hours only. An
+# unsold auction post stays up 24 hours after the auction ENDS,
+# then the sweep deletes it. Fixed-price cards are never
+# auto-deleted.
 # Auction videos must be 1 to 30 minutes long; the card shows the
 # length in whole minutes (e.g. "⏱️ 3 min").
 AUCTION_START_KS = 5000
 AUCTION_MIN_INCREMENT_KS = 1000
-AUCTION_DURATION_S = 15 * 60
+AUCTION_DURATION_S = 24 * 3600
 AUCTION_POST_TTL_S = 24 * 3600
 AUCTION_MIN_VIDEO_S = 60
 AUCTION_MAX_VIDEO_S = 1800
@@ -1096,14 +1104,18 @@ POOL_MIN_CONTRIB_KS = 1000
 
 
 def fmt_countdown(seconds):
-    """mm:ss left on an auction, e.g. 14:32."""
+    """Time left on an auction: "23h 59m" once an hour or more is
+    left, "mm:ss" under an hour, e.g. 14:32."""
     seconds = max(0, int(seconds))
+    if seconds >= 3600:
+        return f"{seconds // 3600}h {(seconds % 3600) // 60:02d}m"
     return f"{seconds // 60}:{seconds % 60:02d}"
 
 
 def auction_card_text(auction, now=None):
     """The auction card posted to the group. The cover photo is the
-    video's own thumbnail, UNBLURRED (unlike v5 fixed-price cards).
+    seller's chosen cover — the video's thumbnail or a photo of
+    their own — UNBLURRED (unlike v5 fixed-price cards).
     The winner gets the video privately — never revealed in the group,
     unless an admin wins."""
     now = int(time.time()) if now is None else int(now)
@@ -1176,9 +1188,9 @@ def auction_card_keyboard(auction):
 
 
 def post_auction_to_group(state, auction):
-    """Post an auction card to the group: the cover photo (the video's
-    own thumbnail, UNBLURRED) with the auction text as caption, or
-    plain text if there is no cover. Returns (message_id, err)."""
+    """Post an auction card to the group: the seller's chosen cover
+    photo (UNBLURRED) with the auction text as caption, or plain
+    text if there is no cover. Returns (message_id, err)."""
     group = state.get("group") or GROUP_CHAT_ID
     if not group:
         return None, "no group set"
@@ -1269,6 +1281,44 @@ def _seller_ready(chat_id, user_id, state):
     return profile
 
 
+def send_cover_choice(chat_id, kind):
+    """After a video WITH a thumbnail: let the seller pick the
+    cover for this post — the video's own thumbnail, or a photo of
+    their own. The choice is per post, not per product."""
+    noun = "pool" if kind == "pool" else "auction"
+    kb = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "🖼️ Use video thumbnail",
+                    "callback_data": f"{kind}coverthumb",
+                },
+                {
+                    "text": "📷 Send my own cover photo",
+                    "callback_data": f"{kind}coverown",
+                },
+            ]
+        ]
+    }
+    send_message(
+        chat_id,
+        "Got the video. What should the cover be — the video's own "
+        "thumbnail, or a photo of your own? This is the unblurred "
+        f"cover everyone sees on the {noun} card.",
+        reply_markup=kb,
+    )
+
+
+def _cover_choice_draft(state, user_id, kind):
+    """The pool/auction draft waiting on a cover choice, or None
+    when there is no draft at the "cover_choice" step."""
+    key = "pool_draft" if kind == "pool" else "auction_draft"
+    draft = (state.get(key) or {}).get(str(user_id))
+    if not draft or draft.get("step") != "cover_choice":
+        return None
+    return draft
+
+
 def send_auction_preview(chat_id, user_id, draft):
     """Show the seller exactly what will post: the cover photo
     UNBLURRED, the auction text, Post / Cancel buttons."""
@@ -1312,7 +1362,9 @@ def send_pool_info(chat_id, pool):
     """The FULL contributor list for one pool, in a DM: every
     member with their running total, highest first. The group card
     only shows the top 10 (caption limit), so this is where the
-    whole list lives. Works for live and filled pools."""
+    whole list lives. Works for live and filled pools. The pool's
+    seller — and only the seller — also gets a "Change amount"
+    button here, to retarget a live pool."""
     price = int(pool.get("price") or POOL_MIN_PRICE_KS)
     raised = pool_raised(pool)
     joined = len(pool.get("contributors") or [])
@@ -1342,7 +1394,22 @@ def send_pool_info(chat_id, pool):
             c.get("name") or "Someone"
         )
         lines.append(f"{i}. {who} — {fmt_ks(int(c.get('ks') or 0))}")
-    send_message(chat_id, "\n".join(lines))
+    kb = None
+    if (
+        str(chat_id) == str(pool.get("seller"))
+        and pool.get("status") == "live"
+    ):
+        kb = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "💰 Change amount",
+                        "callback_data": f"poolprice:{pool['id']}",
+                    }
+                ]
+            ]
+        }
+    send_message(chat_id, "\n".join(lines), reply_markup=kb)
 
 
 def start_auction(chat_id, user_id, state, user=None):
@@ -1403,10 +1470,34 @@ def handle_auction_step(chat_id, user_id, text, state, user=None):
             "to stop.",
         )
         return True
-    if step == "cover":
+    if step == "cover_choice":
         send_message(
-            chat_id, "Send a cover photo for the video — or /cancel to stop."
+            chat_id,
+            "Tap one of the buttons above — use the video's thumbnail "
+            "as the cover, or send your own cover photo.",
         )
+        return True
+    if step == "cover":
+        if text == "/skip":
+            # Back to the thumbnail when there is one; otherwise
+            # the card posts with no cover photo.
+            if draft.get("thumb_file_id"):
+                draft["cover_file_id"] = draft["thumb_file_id"]
+            draft["step"] = "confirm"
+            save_state(state)
+            send_auction_preview(chat_id, user_id, draft)
+            return True
+        if draft.get("thumb_file_id"):
+            hint = (
+                "Send a cover photo — or /skip to use the video's "
+                "thumbnail."
+            )
+        else:
+            hint = (
+                "Send a cover photo — or /skip to post with no cover "
+                "photo."
+            )
+        send_message(chat_id, hint)
         return True
     return False
 
@@ -1575,11 +1666,12 @@ def _delete_auction_card(state, auction):
 
 
 def _close_auction(state, auction, now):
-    """The 15-minute deadline hit. With a winner: the escrowed bid
+    """The 24-hour deadline hit. With a winner: the escrowed bid
     goes to the seller and the video is delivered privately to the
     winner — unless an admin won, in which case it is revealed in
     the whole group. With no bids: close the auction, leave the post
-    up (the 24-hour sweep deletes it later)."""
+    up (the 24-hour sweep deletes it 24 hours after it ENDED)."""
+    auction["ended_at"] = now
     group = state.get("group") or GROUP_CHAT_ID
     bidder = auction.get("current_bidder")
     bid = int(auction.get("current_bid", 0))
@@ -1679,8 +1771,10 @@ def _close_auction(state, auction, now):
 
 def sweep_auctions(state, now=None):
     """Deadline sweep for auctions — runs every polling iteration, so
-    no external cron is needed. Closes 15-minute auctions at their
-    deadline and deletes unsold auction posts 24 hours after posting.
+    no external cron is needed. Closes 24-hour auctions at their
+    deadline and deletes unsold auction posts 24 hours after the
+    auction ENDED (not after posting — with a 24-hour auction the
+    old rule would delete the card the moment it ended).
     Fixed-price cards are never touched. `now` is injectable for
     tests. Returns True if anything changed."""
     now = int(time.time()) if now is None else int(now)
@@ -1699,7 +1793,13 @@ def sweep_auctions(state, now=None):
                 _close_auction(state, auction, now)
                 changed = True
         elif status == "ended":
-            if now >= auction.get("posted_at", 0) + AUCTION_POST_TTL_S:
+            # 24 hours after the auction ended — `ended_at` is set
+            # when it closes; older records fall back to the
+            # deadline, which is when they ended.
+            ended_at = auction.get("ended_at") or auction.get(
+                "ends_at", 0
+            )
+            if now >= ended_at + AUCTION_POST_TTL_S:
                 _delete_auction_card(state, auction)
                 auction["status"] = "expired"
                 changed = True
@@ -1923,7 +2023,8 @@ def pool_contributor_block(pool, max_count=10):
 
 def pool_card_text(pool):
     """The pool card posted to the group. The cover photo is the
-    video's own thumbnail, UNBLURRED (same as auctions). The video
+    seller's chosen cover — the video's thumbnail or a photo of
+    their own — UNBLURRED (same as auctions). The video
     is NEVER revealed in the group — on completion it goes privately
     to every contributor's DM. The card carries a LIVE money meter,
     refreshed on every join, plus the contributor count and the
@@ -2026,9 +2127,9 @@ def pool_card_keyboard(pool):
 
 
 def post_pool_to_group(state, pool):
-    """Post a pool card to the group: the cover photo (the video's
-    own thumbnail, UNBLURRED) with the pool text as caption, or
-    plain text if there is no cover. Returns (message_id, err)."""
+    """Post a pool card to the group: the seller's chosen cover
+    photo (UNBLURRED) with the pool text as caption, or plain text
+    if there is no cover. Returns (message_id, err)."""
     group = state.get("group") or GROUP_CHAT_ID
     if not group:
         return None, "no group set"
@@ -2329,9 +2430,11 @@ def send_join_prompt(chat_id, pool):
     send_message(chat_id, text, reply_markup=kb)
 
 
-def send_pool_preview(chat_id, user_id, draft):
-    """Show the seller exactly what will post: the cover photo
-    UNBLURRED, the pool text, Post / Cancel buttons."""
+def pool_preview_text(user_id, draft):
+    """The preview message for a pool draft: what will post, plus
+    the Post / Cancel / Change amount buttons. Shared by the first
+    send and by in-place refreshes after a price change, so the
+    preview always shows the draft's current price."""
     profile = get_profile(user_id)
     preview = {
         "seller_name": draft.get("seller_name", "Seller"),
@@ -2339,6 +2442,7 @@ def send_pool_preview(chat_id, user_id, draft):
         "role": (profile or {}).get("role"),
         "seller": str(user_id),
         "product": draft.get("product"),
+        "price": draft.get("price"),
         "duration_min": draft.get("duration_min"),
         "contributors": [],
         "status": "live",
@@ -2351,19 +2455,73 @@ def send_pool_preview(chat_id, user_id, draft):
             [
                 {"text": "✅ Post pool", "callback_data": "poolpost"},
                 {"text": "❌ Cancel", "callback_data": "poolcancel"},
-            ]
+            ],
+            [
+                {
+                    "text": "💰 Change amount",
+                    "callback_data": "poolpriceedit",
+                },
+            ],
         ]
     }
+    return text, kb
+
+
+def send_pool_preview(chat_id, user_id, draft, state):
+    """Show the seller exactly what will post: the cover photo
+    UNBLURRED, the pool text, Post / Cancel / Change amount
+    buttons. Remembers the message id (and whether it went as a
+    photo or as text) on the draft so a price change can edit this
+    preview in place instead of sending a new one."""
+    text, kb = pool_preview_text(user_id, draft)
     if draft.get("cover_file_id"):
         # The cover may be a video thumbnail, which Telegram
         # refuses as a photo file_id — the helper downloads and
         # re-uploads it, and only falls back to text as a last
         # resort, so the seller still sees the cover.
-        send_photo_with_fallback(
+        r = send_photo_with_fallback(
             chat_id, draft["cover_file_id"], text, reply_markup=kb
         )
     else:
-        send_message(chat_id, text, reply_markup=kb)
+        r = send_message(chat_id, text, reply_markup=kb)
+    if r.get("ok"):
+        result = r.get("result") or {}
+        draft["preview_message_id"] = result.get("message_id")
+        draft["preview_is_photo"] = "photo" in result
+        save_state(state)
+
+
+def edit_pool_preview(chat_id, user_id, draft, state):
+    """Refresh the seller's pool preview in place after a price
+    change: edit the caption (photo preview) or the text (text
+    preview). If the edit fails — the message is gone, or there
+    never was one — send a fresh preview instead."""
+    text, kb = pool_preview_text(user_id, draft)
+    mid = draft.get("preview_message_id")
+    if mid:
+        if draft.get("preview_is_photo"):
+            r = api(
+                "editMessageCaption",
+                {
+                    "chat_id": chat_id,
+                    "message_id": mid,
+                    "caption": text,
+                    "reply_markup": kb,
+                },
+            )
+        else:
+            r = api(
+                "editMessageText",
+                {
+                    "chat_id": chat_id,
+                    "message_id": mid,
+                    "text": text,
+                    "reply_markup": kb,
+                },
+            )
+        if r.get("ok"):
+            return
+    send_pool_preview(chat_id, user_id, draft, state)
 
 
 def start_pool(chat_id, user_id, state, user=None):
@@ -2414,6 +2572,27 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
     if not draft:
         return False
     step = draft.get("step")
+    if step == "confirm" and draft.get("price_edit"):
+        # The seller tapped "Change amount" on the preview and is
+        # typing a new target price. A valid price updates the
+        # draft and refreshes the preview in place; anything else
+        # is rejected and the edit stays open. The preview's own
+        # Post button still posts at the current price.
+        price = parse_pool_price(text)
+        if price is None:
+            send_message(
+                chat_id,
+                "Type the new pool price as a whole number in Ks, "
+                f"between {fmt_ks(POOL_MIN_PRICE_KS)} and "
+                f"{fmt_ks(POOL_MAX_PRICE_KS)} — or tap ✅ Post pool "
+                "on the preview to post at the current price.",
+            )
+            return True
+        draft["price"] = price
+        draft.pop("price_edit", None)
+        save_state(state)
+        edit_pool_preview(chat_id, user_id, draft, state)
+        return True
     if step == "product":
         send_message(
             chat_id, "Tap a product above to pick it — or /cancel to stop."
@@ -2439,8 +2618,9 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
             "minutes).\n\n"
             "When the total raised hits "
             f"{fmt_ks(price)}, the video goes privately to everyone "
-            "who paid — it is NEVER revealed in the group. The cover "
-            "photo is the video's own thumbnail, unblurred.\n\n"
+            "who paid — it is NEVER revealed in the group. After the "
+            "video, you'll choose the cover — the video's thumbnail, "
+            "or your own photo.\n\n"
             "Or /cancel.",
         )
         return True
@@ -2451,10 +2631,34 @@ def handle_pool_step(chat_id, user_id, text, state, user=None):
             "to stop.",
         )
         return True
-    if step == "cover":
+    if step == "cover_choice":
         send_message(
-            chat_id, "Send a cover photo for the video — or /cancel to stop."
+            chat_id,
+            "Tap one of the buttons above — use the video's thumbnail "
+            "as the cover, or send your own cover photo.",
         )
+        return True
+    if step == "cover":
+        if text == "/skip":
+            # Back to the thumbnail when there is one; otherwise
+            # the card posts with no cover photo.
+            if draft.get("thumb_file_id"):
+                draft["cover_file_id"] = draft["thumb_file_id"]
+            draft["step"] = "confirm"
+            save_state(state)
+            send_pool_preview(chat_id, user_id, draft, state)
+            return True
+        if draft.get("thumb_file_id"):
+            hint = (
+                "Send a cover photo — or /skip to use the video's "
+                "thumbnail."
+            )
+        else:
+            hint = (
+                "Send a cover photo — or /skip to post with no cover "
+                "photo."
+            )
+        send_message(chat_id, hint)
         return True
     return False
 
@@ -4722,10 +4926,12 @@ def handle_flow_media(msg, state):
                 adraft["duration_min"] = max(1, dur // 60)
             thumb = video.get("thumb") or {}
             if thumb.get("file_id"):
-                adraft["cover_file_id"] = thumb["file_id"]
-                adraft["step"] = "confirm"
+                # The seller picks the cover for this post — the
+                # thumbnail, or a photo of their own.
+                adraft["thumb_file_id"] = thumb["file_id"]
+                adraft["step"] = "cover_choice"
                 save_state(state)
-                send_auction_preview(chat_id, user_id, adraft)
+                send_cover_choice(chat_id, "auction")
             else:
                 adraft["step"] = "cover"
                 save_state(state)
@@ -4733,8 +4939,25 @@ def handle_flow_media(msg, state):
                     chat_id,
                     "Got the video — it has no cover photo, so send "
                     "one now (this is the unblurred cover everyone "
-                    "sees on the auction card).",
+                    "sees on the auction card), or /skip to post "
+                    "with no cover photo.",
                 )
+            return True
+    if adraft and adraft.get("step") == "cover_choice":
+        # The seller sent a photo instead of tapping a button — that
+        # IS their own cover photo.
+        if video:
+            send_message(
+                chat_id,
+                "That was a video — the cover needs to be a photo. "
+                "Send a cover photo, or tap one of the buttons above.",
+            )
+            return True
+        if photo:
+            adraft["cover_file_id"] = photo[-1]["file_id"]
+            adraft["step"] = "confirm"
+            save_state(state)
+            send_auction_preview(chat_id, user_id, adraft)
             return True
     if adraft and adraft.get("step") == "cover":
         if video:
@@ -4778,10 +5001,12 @@ def handle_flow_media(msg, state):
                 pdraft["duration_min"] = max(1, dur // 60)
             thumb = video.get("thumb") or {}
             if thumb.get("file_id"):
-                pdraft["cover_file_id"] = thumb["file_id"]
-                pdraft["step"] = "confirm"
+                # The seller picks the cover for this post — the
+                # thumbnail, or a photo of their own.
+                pdraft["thumb_file_id"] = thumb["file_id"]
+                pdraft["step"] = "cover_choice"
                 save_state(state)
-                send_pool_preview(chat_id, user_id, pdraft)
+                send_cover_choice(chat_id, "pool")
             else:
                 pdraft["step"] = "cover"
                 save_state(state)
@@ -4789,8 +5014,25 @@ def handle_flow_media(msg, state):
                     chat_id,
                     "Got the video — it has no cover photo, so send "
                     "one now (this is the unblurred cover everyone "
-                    "sees on the pool card).",
+                    "sees on the pool card), or /skip to post with "
+                    "no cover photo.",
                 )
+            return True
+    if pdraft and pdraft.get("step") == "cover_choice":
+        # The seller sent a photo instead of tapping a button — that
+        # IS their own cover photo.
+        if video:
+            send_message(
+                chat_id,
+                "That was a video — the cover needs to be a photo. "
+                "Send a cover photo, or tap one of the buttons above.",
+            )
+            return True
+        if photo:
+            pdraft["cover_file_id"] = photo[-1]["file_id"]
+            pdraft["step"] = "confirm"
+            save_state(state)
+            send_pool_preview(chat_id, user_id, pdraft, state)
             return True
     if pdraft and pdraft.get("step") == "cover":
         if video:
@@ -4804,7 +5046,7 @@ def handle_flow_media(msg, state):
             pdraft["cover_file_id"] = photo[-1]["file_id"]
             pdraft["step"] = "confirm"
             save_state(state)
-            send_pool_preview(chat_id, user_id, pdraft)
+            send_pool_preview(chat_id, user_id, pdraft, state)
             return True
     return False
 
@@ -5059,7 +5301,7 @@ def handle_start(chat_id, text, state, user=None):
         "photo or video. Cards show only a blurred sneak peek; the "
         "full version is revealed in the group when someone buys it. "
         "🔨 Or run an auction with /auction — starting bid 5,000 Ks, "
-        "15 minutes, highest bidder wins the video privately. "
+        "24 hours, highest bidder wins the video privately. "
         "🤝 Or run a pool with /pool — a video at a price you set "
         "(50,000–500,000 Ks); everyone puts in 1,000 Ks or more, and "
         "when the total raised hits your price the video goes "
@@ -5092,12 +5334,13 @@ def handle_help(chat_id):
         "blurred sneak peek; the full version is revealed in the "
         "group when someone buys it. "
         "Or run a video auction with /auction: starting bid 5,000 Ks, "
-        "15 minutes, bids from your bot balance — highest bidder wins "
+        "24 hours, bids from your bot balance — highest bidder wins "
         "the video privately (an admin win is revealed in the group "
         "instead). Auction videos must be 1 to 30 minutes, and the card "
-        "shows the length in minutes. The cover is the video's own "
-        "thumbnail, unblurred. "
-        "Unsold auction posts are deleted after 24 hours. "
+        "shows the length in minutes. You choose the cover when you "
+        "post — the video's thumbnail, or your own photo. "
+        "Unsold auction posts stay up for 24 hours after the auction "
+        "ends, then are deleted. "
         "Or run a group-buy pool with /pool: an expensive video at "
         "a price you set, 50,000–500,000 Ks — each person puts in "
         "1,000 Ks or more from their bot balance, as often as they "
@@ -5111,7 +5354,8 @@ def handle_help(chat_id):
         "your price) and how many people have joined. /poolinfo "
         "<pool id> shows the full contributor list. Pool videos "
         "must be 1 to 30 minutes, and the card shows the length in "
-        "minutes. The cover is the video's own thumbnail, unblurred. "
+        "minutes. You choose the cover when you post — the video's "
+        "thumbnail, or your own photo. "
         "No deadline — a pool stays open until it fills, or the "
         "seller removes it (everyone is refunded what they put in). "
         "Sellers earn a title from their sales — New Seller, Seller, "
@@ -5138,7 +5382,7 @@ def handle_help(chat_id):
         "/profile — make/edit your seller profile\n"
         "/myprofile — your profile + its status\n"
         "/sell — post a product card to the group\n"
-        "/auction — post a video auction (start 5,000 Ks, 15 minutes)\n"
+        "/auction — post a video auction (start 5,000 Ks, 24 hours)\n"
         "/pool — post a group-buy pool (price 50,000–500,000 Ks, "
         "1,000 Ks or more per person)\n"
         "/poolinfo <pool id> — full contributor list for a pool\n"
@@ -5239,6 +5483,7 @@ def handle_message(msg, state):
         state.get("auction_draft", {}).pop(str(user_id), None)
         state.get("pool_draft", {}).pop(str(user_id), None)
         state.get("pool_join_draft", {}).pop(str(user_id), None)
+        state.get("pool_price_edit", {}).pop(str(user_id), None)
         state.get("bid_draft", {}).pop(str(user_id), None)
         state.get("topup_mm_draft", {}).pop(str(user_id), None)
         pending = (state.get("pending_usdt") or {}).get(str(user_id))
@@ -5408,6 +5653,54 @@ def handle_message(msg, state):
         send_message(chat_id, msg)
         return
 
+    # v7.10 — the seller typed a new target price for a LIVE pool
+    # (tapped "Change amount" on /poolinfo). A valid price updates
+    # the pool and the group card in place; if the new price is
+    # below what's already raised, the pool fills straight away.
+    ppe_draft = (state.get("pool_price_edit") or {}).get(str(user_id))
+    if ppe_draft and not text.startswith("/"):
+        pid = ppe_draft.get("pool")
+        pool = (state.get("pools") or {}).get(pid)
+        if not pool:
+            state.get("pool_price_edit", {}).pop(str(user_id), None)
+            save_state(state)
+            send_message(chat_id, "That pool is gone.")
+            return
+        price = parse_pool_price(text)
+        if price is None:
+            send_message(
+                chat_id,
+                "Type the new price as a whole number in Ks, between "
+                f"{fmt_ks(POOL_MIN_PRICE_KS)} and "
+                f"{fmt_ks(POOL_MAX_PRICE_KS)} — or /cancel to keep the "
+                "current price.",
+            )
+            return
+        state.get("pool_price_edit", {}).pop(str(user_id), None)
+        if pool.get("status") != "live":
+            save_state(state)
+            send_message(
+                chat_id,
+                "That pool is already finished — the amount can't be "
+                "changed.",
+            )
+            return
+        pool["price"] = price
+        save_state(state)
+        if pool_raised(pool) >= price:
+            # Lowered below what's raised: the pool fills now, with
+            # the seller credited the new price.
+            _complete_pool(state, pool)
+            return
+        edit_pool_card(state, pool)
+        send_pool_info(chat_id, pool)
+        send_message(
+            chat_id,
+            f"✅ Pool price changed to {fmt_ks(price)} — the group "
+            "card is updated.",
+        )
+        return
+
     mm_draft = (state.get("topup_mm_draft") or {}).get(str(user_id))
     if mm_draft and not text.startswith("/"):
         handle_topup_mm_step(chat_id, user_id, text, state, user=msg.get("from", {}))
@@ -5436,12 +5729,23 @@ def handle_message(msg, state):
         return
 
     a_draft = (state.get("auction_draft") or {}).get(str(user_id))
-    if a_draft and not text.startswith("/"):
+    if a_draft and (
+        not text.startswith("/")
+        # v7.10 — /skip only reaches the auction flow at the cover
+        # step, where handle_auction_step handles it. Anywhere else
+        # a slash command must NOT be swallowed as flow text.
+        or (text == "/skip" and a_draft.get("step") == "cover")
+    ):
         handle_auction_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
 
     p_draft = (state.get("pool_draft") or {}).get(str(user_id))
-    if p_draft and not text.startswith("/"):
+    if p_draft and (
+        not text.startswith("/")
+        # v7.10 — same guarded /skip routing as auctions: only at
+        # the cover step.
+        or (text == "/skip" and p_draft.get("step") == "cover")
+    ):
         handle_pool_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
 
@@ -6613,7 +6917,7 @@ def handle_callback(query, state):
             "auction or pool?\n\n"
             "🛍️ Fixed price card: name your options (A, B, C, D) with "
             "your own prices — buyers tap an option to buy it.\n"
-            "🔨 Auction: starting bid 5,000 Ks, 15 minutes, highest "
+            "🔨 Auction: starting bid 5,000 Ks, 24 hours, highest "
             "bidder wins the video privately.\n"
             "🤝 Pool: an expensive video at a price you set "
             "(50,000–500,000 Ks) — everyone puts in 1,000 Ks or "
@@ -6672,11 +6976,11 @@ def handle_callback(query, state):
                 user_id,
                 f"🔨 Auction for {PRODUCTS.get(product, product)} — send "
                 "the video now.\n\n"
-                "Starting bid is fixed at 5,000 Ks. The auction runs 15 "
-                "minutes once posted. The highest bidder wins the video "
+                "Starting bid is fixed at 5,000 Ks. The auction runs 24 "
+                "hours once posted. The highest bidder wins the video "
                 "privately — it is NOT revealed in the group (unless an "
-                "admin wins). The cover photo is the video's own "
-                "thumbnail, unblurred.\n\n"
+                "admin wins). After the video, you'll choose the cover — "
+                "the video's thumbnail, or your own photo.\n\n"
                 "Or /cancel.",
             )
             answer_callback(qid, "Send the video.")
@@ -6873,11 +7177,11 @@ def handle_callback(query, state):
             user_id,
             f"🔨 Auction for {PRODUCTS.get(key, key)} — send the video now "
             "(1 to 30 minutes).\n\n"
-            "Starting bid is fixed at 5,000 Ks. The auction runs 15 "
-            "minutes once posted. The highest bidder wins the video "
+            "Starting bid is fixed at 5,000 Ks. The auction runs 24 "
+            "hours once posted. The highest bidder wins the video "
             "privately — it is NOT revealed in the group (unless an "
-            "admin wins). The cover photo is the video's own thumbnail, "
-            "unblurred.\n\n"
+            "admin wins). After the video, you'll choose the cover — "
+            "the video's thumbnail, or your own photo.\n\n"
             "Or /cancel.",
         )
         answer_callback(qid, "Send the video.")
@@ -6911,11 +7215,46 @@ def handle_callback(query, state):
             "Each person puts in 1,000 Ks or more, and when the total "
             "raised hits your price, the video goes privately to "
             "everyone who paid — it is NEVER revealed in the group. "
-            "The cover photo is the video's own thumbnail, "
-            "unblurred.\n\n"
+            "After the video, you'll choose the cover — the video's "
+            "thumbnail, or your own photo.\n\n"
             "Or /cancel.",
         )
         answer_callback(qid, "Set the price.")
+        return
+
+    if data in ("poolcoverthumb", "auctioncoverthumb"):
+        kind = "pool" if data.startswith("pool") else "auction"
+        draft = _cover_choice_draft(state, user_id, kind)
+        if not draft:
+            answer_callback(
+                qid, "No video waiting for a cover — /pool or /auction to start."
+            )
+            return
+        draft["cover_file_id"] = draft.get("thumb_file_id")
+        draft["step"] = "confirm"
+        save_state(state)
+        if kind == "pool":
+            send_pool_preview(user_id, user_id, draft, state)
+        else:
+            send_auction_preview(user_id, user_id, draft)
+        answer_callback(qid, "Using the video's thumbnail.")
+        return
+
+    if data in ("poolcoverown", "auctioncoverown"):
+        kind = "pool" if data.startswith("pool") else "auction"
+        draft = _cover_choice_draft(state, user_id, kind)
+        if not draft:
+            answer_callback(
+                qid, "No video waiting for a cover — /pool or /auction to start."
+            )
+            return
+        draft["step"] = "cover"
+        save_state(state)
+        send_message(
+            user_id,
+            "Send a cover photo now — or /skip to use the video's thumbnail.",
+        )
+        answer_callback(qid, "Send a cover photo.")
         return
 
     if data == "auctpost":
@@ -6983,7 +7322,7 @@ def handle_callback(query, state):
         save_state(state)
         send_message(
             user_id,
-            "✅ Auction posted to the group! 15 minutes — highest "
+            "✅ Auction posted to the group! 24 hours — highest "
             "bidder wins the video privately.",
         )
         answer_callback(qid, "Posted.")
@@ -6994,6 +7333,27 @@ def handle_callback(query, state):
         save_state(state)
         send_message(user_id, "Cancelled — nothing was posted.")
         answer_callback(qid, "Cancelled.")
+        return
+
+    if data == "poolpriceedit":
+        draft = (state.get("pool_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "confirm" or not draft.get(
+            "video_file_id"
+        ):
+            answer_callback(qid, "No pool to change — /pool to start.")
+            return
+        draft["price_edit"] = True
+        save_state(state)
+        send_message(
+            user_id,
+            "Type the new pool price as a whole number in Ks, between "
+            f"{fmt_ks(POOL_MIN_PRICE_KS)} and "
+            f"{fmt_ks(POOL_MAX_PRICE_KS)}. The preview updates when you "
+            "send it — or tap ✅ Post pool on the preview to post at "
+            "the current price "
+            f"({fmt_ks(int(draft.get('price') or POOL_MIN_PRICE_KS))}).",
+        )
+        answer_callback(qid, "Type the new price.")
         return
 
     if data == "poolpost":
@@ -7072,6 +7432,41 @@ def handle_callback(query, state):
         save_state(state)
         send_message(user_id, "Cancelled — nothing was posted.")
         answer_callback(qid, "Cancelled.")
+        return
+
+    if data.startswith("poolprice:"):
+        pid = data.split(":", 1)[1]
+        pool = (state.get("pools") or {}).get(pid)
+        if not pool:
+            answer_callback(qid, "That pool is gone.")
+            return
+        if pool.get("status") != "live":
+            answer_callback(
+                qid,
+                "That pool is already finished — the amount can't be changed.",
+                show_alert=True,
+            )
+            return
+        if str(user_id) != str(pool.get("seller")):
+            answer_callback(
+                qid, "Only the seller can change the amount.",
+                show_alert=True,
+            )
+            return
+        state.setdefault("pool_price_edit", {})[str(user_id)] = {
+            "pool": pid,
+        }
+        save_state(state)
+        send_message(
+            user_id,
+            "Type the new target price for this pool — a whole number "
+            f"in Ks, between {fmt_ks(POOL_MIN_PRICE_KS)} and "
+            f"{fmt_ks(POOL_MAX_PRICE_KS)}. Current price: "
+            f"{fmt_ks(int(pool.get('price') or POOL_MIN_PRICE_KS))}, "
+            f"raised so far: {fmt_ks(pool_raised(pool))}. If you lower "
+            "it below what's raised, the pool fills straight away.",
+        )
+        answer_callback(qid, "Type the new price.")
         return
 
     if data.startswith("aucbidamt:"):
