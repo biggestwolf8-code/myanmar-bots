@@ -230,11 +230,13 @@ gracefully.
 a product in `/sell`) posts a video auction instead of a fixed-price
 card. Same gates as `/sell`: a live profile and a linked group.
 - **Flow** — `/auction` → pick a product → send the video → the
-  cover photo is the video's own thumbnail, **unblurred** (if the
-  video has no thumbnail, the seller sends a cover photo) → confirm
-  the preview → the bot posts the auction card to the group.
+  seller picks the cover for this post — the video's own thumbnail
+  or a photo of their own, **unblurred** (if the video has no
+  thumbnail, the seller sends a cover photo, or `/skip` to post
+  with no cover) → confirm the preview → the bot posts the auction
+  card to the group.
 - **Rules** — starting bid is fixed at **5,000 Ks**. The auction
-  runs **15 minutes only**. Auction videos must be **1 to 30 minutes**
+  runs **24 hours only**. Auction videos must be **1 to 30 minutes**
   long (the bot refuses shorter/longer ones and asks for another
   video); the card shows the length as "⏱️ N min". A new bid must beat the current bid by
   at least **1,000 Ks** (quick bids: +1,000 / +5,000 / +10,000 over
@@ -244,15 +246,15 @@ card. Same gates as `/sell`: a live profile and a linked group.
   and the previous highest bidder is refunded immediately. The
   seller cannot bid on their own auction, and the current leader
   cannot bid again until someone outbids them.
-- **Winning** — at the 15-minute deadline the escrowed bid goes to
+- **Winning** — at the 24-hour deadline the escrowed bid goes to
   the seller's balance and the video is sent **privately to the
   winner's DM** (`protect_content`) — it is NOT revealed in the
   group. **Exception: if an admin wins, the video IS revealed in
   the whole group** (posted there with `protect_content`). The
   auction card is deleted at once when someone wins.
 - **No bids** — the auction closes, the post stays up, and the
-  24-hour sweep deletes it 24 hours after posting. Fixed-price
-  cards are never auto-deleted.
+  24-hour sweep deletes it 24 hours after the auction ended.
+  Fixed-price cards are never auto-deleted.
 - **Removed mid-auction** — if the seller is removed (admin) the
   highest bidder is refunded and the card is deleted.
 - **Sweeps** — the deadline + 24-hour sweeps run inside the
@@ -301,10 +303,13 @@ go stale:
 `/sell`) posts a group-buy pool instead of a fixed-price card.
 Same gates as `/sell`: a live profile and a linked group.
 - **Flow** — `/pool` → pick a product → type the pool price
-  (whole Ks, **50,000–500,000**) → send the video → the cover photo
-  is the video's own thumbnail, **unblurred** (if the video has no
-  thumbnail, the seller sends a cover photo) → confirm the preview
-  → the bot posts the pool card to the group.
+  (whole Ks, **50,000–500,000**) → send the video → the seller
+  picks the cover for this post — the video's own thumbnail or a
+  photo of their own, **unblurred** (if the video has no thumbnail,
+  the seller sends a cover photo, or `/skip` to post with no cover)
+  → confirm the preview → the bot posts the pool card to the group.
+  The preview has a "💰 Change amount" button, and `/poolinfo`
+  lets the seller change the amount on a live pool too (v7.10).
 - **Rules** — the price is **seller-set, 50,000–500,000 Ks**.
   Each member puts in **1,000 Ks or more per contribution, as
   often as they like** — every top-up adds to their running total
@@ -463,10 +468,11 @@ before, and "✏️ Start over" on the confirm screen still restarts
 from the name step.
 
 **Videos up to 30 minutes** — auction and pool videos may now be
-1 to 30 minutes long (was 1 to 5). The 1-minute minimum stays, the
-15-minute auction bidding window is unchanged, and the card still
-shows the length as "⏱️ N min". Fixed-price `/sell` cards never had
-a duration limit and are untouched.
+1 to 30 minutes long (was 1 to 5). The 1-minute minimum stays, and
+the card still shows the length as "⏱️ N min". The auction bidding
+window is 24 hours (changed from 15 minutes in v7.10).
+Fixed-price `/sell` cards never had a duration limit and are
+untouched.
 
 ## v7.8 — preview fallback + no more silent videos (bug fix)
 
@@ -526,6 +532,57 @@ from v7.8 are untouched.
 Nothing else changed: prices, ranges, the 1–30 minute video rule,
 profiles, and the announcements are untouched.
 
+## v7.10 — cover choice per post + adjustable pool amount + 24-hour auctions
+
+**Cover choice at posting** — pools and auctions no longer always
+use the video's thumbnail as the cover. After a video with a
+thumbnail, the bot asks: "🖼️ Use video thumbnail" or "📷 Send my
+own cover photo". The choice is per post, not per product — a
+seller can use the thumbnail for one pool and their own photo for
+the next. Tapping "Send my own" asks for a cover photo (`/skip`
+goes back to the thumbnail); sending a photo straight away without
+tapping counts as their own cover too. A video with no thumbnail
+still asks for a cover photo, but `/skip` there now posts a text
+card with no cover instead of blocking. The preview and the group
+post use whatever cover was chosen (thumbnail / own photo / none)
+through the v7.9 `send_photo_with_fallback` helper. Fixed-price
+`/sell` cards are unchanged — the seller already picks media per
+card there.
+
+**Pool amount on the preview** — the pool preview gains a
+"💰 Change amount" button. Tapping it asks for the new pool price
+(same 50,000–500,000 Ks rule); a valid price updates the draft and
+the preview is edited in place (caption for a photo preview, text
+for a text preview — a fresh preview is sent if the edit fails).
+The preview now shows the draft's real price (it previously always
+showed 50,000 Ks). "✅ Post pool" then posts with the new price.
+
+**Pool amount on a live pool** — `/poolinfo <id>` shows a
+"💰 Change amount" button, but only to the pool's seller (nobody
+else sees it, and a non-seller tap is refused). A valid new price
+updates the pool and the group card in place, and the `/poolinfo`
+view is refreshed. Lowering the price below what's already raised
+fills the pool immediately: the seller is credited the new price,
+the video goes privately to every contributor once, and the card
+is marked filled — exactly the normal completion flow. Raising the
+price just moves the goal further out and updates the meter. A
+filled, cancelled or removed pool refuses the change.
+
+**Auctions run 24 hours** (was 15 minutes) — `AUCTION_DURATION_S`
+is now 24 hours. The "Ends in" countdown shows hours once an hour
+or more is left ("23h 59m", "mm:ss" under an hour). The sweep still
+deletes an unsold auction card 24 hours after the auction ended —
+`_close_auction` now stamps `ended_at`, and the sweep counts from
+that (falling back to the deadline for older records), so the card
+is no longer deleted the moment a 24-hour auction ends. All
+user-facing "15 minutes" texts (help, prompts, post confirmation)
+now say 24 hours.
+
+Nothing else changed: the 50,000–500,000 Ks pool range, the 1,000
+Ks minimum contribution, the 1–30 minute video rule, the 5,000 Ks
+starting bid, profiles, balances, cash-out, and the announcements
+are untouched.
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
@@ -569,7 +626,8 @@ profiles + status; each profile also holds `age`, `role`, `photos`
 `state.json` also hold `age`/`role` (snapshot), `media_type`,
 `media_file_id` (full version), `preview_file_id` (blurred) and
 `revealed` (false until the first completed purchase). Auctions in
-`state.json` hold `video_file_id`, `cover_file_id` (video thumbnail,
-unblurred), `start` (5,000), `current_bid` / `current_bidder`,
-`ends_at`, `posted_at`, `message_id` and `status`
+`state.json` hold `video_file_id`, `cover_file_id` (seller-chosen
+cover: video thumbnail or own photo, unblurred), `start` (5,000),
+`current_bid` / `current_bidder`, `ends_at`, `ended_at`, `posted_at`,
+`message_id` and `status`
 (`live` / `ended` / `sold` / `expired` / `removed`).
