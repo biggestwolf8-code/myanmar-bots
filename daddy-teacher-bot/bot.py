@@ -955,6 +955,32 @@ def send_photo_file(chat_id, filename, data, caption=None,
     return api("sendPhoto", payload, files=files)
 
 
+def send_photo_with_fallback(chat_id, photo_file_id, caption,
+                             reply_markup=None):
+    """Send a photo by file_id, with two fallbacks. A video's
+    thumbnail file_id CANNOT be used as a photo (Telegram:
+    "can't use file of type Thumbnail as Photo"), so: (a) try the
+    file_id directly; (b) download the file and re-upload the
+    bytes; (c) send the caption as a plain message. Returns the
+    api response dict of whichever send succeeded."""
+    payload = {"chat_id": chat_id, "photo": photo_file_id,
+               "caption": caption}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    r = api("sendPhoto", payload)
+    if r.get("ok"):
+        return r
+    content = download_file_bytes(photo_file_id)
+    if content:
+        r = send_photo_file(
+            chat_id, "cover.jpg", content, caption=caption,
+            reply_markup=reply_markup,
+        )
+        if r.get("ok"):
+            return r
+    return send_message(chat_id, caption, reply_markup=reply_markup)
+
+
 def send_photos_group(chat_id, file_ids):
     """Send up to 3 photos as a media group. Returns True if sent."""
     ids = [f for f in (file_ids or []) if f][:3]
@@ -1159,14 +1185,8 @@ def post_auction_to_group(state, auction):
     text = auction_card_text(auction)
     kb = auction_card_keyboard(auction)
     if auction.get("cover_file_id"):
-        r = api(
-            "sendPhoto",
-            {
-                "chat_id": group,
-                "photo": auction["cover_file_id"],
-                "caption": text,
-                "reply_markup": kb,
-            },
+        r = send_photo_with_fallback(
+            group, auction["cover_file_id"], text, reply_markup=kb
         )
     else:
         r = send_message(group, text, reply_markup=kb)
@@ -1277,20 +1297,13 @@ def send_auction_preview(chat_id, user_id, draft):
         ]
     }
     if draft.get("cover_file_id"):
-        res = api(
-            "sendPhoto",
-            {
-                "chat_id": chat_id,
-                "photo": draft["cover_file_id"],
-                "caption": text,
-                "reply_markup": kb,
-            },
+        # The cover may be a video thumbnail, which Telegram
+        # refuses as a photo file_id — the helper downloads and
+        # re-uploads it, and only falls back to text as a last
+        # resort, so the seller still sees the cover.
+        send_photo_with_fallback(
+            chat_id, draft["cover_file_id"], text, reply_markup=kb
         )
-        if not res.get("ok"):
-            # The video's thumbnail could not be sent as a photo —
-            # fall back to the same preview as a plain message so
-            # the seller still gets the Post button.
-            send_message(chat_id, text, reply_markup=kb)
     else:
         send_message(chat_id, text, reply_markup=kb)
 
@@ -2022,14 +2035,8 @@ def post_pool_to_group(state, pool):
     text = pool_card_text(pool)
     kb = pool_card_keyboard(pool)
     if pool.get("cover_file_id"):
-        r = api(
-            "sendPhoto",
-            {
-                "chat_id": group,
-                "photo": pool["cover_file_id"],
-                "caption": text,
-                "reply_markup": kb,
-            },
+        r = send_photo_with_fallback(
+            group, pool["cover_file_id"], text, reply_markup=kb
         )
     else:
         r = send_message(group, text, reply_markup=kb)
@@ -2348,20 +2355,13 @@ def send_pool_preview(chat_id, user_id, draft):
         ]
     }
     if draft.get("cover_file_id"):
-        res = api(
-            "sendPhoto",
-            {
-                "chat_id": chat_id,
-                "photo": draft["cover_file_id"],
-                "caption": text,
-                "reply_markup": kb,
-            },
+        # The cover may be a video thumbnail, which Telegram
+        # refuses as a photo file_id — the helper downloads and
+        # re-uploads it, and only falls back to text as a last
+        # resort, so the seller still sees the cover.
+        send_photo_with_fallback(
+            chat_id, draft["cover_file_id"], text, reply_markup=kb
         )
-        if not res.get("ok"):
-            # The video's thumbnail could not be sent as a photo —
-            # fall back to the same preview as a plain message so
-            # the seller still gets the Post button.
-            send_message(chat_id, text, reply_markup=kb)
     else:
         send_message(chat_id, text, reply_markup=kb)
 
@@ -5446,7 +5446,15 @@ def handle_message(msg, state):
         return
 
     draft = (state.get("profile_draft") or {}).get(str(user_id))
-    if draft and (not text.startswith("/") or text == "/skip"):
+    if draft and (
+        not text.startswith("/")
+        or text == "/skip"
+        # v7.9 — /clearphotos only reaches the profile flow at the
+        # photos step, where handle_profile_step handles it. At any
+        # other step it must NOT be routed here: the name step would
+        # swallow it as the display name.
+        or (text == "/clearphotos" and draft.get("step") == "photos")
+    ):
         handle_profile_step(chat_id, text, state, user=msg.get("from", {}))
         return
 
