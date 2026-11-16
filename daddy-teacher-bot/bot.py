@@ -111,6 +111,20 @@ v6 — auction house + seller titles:
   Shown as "<title> • <N> sold" on profiles, cards, /sellers and
   /board.
 
+v7 — group-buy pool ("fundraiser pool"):
+  /pool posts a group-buy pool instead of a fixed-price card: an
+  expensive video at a FIXED 50,000 Ks, split at 1,000 Ks per person
+  — always exactly 50 contributors. Members join from their bot
+  balance (1,000 Ks each, one share per person, escrowed). When the
+  50th person joins, the seller gets the full 50,000 Ks and the
+  video is sent PRIVATELY to every contributor's DM — it is NEVER
+  revealed in the group. The pool card is deleted at once. No
+  deadline — a pool stays open until it fills; if the seller or an
+  admin removes it, every contributor is refunded 1,000 Ks. Pool
+  videos must be 1 to 5 minutes (same rule as auctions); the cover
+  is the video's own thumbnail, UNBLURRED. A completed pool counts
+  as ONE sale for the seller's title.
+
 No watermarking, no protect_content — these are plain text posts.
 """
 
@@ -239,6 +253,9 @@ def load_state():
             "auctions": {},
             "auction_seq": 0,
             "auction_draft": {},
+            "pools": {},
+            "pool_seq": 0,
+            "pool_draft": {},
             "bid_draft": {},
             "topup_mm_draft": {},
         },
@@ -479,15 +496,16 @@ TITLE_TIERS = (
 
 def count_sales(seller_id):
     """Completed marketplace sales by one seller: market sales +
-    auction sales, both status "paid". Class session packs do NOT
-    count. Computed live from the sales records every time, so a
-    title upgrades automatically as the seller sells more — no
-    stored title to go stale."""
+    auction sales + completed pools, all status "paid". A completed
+    pool counts as ONE sale. Class session packs do NOT count.
+    Computed live from the sales records every time, so a title
+    upgrades automatically as the seller sells more — no stored
+    title to go stale."""
     sid = str(seller_id)
     total = 0
     for p in load_json_file(PURCHASES_PATH, []):
         if (
-            p.get("kind") in ("market", "auction")
+            p.get("kind") in ("market", "auction", "pool")
             and p.get("status") == "paid"
             and str(p.get("seller")) == sid
         ):
@@ -896,6 +914,16 @@ AUCTION_POST_TTL_S = 24 * 3600
 AUCTION_MIN_VIDEO_S = 60
 AUCTION_MAX_VIDEO_S = 300
 
+# Group-buy pool ("fundraiser pool"): an expensive video at a FIXED
+# 50,000 Ks, split at 1,000 Ks per person — always exactly 50
+# contributors. When the pool fills, the video goes privately to
+# every contributor — NEVER revealed in the group. No deadline;
+# removing the pool refunds every contributor 1,000 Ks. Pool videos
+# use the same 1–5 minute rule as auctions (AUCTION_MIN/MAX_VIDEO_S).
+POOL_PRICE_KS = 50000
+POOL_PER_PERSON_KS = 1000
+POOL_NEEDED = 50
+
 
 def fmt_countdown(seconds):
     """mm:ss left on an auction, e.g. 14:32."""
@@ -1134,6 +1162,7 @@ def start_auction(chat_id, user_id, state, user=None):
         )
         return
     state.get("card_draft", {}).pop(str(user_id), None)
+    state.get("pool_draft", {}).pop(str(user_id), None)
     state.setdefault("auction_draft", {})[str(user_id)] = {
         "step": "product",
         "seller_name": profile.get("name", "Seller"),
@@ -1619,6 +1648,425 @@ def send_buy_options(user_id, profile, product, price, option=None,
     send_message(user_id, text, reply_markup={"inline_keyboard": rows})
 
 
+# --------------------------------------------------- group-buy pool ----
+
+def pool_meter(joined, needed=POOL_NEEDED, show_remaining=True):
+    """10-segment progress bar for a pool, e.g.
+    '▓▓▓▓▓▓░░░░ 32/50 • 32,000 Ks raised • 18,000 Ks to go'.
+    Filled segments = round(joined / needed × 10). One rendering,
+    shared by the group card, the seller preview and the join
+    prompt, so the meter is always the same everywhere."""
+    joined = max(0, min(int(joined), int(needed)))
+    filled = round(joined / needed * 10) if needed else 0
+    bar = "▓" * filled + "░" * (10 - filled)
+    raised = joined * POOL_PER_PERSON_KS
+    text = f"{bar} {joined}/{needed} • {fmt_ks(raised)} raised"
+    if show_remaining:
+        remaining = (needed - joined) * POOL_PER_PERSON_KS
+        text += f" • {fmt_ks(remaining)} to go"
+    return text
+
+
+def pool_card_text(pool):
+    """The pool card posted to the group. The cover photo is the
+    video's own thumbnail, UNBLURRED (same as auctions). The video
+    is NEVER revealed in the group — on completion it goes privately
+    to every contributor's DM. The card carries a LIVE progress
+    meter, refreshed on every join."""
+    title = seller_title_line(pool.get("seller"))
+    joined = len(pool.get("contributors") or [])
+    lines = [
+        f"🤝 POOL — {pool.get('seller_name', 'Seller')}, "
+        f"{fmt_age_role(pool.get('age'), pool.get('role'))} • "
+        f"{title} — "
+        f"{PRODUCTS.get(pool.get('product'), pool.get('product', ''))}",
+        "",
+        f"Price: {fmt_ks(POOL_PRICE_KS)} — "
+        f"{fmt_ks(POOL_PER_PERSON_KS)} per person",
+    ]
+    if pool.get("duration_min"):
+        lines.insert(1, f"⏱️ {pool['duration_min']} min")
+    if pool.get("status") == "live":
+        lines.append(pool_meter(joined))
+    elif pool.get("status") == "filled":
+        lines.append(
+            pool_meter(joined, show_remaining=False)
+            + " — pool filled! 🎉"
+        )
+    lines.append("")
+    lines.append(
+        "When the pool fills, the video goes privately to everyone "
+        "who paid — it is NEVER revealed in the group."
+    )
+    lines.append("")
+    lines.append(
+        f"Tap 🤝 Join to pay {fmt_ks(POOL_PER_PERSON_KS)} from your "
+        "bot balance."
+    )
+    return "\n".join(lines)
+
+
+def pool_card_keyboard(pool):
+    """Join (deep link into the bot DM — works for members who never
+    started the bot), Seller profile, Remove. The Join button is gone
+    once the pool is no longer live."""
+    rows = []
+    if pool.get("status") == "live":
+        rows.append(
+            [
+                {
+                    "text": f"🤝 Join — {fmt_ks(POOL_PER_PERSON_KS)}",
+                    "url": (
+                        f"https://t.me/{bot_username()}"
+                        f"?start=pool_{pool['id']}"
+                    ),
+                }
+            ]
+        )
+    rows.append(
+        [
+            {
+                "text": "👤 Seller profile",
+                "url": (
+                    f"https://t.me/{bot_username()}"
+                    f"?start=seller_{pool['seller']}"
+                ),
+            }
+        ]
+    )
+    rows.append(
+        [{"text": "🗑️ Remove", "callback_data": f"pooldel:{pool['id']}"}]
+    )
+    return {"inline_keyboard": rows}
+
+
+def post_pool_to_group(state, pool):
+    """Post a pool card to the group: the cover photo (the video's
+    own thumbnail, UNBLURRED) with the pool text as caption, or
+    plain text if there is no cover. Returns (message_id, err)."""
+    group = state.get("group") or GROUP_CHAT_ID
+    if not group:
+        return None, "no group set"
+    text = pool_card_text(pool)
+    kb = pool_card_keyboard(pool)
+    if pool.get("cover_file_id"):
+        r = api(
+            "sendPhoto",
+            {
+                "chat_id": group,
+                "photo": pool["cover_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+    else:
+        r = send_message(group, text, reply_markup=kb)
+    if not r.get("ok"):
+        return None, r.get("description", "unknown error")
+    return r["result"]["message_id"], None
+
+
+def edit_pool_card(state, pool):
+    """Refresh the group card after someone joins: new count +
+    remaining. Photo cards are edited by caption, text cards by
+    text."""
+    group = state.get("group") or GROUP_CHAT_ID
+    if not group or not pool.get("message_id"):
+        return
+    text = pool_card_text(pool)
+    kb = pool_card_keyboard(pool)
+    if pool.get("cover_file_id"):
+        api(
+            "editMessageCaption",
+            {
+                "chat_id": group,
+                "message_id": pool["message_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+    else:
+        api(
+            "editMessageText",
+            {
+                "chat_id": group,
+                "message_id": pool["message_id"],
+                "text": text,
+                "reply_markup": kb,
+            },
+        )
+
+
+def _delete_pool_card(state, pool):
+    """Delete the pool card message from the group, if it is still
+    there."""
+    group = state.get("group") or GROUP_CHAT_ID
+    if group and pool.get("message_id"):
+        api(
+            "deleteMessage",
+            {"chat_id": group, "message_id": pool["message_id"]},
+        )
+
+
+def _refund_pool_contributors(state, pool):
+    """Give every contributor their 1,000 Ks back."""
+    product = PRODUCTS.get(pool.get("product"), pool.get("product", ""))
+    for c in pool.get("contributors") or []:
+        change_balance(c["id"], POOL_PER_PERSON_KS)
+        send_message(
+            c["id"],
+            f"↩️ Your {fmt_ks(POOL_PER_PERSON_KS)} for "
+            f"{pool.get('seller_name', 'Seller')}'s {product} pool was "
+            "refunded — the pool was removed.",
+        )
+    pool["contributors"] = []
+
+
+def _complete_pool(state, pool):
+    """The 50th contributor joined. The seller gets the full 50,000
+    Ks, the video goes PRIVATELY to every contributor's DM, and the
+    pool card is deleted. Nothing is ever posted to the group."""
+    now = int(time.time())
+    seller = str(pool.get("seller"))
+    product = PRODUCTS.get(pool.get("product"), pool.get("product", ""))
+    contributors = list(pool.get("contributors") or [])
+    change_balance(seller, POOL_PRICE_KS)
+    record_event(
+        {
+            "kind": "pool",
+            "buyer": "",
+            "buyer_username": "",
+            "seller": seller,
+            "seller_name": pool.get("seller_name", "Seller"),
+            "product": pool.get("product"),
+            "ks": POOL_PRICE_KS,
+            "contributors": len(contributors),
+            "method": "Balance (pool)",
+            "status": "paid",
+            "ts": now,
+        }
+    )
+    pool["status"] = "filled"
+    for c in contributors:
+        api(
+            "sendVideo",
+            {
+                "chat_id": c["id"],
+                "video": pool["video_file_id"],
+                "caption": (
+                    f"🤝 Pool filled! {pool.get('seller_name', 'Seller')}'s "
+                    f"{product} — {fmt_ks(POOL_PRICE_KS)} shared by "
+                    f"{POOL_NEEDED} people. This video is yours "
+                    "privately."
+                ),
+                "protect_content": True,
+            },
+        )
+        send_message(
+            c["id"],
+            f"🎉 The pool for {product} is full — the video is in "
+            "your private chat. Enjoy. 🙏",
+        )
+    send_message(
+        seller,
+        f"💰 Your {product} pool filled — {POOL_NEEDED} people × "
+        f"{fmt_ks(POOL_PER_PERSON_KS)} = {fmt_ks(POOL_PRICE_KS)} "
+        "credited to your balance.",
+    )
+    _delete_pool_card(state, pool)
+    save_state(state)
+
+
+def join_pool(state, pool, user_id, user=None):
+    """One member joins a pool: 1,000 Ks from balance, escrowed.
+    Returns (ok, message for the member). On the 50th join the pool
+    completes: seller credited 50,000, video sent privately to all
+    50 contributors."""
+    if pool.get("status") != "live":
+        return False, "That pool is closed — check the group for the latest one."
+    if str(user_id) == str(pool.get("seller")):
+        return False, "You can't join your own pool."
+    contributors = pool.setdefault("contributors", [])
+    if any(str(c.get("id")) == str(user_id) for c in contributors):
+        return False, "You've already joined this pool — one share per person."
+    balance = get_balance(user_id)
+    if balance < POOL_PER_PERSON_KS:
+        return (
+            False,
+            f"Your balance is {fmt_ks(balance)} — top up with /topup "
+            "first, then join again.",
+        )
+    if change_balance(user_id, -POOL_PER_PERSON_KS) is None:
+        return False, "Not enough balance — top up with /topup first."
+    contributors.append(
+        {
+            "id": str(user_id),
+            "name": (user or {}).get("first_name")
+            or (user or {}).get("username")
+            or "Someone",
+            "username": (user or {}).get("username", ""),
+        }
+    )
+    save_state(state)
+    if len(contributors) >= POOL_NEEDED:
+        _complete_pool(state, pool)
+        return (
+            True,
+            f"🎉 You were the {POOL_NEEDED}th — the pool is full! "
+            "The video is on its way to your private chat. 🙏",
+        )
+    product = PRODUCTS.get(pool.get("product"), pool.get("product", ""))
+    edit_pool_card(state, pool)
+    send_message(
+        pool["seller"],
+        f"🤝 {contributors[-1]['name']} joined your {product} pool — "
+        f"{len(contributors)}/{POOL_NEEDED}.",
+    )
+    return (
+        True,
+        f"✅ You're in! {len(contributors)}/{POOL_NEEDED} joined — "
+        "the video comes to your private chat when the pool fills.",
+    )
+
+
+def send_join_prompt(chat_id, pool):
+    """The DM join screen for one pool: price, progress, the
+    member's balance, Join (1,000 Ks from balance) and Top up.
+    Joining comes from the bot balance only."""
+    joined = len(pool.get("contributors") or [])
+    balance = get_balance(chat_id)
+    product = PRODUCTS.get(pool.get("product"), pool.get("product", ""))
+    text = (
+        f"🤝 Pool — {pool.get('seller_name', 'Seller')}'s {product}\n\n"
+        f"Price: {fmt_ks(POOL_PRICE_KS)} — "
+        f"{fmt_ks(POOL_PER_PERSON_KS)} per person\n"
+        f"{pool_meter(joined)}\n"
+        f"Your balance: {fmt_ks(balance)}\n\n"
+        "Pay 1,000 Ks from your bot balance to join — top up with "
+        "/topup first if you're short. When all 50 people have "
+        "joined, the video is sent privately to everyone who paid — "
+        "it is NEVER revealed in the group."
+    )
+    kb = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": f"🤝 Join — {fmt_ks(POOL_PER_PERSON_KS)}",
+                    "callback_data": f"pooljoin:{pool['id']}",
+                }
+            ],
+            [{"text": "💰 Top up balance", "callback_data": "topup"}],
+        ]
+    }
+    send_message(chat_id, text, reply_markup=kb)
+
+
+def send_pool_preview(chat_id, user_id, draft):
+    """Show the seller exactly what will post: the cover photo
+    UNBLURRED, the pool text, Post / Cancel buttons."""
+    profile = get_profile(user_id)
+    preview = {
+        "seller_name": draft.get("seller_name", "Seller"),
+        "age": (profile or {}).get("age"),
+        "role": (profile or {}).get("role"),
+        "seller": str(user_id),
+        "product": draft.get("product"),
+        "duration_min": draft.get("duration_min"),
+        "contributors": [],
+        "status": "live",
+    }
+    text = "This is what will post to the group:\n\n" + pool_card_text(
+        preview
+    )
+    kb = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Post pool", "callback_data": "poolpost"},
+                {"text": "❌ Cancel", "callback_data": "poolcancel"},
+            ]
+        ]
+    }
+    if draft.get("cover_file_id"):
+        api(
+            "sendPhoto",
+            {
+                "chat_id": chat_id,
+                "photo": draft["cover_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+    else:
+        send_message(chat_id, text, reply_markup=kb)
+
+
+def start_pool(chat_id, user_id, state, user=None):
+    """Entry for /pool. Same gates as /sell (live profile, complete
+    profile, group linked), then the seller picks a product and the
+    pool flow starts. The price is FIXED at 50,000 Ks — the seller
+    never types one."""
+    profile = _seller_ready(chat_id, user_id, state)
+    if profile is None:
+        return
+    products = profile.get("products", {})
+    if not products:
+        send_message(
+            chat_id,
+            "Your profile has no products — update it with /profile "
+            "first.",
+        )
+        return
+    state.get("card_draft", {}).pop(str(user_id), None)
+    state.get("auction_draft", {}).pop(str(user_id), None)
+    state.setdefault("pool_draft", {})[str(user_id)] = {
+        "step": "product",
+        "seller_name": profile.get("name", "Seller"),
+    }
+    save_state(state)
+    rows = [
+        [
+            {
+                "text": f"{PRODUCTS.get(k, k)} — {fmt_ks(v)}",
+                "callback_data": f"poolprod:{k}",
+            }
+        ]
+        for k, v in products.items()
+    ]
+    send_message(
+        chat_id,
+        "🤝 What are you pooling? Pick a product from your profile.",
+        reply_markup={"inline_keyboard": rows},
+    )
+
+
+def handle_pool_step(chat_id, user_id, text, state, user=None):
+    """Text nudges during the /pool flow. Media is handled by
+    handle_flow_media; this just answers stray text. Returns True if
+    the message was consumed."""
+    draft = (state.get("pool_draft") or {}).get(str(user_id))
+    if not draft:
+        return False
+    step = draft.get("step")
+    if step == "product":
+        send_message(
+            chat_id, "Tap a product above to pick it — or /cancel to stop."
+        )
+        return True
+    if step == "video":
+        send_message(
+            chat_id,
+            "Send the pool video now (1 to 5 minutes) — or /cancel "
+            "to stop.",
+        )
+        return True
+    if step == "cover":
+        send_message(
+            chat_id, "Send a cover photo for the video — or /cancel to stop."
+        )
+        return True
+    return False
+
+
 # ------------------------------------------------------ /sell cards ----
 
 MAX_CARD_OPTIONS = 4
@@ -1640,6 +2088,7 @@ def start_sell(chat_id, user_id, state, user=None):
         )
         return
     state.get("auction_draft", {}).pop(str(user_id), None)
+    state.get("pool_draft", {}).pop(str(user_id), None)
     state.setdefault("card_draft", {})[str(user_id)] = {
         "step": "product",
         "seller_name": profile.get("name", "Seller"),
@@ -3235,12 +3684,16 @@ def handle_flow_media(msg, state):
     video = msg.get("video")
     document = msg.get("document")
     if not photo and not video:
-        # A video sent as a file during an auction: nudge the seller
-        # to send it as a video instead — otherwise it silently falls
-        # through and nothing happens.
+        # A video sent as a file during an auction or a pool: nudge
+        # the seller to send it as a video instead — otherwise it
+        # silently falls through and nothing happens.
         if document:
             adraft = (state.get("auction_draft") or {}).get(str(user_id))
-            if adraft and adraft.get("step") == "video":
+            pdraft = (state.get("pool_draft") or {}).get(str(user_id))
+            draft = adraft if adraft and adraft.get("step") == "video" else (
+                pdraft if pdraft and pdraft.get("step") == "video" else None
+            )
+            if draft:
                 send_message(
                     chat_id,
                     "That came through as a file — send it as a video "
@@ -3380,6 +3833,62 @@ def handle_flow_media(msg, state):
             adraft["step"] = "confirm"
             save_state(state)
             send_auction_preview(chat_id, user_id, adraft)
+            return True
+
+    # ---- pool video / cover photo (same 1–5 min rule as auctions) ----
+    pdraft = (state.get("pool_draft") or {}).get(str(user_id))
+    if pdraft and pdraft.get("step") == "video":
+        if photo:
+            send_message(
+                chat_id,
+                "Pools are for videos — send a video for the pool.",
+            )
+            return True
+        if video:
+            dur = video.get("duration")
+            if dur is not None and (
+                dur < AUCTION_MIN_VIDEO_S or dur > AUCTION_MAX_VIDEO_S
+            ):
+                send_message(
+                    chat_id,
+                    f"That video is {dur // 60} min {dur % 60:02d} s — "
+                    "pool videos must be 1 to 5 minutes. Send "
+                    "another video.",
+                )
+                return True
+            pdraft["video_file_id"] = video["file_id"]
+            if dur is not None:
+                pdraft["duration_s"] = dur
+                pdraft["duration_min"] = max(1, dur // 60)
+            thumb = video.get("thumb") or {}
+            if thumb.get("file_id"):
+                pdraft["cover_file_id"] = thumb["file_id"]
+                pdraft["step"] = "confirm"
+                save_state(state)
+                send_pool_preview(chat_id, user_id, pdraft)
+            else:
+                pdraft["step"] = "cover"
+                save_state(state)
+                send_message(
+                    chat_id,
+                    "Got the video — it has no cover photo, so send "
+                    "one now (this is the unblurred cover everyone "
+                    "sees on the pool card).",
+                )
+            return True
+    if pdraft and pdraft.get("step") == "cover":
+        if video:
+            send_message(
+                chat_id,
+                "That was a video — the cover needs to be a photo. "
+                "Send a cover photo.",
+            )
+            return True
+        if photo:
+            pdraft["cover_file_id"] = photo[-1]["file_id"]
+            pdraft["step"] = "confirm"
+            save_state(state)
+            send_pool_preview(chat_id, user_id, pdraft)
             return True
     return False
 
@@ -3566,6 +4075,21 @@ def handle_start(chat_id, text, state, user=None):
         send_bid_prompt(chat_id, auction)
         return
 
+    if arg.startswith("pool_"):
+        pid = arg[len("pool_"):]
+        pool = (state.get("pools") or {}).get(pid)
+        if not pool or pool.get("status") != "live":
+            send_message(
+                chat_id,
+                "That pool is closed — check the group for the latest one.",
+            )
+            return
+        if str(chat_id) == str(pool.get("seller")):
+            send_message(chat_id, "That's your own pool.")
+            return
+        send_join_prompt(chat_id, pool)
+        return
+
     if arg == "balance":
         show_balance(chat_id)
         return
@@ -3611,6 +4135,9 @@ def handle_start(chat_id, text, state, user=None):
         "full version is revealed in the group when someone buys it. "
         "🔨 Or run an auction with /auction — starting bid 5,000 Ks, "
         "15 minutes, highest bidder wins the video privately. "
+        "🤝 Or run a pool with /pool — a 50,000 Ks video split "
+        "between 50 people at 1,000 Ks each; everyone who paid gets "
+        "the video privately when it fills. "
         "Browse with /sellers, check your balance with /balance. "
         "Top up with /topup — Stars, USDT, or KBZPay / WavePay / "
         "AYAPay (from 5,000 Ks).\n\n"
@@ -3643,6 +4170,14 @@ def handle_help(chat_id):
         "shows the length in minutes. The cover is the video's own "
         "thumbnail, unblurred. "
         "Unsold auction posts are deleted after 24 hours. "
+        "Or run a group-buy pool with /pool: an expensive video at "
+        "a fixed 50,000 Ks — 50 people pay 1,000 Ks each from their "
+        "bot balance, and when all 50 have joined the video goes "
+        "privately to everyone who paid — it is NEVER revealed in "
+        "the group. Pool videos must be 1 to 5 minutes, and the card "
+        "shows the length in minutes. The cover is the video's own "
+        "thumbnail, unblurred. No deadline — a pool stays open until "
+        "it fills, or the seller removes it (everyone is refunded). "
         "Sellers earn a title from their sales — New Seller, Seller, "
         "Rising Star, Top Seller, Star Seller, Legend — shown with "
         "their sales count on their profile and every post. "
@@ -3666,6 +4201,7 @@ def handle_help(chat_id):
         "/myprofile — your profile + its status\n"
         "/sell — post a product card to the group\n"
         "/auction — post a video auction (start 5,000 Ks, 15 minutes)\n"
+        "/pool — post a group-buy pool (50,000 Ks, 1,000 Ks per person)\n"
         "/sellers — live sellers\n"
         "/balance — your bot balance\n"
         "/topup — top up by Stars, USDT or KBZPay/WavePay/AYAPay (min 5,000 Ks)\n"
@@ -3747,6 +4283,7 @@ def handle_message(msg, state):
         state.get("sell_draft", {}).pop(str(user_id), None)
         state.get("card_draft", {}).pop(str(user_id), None)
         state.get("auction_draft", {}).pop(str(user_id), None)
+        state.get("pool_draft", {}).pop(str(user_id), None)
         state.get("bid_draft", {}).pop(str(user_id), None)
         state.get("topup_mm_draft", {}).pop(str(user_id), None)
         pending = (state.get("pending_usdt") or {}).get(str(user_id))
@@ -3801,6 +4338,10 @@ def handle_message(msg, state):
 
     if text == "/auction":
         start_auction(chat_id, user_id, state, user=msg.get("from", {}))
+        return
+
+    if text == "/pool":
+        start_pool(chat_id, user_id, state, user=msg.get("from", {}))
         return
 
     if text == "/sellers":
@@ -3881,6 +4422,11 @@ def handle_message(msg, state):
     a_draft = (state.get("auction_draft") or {}).get(str(user_id))
     if a_draft and not text.startswith("/"):
         handle_auction_step(chat_id, user_id, text, state, user=msg.get("from", {}))
+        return
+
+    p_draft = (state.get("pool_draft") or {}).get(str(user_id))
+    if p_draft and not text.startswith("/"):
+        handle_pool_step(chat_id, user_id, text, state, user=msg.get("from", {}))
         return
 
     draft = (state.get("profile_draft") or {}).get(str(user_id))
@@ -4173,6 +4719,16 @@ def handle_message(msg, state):
                     f"{p.get('seller_name', p['seller'])} — "
                     f"🔨 Auction {item} — "
                     f"{fmt_ks(p['ks'])} — {p['method']} — {p['status']}"
+                )
+            elif kind == "pool":
+                item = PRODUCTS.get(p["product"], p["product"])
+                lines.append(
+                    f"{fmt_time(p['ts'])} — "
+                    f"{p.get('seller_name', p['seller'])} — "
+                    f"🤝 Pool {item} — "
+                    f"{fmt_ks(p['ks'])} — "
+                    f"{p.get('contributors', 0)} contributors — "
+                    f"{p['method']} — {p['status']}"
                 )
             else:
                 name = (
@@ -4547,12 +5103,20 @@ def handle_callback(query, state):
                 _refund_auction_leader(state, auction)
                 _delete_auction_card(state, auction)
                 auction["status"] = "removed"
+        # And their live pools — refund every contributor first.
+        for pool in (state.get("pools") or {}).values():
+            if str(pool.get("seller")) == str(target) and pool.get(
+                "status"
+            ) == "live":
+                _refund_pool_contributors(state, pool)
+                _delete_pool_card(state, pool)
+                pool["status"] = "removed"
         save_state(state)
         send_message(
             target,
             "❌ Your seller profile was removed by an admin — your "
-            "cards and auctions are off the group and you can't post "
-            "new ones until you make a new profile with /profile.",
+            "cards, auctions and pools are off the group and you can't "
+            "post new ones until you make a new profile with /profile.",
         )
         answer_callback(qid, "Seller removed — cards taken down.")
         return
@@ -4735,11 +5299,14 @@ def handle_callback(query, state):
         send_message(
             user_id,
             f"Posting {PRODUCTS.get(key, key)} — fixed price card or "
-            "auction?\n\n"
+            "auction or pool?\n\n"
             "🛍️ Fixed price card: name your options (A, B, C, D) with "
             "your own prices — buyers tap an option to buy it.\n"
             "🔨 Auction: starting bid 5,000 Ks, 15 minutes, highest "
-            "bidder wins the video privately.",
+            "bidder wins the video privately.\n"
+            "🤝 Pool: an expensive video at a fixed 50,000 Ks — 50 "
+            "people pay 1,000 Ks each, and everyone who paid gets "
+            "the video privately when the pool fills.",
             reply_markup={
                 "inline_keyboard": [
                     [
@@ -4754,10 +5321,16 @@ def handle_callback(query, state):
                             "callback_data": "selltype:auction",
                         }
                     ],
+                    [
+                        {
+                            "text": "🤝 Pool",
+                            "callback_data": "selltype:pool",
+                        }
+                    ],
                 ]
             },
         )
-        answer_callback(qid, "Fixed price or auction?")
+        answer_callback(qid, "Fixed price, auction or pool?")
         return
 
     # ---- /sell: fixed price card or auction? ----
@@ -4792,6 +5365,28 @@ def handle_callback(query, state):
                 "privately — it is NOT revealed in the group (unless an "
                 "admin wins). The cover photo is the video's own "
                 "thumbnail, unblurred.\n\n"
+                "Or /cancel.",
+            )
+            answer_callback(qid, "Send the video.")
+            return
+        if kind == "pool":
+            product = draft.get("product")
+            state.get("card_draft", {}).pop(str(user_id), None)
+            state.setdefault("pool_draft", {})[str(user_id)] = {
+                "step": "video",
+                "seller_name": draft.get("seller_name", "Seller"),
+                "product": product,
+            }
+            save_state(state)
+            send_message(
+                user_id,
+                f"🤝 Pool for {PRODUCTS.get(product, product)} — send "
+                "the video now (1 to 5 minutes).\n\n"
+                "Fixed price 50,000 Ks — 50 people pay 1,000 Ks each. "
+                "When all 50 have joined, the video goes privately to "
+                "everyone who paid — it is NEVER revealed in the group. "
+                "The cover photo is the video's own thumbnail, "
+                "unblurred.\n\n"
                 "Or /cancel.",
             )
             answer_callback(qid, "Send the video.")
@@ -4975,6 +5570,40 @@ def handle_callback(query, state):
         answer_callback(qid, "Send the video.")
         return
 
+    if data.startswith("poolprod:"):
+        key = data.split(":", 1)[1]
+        draft = (state.get("pool_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "product":
+            answer_callback(qid, "No pool in progress — /pool to start.")
+            return
+        profile = get_profile(user_id)
+        if not profile or profile.get("status") != "live":
+            answer_callback(
+                qid, "Your profile is not live any more.", show_alert=True
+            )
+            return
+        if key not in (profile.get("products") or {}):
+            answer_callback(
+                qid, "That product is not on your profile.", show_alert=True
+            )
+            return
+        draft["product"] = key
+        draft["step"] = "video"
+        save_state(state)
+        send_message(
+            user_id,
+            f"🤝 Pool for {PRODUCTS.get(key, key)} — send the video now "
+            "(1 to 5 minutes).\n\n"
+            "Fixed price 50,000 Ks — 50 people pay 1,000 Ks each. "
+            "When all 50 have joined, the video goes privately to "
+            "everyone who paid — it is NEVER revealed in the group. "
+            "The cover photo is the video's own thumbnail, "
+            "unblurred.\n\n"
+            "Or /cancel.",
+        )
+        answer_callback(qid, "Send the video.")
+        return
+
     if data == "auctpost":
         draft = (state.get("auction_draft") or {}).get(str(user_id))
         if not draft or draft.get("step") != "confirm" or not draft.get(
@@ -5053,6 +5682,82 @@ def handle_callback(query, state):
         answer_callback(qid, "Cancelled.")
         return
 
+    if data == "poolpost":
+        draft = (state.get("pool_draft") or {}).get(str(user_id))
+        if not draft or draft.get("step") != "confirm" or not draft.get(
+            "video_file_id"
+        ):
+            answer_callback(qid, "No pool to post — /pool to start.")
+            return
+        profile = get_profile(user_id)
+        if not profile or profile.get("status") != "live":
+            state.get("pool_draft", {}).pop(str(user_id), None)
+            save_state(state)
+            answer_callback(
+                qid, "Your profile is not live any more.", show_alert=True
+            )
+            return
+        group = state.get("group") or GROUP_CHAT_ID
+        if not group:
+            answer_callback(
+                qid,
+                "The group isn't linked yet — ask an admin.",
+                show_alert=True,
+            )
+            return
+        state["pool_seq"] = state.get("pool_seq", 0) + 1
+        pid = f"p{state['pool_seq']}"
+        now = int(time.time())
+        pool = {
+            "id": pid,
+            "seller": str(user_id),
+            "seller_name": profile.get("name", "Seller"),
+            "age": profile.get("age"),
+            "role": profile.get("role"),
+            "product": draft["product"],
+            "video_file_id": draft["video_file_id"],
+            "cover_file_id": draft.get("cover_file_id"),
+            "duration_s": draft.get("duration_s"),
+            "duration_min": draft.get("duration_min"),
+            "price": POOL_PRICE_KS,
+            "per_person": POOL_PER_PERSON_KS,
+            "needed": POOL_NEEDED,
+            "contributors": [],
+            "posted_at": now,
+            "message_id": None,
+            "status": "live",
+        }
+        state.setdefault("pools", {})[pid] = pool
+        save_state(state)
+        mid, err = post_pool_to_group(state, pool)
+        if err:
+            pool["status"] = "failed"
+            save_state(state)
+            send_message(
+                user_id,
+                "Posting failed — is the bot an admin in the group? "
+                f"Telegram said: {err}",
+            )
+            answer_callback(qid, "Posting failed.")
+            return
+        pool["message_id"] = mid
+        state.get("pool_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(
+            user_id,
+            "✅ Pool posted to the group! 50 people × 1,000 Ks — when "
+            "it fills, the video goes privately to everyone who paid.",
+        )
+        answer_callback(qid, "Posted.")
+        return
+
+    if data == "poolcancel":
+        state.get("pool_draft", {}).pop(str(user_id), None)
+        save_state(state)
+        send_message(user_id, "Cancelled — nothing was posted.")
+        answer_callback(qid, "Cancelled.")
+        return
+
     if data.startswith("aucbidamt:"):
         parts = data.split(":")
         if len(parts) != 3:
@@ -5103,6 +5808,22 @@ def handle_callback(query, state):
         answer_callback(qid, "Send your bid.")
         return
 
+    if data.startswith("pooljoin:"):
+        pid = data.split(":", 1)[1]
+        pool = (state.get("pools") or {}).get(pid)
+        if not pool:
+            answer_callback(qid, "That pool is gone.", show_alert=True)
+            return
+        ok, msg = join_pool(
+            state, pool, user_id, user=query.get("from", {})
+        )
+        if ok:
+            answer_callback(qid, "Joined the pool.")
+            send_message(user_id, msg)
+        else:
+            answer_callback(qid, msg, show_alert=True)
+        return
+
     if data.startswith("aucdel:"):
         aid = data.split(":", 1)[1]
         auction = (state.get("auctions") or {}).get(aid)
@@ -5132,6 +5853,37 @@ def handle_callback(query, state):
                 "bidder was refunded.",
             )
         answer_callback(qid, "Auction removed.")
+        return
+
+    if data.startswith("pooldel:"):
+        pid = data.split(":", 1)[1]
+        pool = (state.get("pools") or {}).get(pid)
+        if not pool:
+            answer_callback(qid, "That pool is gone.", show_alert=True)
+            return
+        if str(user_id) != str(pool.get("seller")) and not is_admin(
+            user_id
+        ):
+            answer_callback(
+                qid,
+                "Only the seller or an admin can remove this.",
+                show_alert=True,
+            )
+            return
+        if pool.get("status") != "live":
+            answer_callback(qid, "Already removed.", show_alert=True)
+            return
+        _refund_pool_contributors(state, pool)
+        _delete_pool_card(state, pool)
+        pool["status"] = "cancelled"
+        save_state(state)
+        if str(user_id) != str(pool.get("seller")):
+            send_message(
+                pool["seller"],
+                "❌ Your pool was removed by an admin — every "
+                "contributor was refunded 1,000 Ks.",
+            )
+        answer_callback(qid, "Pool removed — everyone refunded.")
         return
 
     # ---- marketplace: browse / buy ----

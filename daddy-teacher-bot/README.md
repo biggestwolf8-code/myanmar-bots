@@ -39,6 +39,7 @@ Students:
 - `/myprofile` — your profile + its status
 - `/sell` — post a product card to the group (live profile only)
 - `/auction` — post a video auction to the group (live profile only)
+- `/pool` — post a group-buy pool to the group (50,000 Ks, 1,000 Ks per person, live profile only)
 - `/sellers` — live sellers + their products
 - `/balance` — your bot balance
 - `/topup` — top up by Stars ($1/$2/$5/$10/$20), USDT, or KBZPay / WavePay / AYAPay (min 5,000 Ks)
@@ -291,6 +292,38 @@ go stale:
   kind `topup_mm`; the receipt record carries the `ks` amount.
   `/topup`, `/help` and the `/start` welcome all mention the Myanmar
   option and the 5,000 Ks minimum.
+
+## v7 — group-buy pool ("fundraiser pool")
+
+**Pool** — `/pool` (or pick "🤝 Pool" after choosing a product in
+`/sell`) posts a group-buy pool instead of a fixed-price card.
+Same gates as `/sell`: a live profile and a linked group.
+- **Flow** — `/pool` → pick a product → send the video → the
+  cover photo is the video's own thumbnail, **unblurred** (if the
+  video has no thumbnail, the seller sends a cover photo) → confirm
+  the preview → the bot posts the pool card to the group.
+- **Rules** — the price is FIXED at **50,000 Ks** (the seller never
+  types a price) — always exactly **50 contributors** at **1,000 Ks**
+  each (50 × 1,000 = 50,000). Joining comes from the member's **bot
+  balance only** — top up with `/topup` first if short. One share
+  per person; the seller cannot join their own pool. Pool videos
+  must be **1 to 5 minutes** long (same rule as auctions); the card
+  shows the length as "⏱️ N min".
+- **Completion** — at the 50th join the seller gets the full
+  **50,000 Ks** in their balance, the video is sent **privately to
+  every contributor's DM** (`protect_content`), and the pool card is
+  deleted at once. The video is NEVER revealed in the group.
+- **Live meter** — the card shows a 10-segment progress bar
+  (`pool_meter`), refreshed on every join: e.g.
+  `▓▓▓▓▓▓░░░░ 32/50 • 32,000 Ks raised • 18,000 Ks to go`. The same
+  rendering is used on the group card, the seller preview and the
+  join prompt.
+- **No deadline** — a pool stays open until it fills. If the seller
+  or an admin removes it (card Remove button, or admin Remove-seller
+  flow), every contributor is refunded 1,000 Ks at once.
+- **Sales + titles** — a completed pool is recorded in
+  `purchases.json` (kind `pool`, with the contributor count) and
+  shown in `/sales`; it counts as ONE sale for the seller's title.
 
 ## Setup (Railway)
 
