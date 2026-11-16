@@ -37,6 +37,7 @@ Students:
 - `/mysessions` — sessions left
 - `/profile` — make/edit your seller profile (guided steps)
 - `/myprofile` — your profile + its status
+- `/sell` — post a product card to the group (live profile only)
 - `/sellers` — live sellers + their products
 - `/balance` — your bot balance
 - `/topup` — top up by Stars ($1/$2/$5/$10/$20) or USDT
@@ -72,12 +73,13 @@ number; at least one required; `/skip` keeps the old value when
 editing). These are the seller's OWN payment details — the bot's
 class-pack details (above) stay separate and are Arkar's only.
 
-**Approval gate (Zoom live)** — the bot cannot see Zoom attendance,
-so a new or edited profile is PENDING until an admin approves it.
-Both admins get the profile with Approve / Decline buttons; the
-notification says to approve only after seeing the seller join the
-Zoom live. A second admin tap says "Already handled". `/board`
-posts only live sellers.
+**Profiles go live immediately** — there is no approval gate. (The
+Zoom-live approval gate was dropped 2026-11-16: members can start
+posting without the Zoom class.) Both admins get an FYI notification
+for each new profile, with a "Remove seller" button — moderation,
+not a gate. Removing a seller takes their live cards down too, and
+they must make a new profile to sell again. `/board` posts only live
+sellers.
 
 **Buying** — a buyer taps a seller (in `/sellers` or on the board),
 then a product, and chooses how to pay:
@@ -131,6 +133,39 @@ admin taps it after paying the MMK and the seller is notified. If
 the hash doesn't verify, the seller is told plainly and can retry.
 Sales are recorded in `state.json` (`sellusdt`) and shown in `/sales`.
 
+## v4 — member self-service product cards (`/sell`)
+
+Any member with a live profile can post their own product to the
+group as a shopping card — no admin step, no Zoom class needed.
+
+**Flow** — `/sell` in DM (or the "📣 Post to group" button on
+`/myprofile` and in the profile-live message):
+1. Pick one of your own profile products (milk, eggplant, peaches,
+   donut, HD).
+2. Name your options — up to 4, seller types the names (like A, B,
+   C, D, or a size/flavour), then a price for each, typed in Ks,
+   validated 5,000–50,000 Ks. `/done` finishes early; the 4th option
+   goes straight to the preview. Or tap "Use profile price" to post
+   a single option at the product's profile price.
+3. Confirm the preview, and the bot posts the card to the group.
+
+**The card** — "🛍️ \<seller\> — \<product\>" with one Buy button
+per option ("\<name\> — \<price\> Ks"), a "👤 Seller profile"
+button, and a "🗑️ Remove" button. The Buy buttons are deep links
+into the bot (`/start card_<id>_<option>`), so they work even for
+members who never started the bot — tapping one opens the normal
+buy flow for that option at that price (balance / Stars / USDT /
+pay seller directly + receipt), with the option name carried through
+every payment path and into `/sales`. The seller (or an admin) can
+remove their own card with the Remove button on it; removing a
+seller (admin) takes their cards down too.
+
+**Gate** — `/sell` needs only a live profile. If the group isn't
+linked yet (`GROUP_CHAT_ID` / `/setgroup`), `/sell` says so plainly
+instead of failing. Cards are recorded in `state.json` (`cards`,
+with message id, seller, product, options and status) so sales can
+be linked back to the card they came from.
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
@@ -164,7 +199,8 @@ Environment variables:
 
 JSON files in `DATA_DIR` (same pattern as daddy-bot):
 `state.json` (group, sessions, pending payments, receipts, profile
-drafts, cashouts, sellusdt), `credits.json`, `purchases.json` (kinds:
-`pack`, `market`, `topup`, `cashout`, `sellusdt`), `used_tx.json`,
-`users.json`, `profiles.json` (seller profiles + status),
-`balances.json` (user id → balance in Ks).
+drafts, cashouts, sellusdt, cards, card drafts), `credits.json`,
+`purchases.json` (kinds: `pack`, `market`, `topup`, `cashout`,
+`sellusdt`; market sales carry an `option` field when bought from a
+card option), `used_tx.json`, `users.json`, `profiles.json` (seller
+profiles + status), `balances.json` (user id → balance in Ks).
