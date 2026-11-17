@@ -636,6 +636,69 @@ one.
 Kept from v7.10: cover choice per post, 24-hour auctions, and the
 v7.8/v7.9 logging, anti-silence and thumbnail re-upload fixes.
 
+## v7.12 — video preview for /sell cards, direct buy, 5 photos + 5 videos
+
+**Video preview for /sell cards.** The preview step after a
+product video now takes either a photo (as before — PIL-blurred
+as the sneak peek) or a short video of **10 seconds or less**
+(`SELL_PREVIEW_MAX_VIDEO_S = 10`), shown **unblurred** as a
+moving teaser on the card — the same precedent as the v7.11
+pool/auction teaser. A clip longer than 10 seconds is rejected
+("Keep the preview to 10 seconds — send a shorter clip, or send
+a photo."); a video sent as a file at this step gets the usual
+"send it as a video" nudge. The card posts as the teaser video +
+caption + buttons when a video preview is set, as the blurred
+photo card when a photo preview is set, and as text when there is
+no preview. The full product video is still only revealed in the
+group on the first completed purchase — the preview never leaks
+it. The pool/auction teaser stays at 5 seconds. (This was the
+owner's own test: he sent a 4-second video as the preview and the
+bot refused it — "the preview needs to be a photo".)
+
+**Direct buy without topping up.** A buyer with no balance can
+now buy a fixed-price card outright: the buy prompt leads with
+the direct options — "⭐ Pay N Stars now", "💎 Pay N USDT now",
+"🇲🇲 Pay seller directly" — and the "💰 Top up balance" button
+is a fallback at the end, never the gate. Two things changed to
+make that real: the Stars math now rounds **up** (ceil), so
+5,001 Ks costs 101 Stars and the seller is always paid the full
+price in Ks (it used to round down, undercharging the bot), and
+the prompt order was flipped so top-up no longer comes first
+when the balance is short. The Stars invoice itself
+(`sendInvoice`, XTR, payload `mkt:…`), the pre-checkout answer
+and the successful-payment completion (seller credited in Ks,
+sale recorded kind `market` status `paid`, first-purchase group
+reveal, buyer balance untouched) are unchanged — as are the
+balance buy and the direct-receipt (Myanmar pay + admin/seller
+approval) paths. USDT direct also already existed and is
+unchanged: the buyer pays the bot's BSC address, pastes the hash,
+the bot verifies on-chain and credits the seller — no new escrow
+was invented. **Auctions and pools stay balance-only** (escrow
+and refund mechanics depend on balance). The insufficient-balance
+alert now says "pay N Stars instead, or top up".
+
+**Seller profiles: 5 photos and 5 videos.** Both are required
+(no /skip). The photos step takes 5 photos, then a new videos
+step takes 5 videos; prompts show the count plainly ("Photo
+3/5 saved", "Send 5 videos of you, one by one"). New videos
+swap the oldest out once 5 are saved, exactly like photos.
+`/clearphotos` clears photos only and keeps its guarded routing
+(only at the photos step); new `/clearvideos` mirrors it
+(only at the videos step). The confirm screen gains a "🎬
+Change videos" button, and the v7.7 edit menu gains a "🎬
+Videos" section. The profile card now sends **one media group
+with the 5 photos followed by the 5 videos** (10 items =
+Telegram's media-group cap) everywhere it is shown — /myprofile,
+the seller-profile button on cards, and the confirm screen.
+Profiles with fewer than 5 photos or 5 videos count as
+incomplete: the existing "complete your profile" prompt on /sell
+fires for them (so an old 3-photo profile gets it) and walks the
+missing media steps, photos first, then videos. Payment-memory
+skip and all other profile steps are untouched. The welcome and
+help texts now say "5 photos and 5 videos" and that a card's
+sneak peek is a blurred photo or a short video that plays as it
+is.
+
 ## Setup (Railway)
 
 Service type: worker. Start command: `python bot.py`.
