@@ -672,14 +672,16 @@ def seller_title_line(seller_id):
 
 def profile_missing_fields(profile):
     """What a seller still has to fill in before they can /sell:
-    age, role, and 3 photos."""
+    age, role, 5 photos and 5 videos."""
     missing = []
     if not profile.get("age"):
         missing.append("age")
     if not profile.get("role"):
         missing.append("role")
-    if len(profile.get("photos") or []) < 3:
+    if len(profile.get("photos") or []) < PROFILE_PHOTOS_REQUIRED:
         missing.append("photos")
+    if len(profile.get("videos") or []) < PROFILE_VIDEOS_REQUIRED:
+        missing.append("videos")
     return missing
 
 
@@ -988,20 +990,32 @@ def send_photo_with_fallback(chat_id, photo_file_id, caption,
     return send_message(chat_id, caption, reply_markup=reply_markup)
 
 
-def send_photos_group(chat_id, file_ids):
-    """Send up to 3 photos as a media group. Returns True if sent."""
-    ids = [f for f in (file_ids or []) if f][:3]
-    if not ids:
+def send_profile_media_group(chat_id, photos, videos):
+    """One media group for a seller profile: the 5 photos followed
+    by the 5 videos (10 items = Telegram's media-group cap).
+    Returns True if sent."""
+    items = [
+        {"type": "photo", "media": f}
+        for f in (photos or []) if f
+    ][:PROFILE_PHOTOS_REQUIRED]
+    items += [
+        {"type": "video", "media": f}
+        for f in (videos or []) if f
+    ][:PROFILE_VIDEOS_REQUIRED]
+    if not items:
         return False
-    media = [{"type": "photo", "media": fid} for fid in ids]
-    r = api("sendMediaGroup", {"chat_id": chat_id, "media": media})
+    r = api("sendMediaGroup", {"chat_id": chat_id, "media": items})
     return bool(r.get("ok"))
 
 
 def send_seller_card(chat_id, profile):
-    """A seller's profile card: their 3 photos as a media group
-    first, then the text card with products and payment details."""
-    send_photos_group(chat_id, profile.get("photos") or [])
+    """A seller's profile card: their 5 photos and 5 videos as one
+    media group first, then the text card with products and payment
+    details."""
+    send_profile_media_group(
+        chat_id, profile.get("photos") or [],
+        profile.get("videos") or [],
+    )
     send_message(
         chat_id,
         seller_card_text(profile),
@@ -1011,14 +1025,29 @@ def send_seller_card(chat_id, profile):
 
 
 def post_card_to_group(state, card):
-    """Post a /sell card to the group. With a blurred preview it goes
-    as a photo (caption = card text); otherwise plain text. Returns
-    (message_id, err) like post_to_group."""
+    """Post a /sell card to the group. With a video preview it goes
+    as the teaser video (unblurred, caption = card text); with a
+    photo preview it goes as the blurred photo; otherwise plain
+    text. A failed video send falls back to the photo, then text —
+    the card always posts. Returns (message_id, err) like
+    post_to_group."""
     group = state.get("group") or GROUP_CHAT_ID
     if not group:
         return None, "no group set"
     text = sell_card_text(card)
     kb = sell_card_keyboard(card)
+    if card.get("preview_video_file_id"):
+        r = api(
+            "sendVideo",
+            {
+                "chat_id": group,
+                "video": card["preview_video_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+        if r.get("ok"):
+            return r["result"]["message_id"], None
     if card.get("preview_file_id"):
         r = api(
             "sendPhoto",
@@ -1109,6 +1138,13 @@ POOL_JOIN_AMOUNTS = (1000, 5000, 10000, 20000, 50000)
 # Optional 5-second sneak preview (teaser) a seller can add to a
 # pool or auction video: a short clip, shown unblurred on the card.
 TEASER_MAX_VIDEO_S = 5
+# /sell card preview: a photo (blurred) or a short video of 10
+# seconds or less, shown unblurred as a moving sneak peek. The pool
+# and auction teaser stays at 5 seconds.
+SELL_PREVIEW_MAX_VIDEO_S = 10
+# Seller profile media: 5 photos and 5 videos, both required.
+PROFILE_PHOTOS_REQUIRED = 5
+PROFILE_VIDEOS_REQUIRED = 5
 
 
 def fmt_countdown(seconds):
@@ -1262,9 +1298,9 @@ def edit_auction_card(state, auction):
 
 def _seller_ready(chat_id, user_id, state):
     """Shared gates for /sell and /auction: a live profile, complete
-    (age, role, 3 photos), and the group linked. Sends the right
-    message and returns the profile, or None when the seller can't
-    post yet."""
+    (age, role, 5 photos and 5 videos), and the group linked. Sends
+    the right message and returns the profile, or None when the
+    seller can't post yet."""
     profile = get_profile(user_id)
     if not profile:
         send_message(
@@ -1287,8 +1323,9 @@ def _seller_ready(chat_id, user_id, state):
                 "/profile and it goes live straight away.",
             )
         return None
-    # Sellers with an older profile (no age / role / photos) finish
-    # it first — age, role and 3 photos are required to post.
+    # Sellers with an older profile (no age / role / photos / videos)
+    # finish it first — age, role, 5 photos and 5 videos are required
+    # to post.
     if profile_missing_fields(profile):
         start_profile_completion(chat_id, user_id, state)
         return None
@@ -1942,7 +1979,9 @@ def send_buy_options(user_id, profile, product, price, option=None,
     and the callbacks stay in the old 4-part form."""
     seller_name = profile.get("name", "Seller")
     balance = get_balance(user_id)
-    stars = max(1, round(price / 50))
+    # Stars are rounded UP (ceil), never down: 5,001 Ks costs 101
+    # Stars, so the seller is always paid the full price in Ks.
+    stars = max(1, -(-price // 50))
     usd = price / KS_PER_USD
     suffix = f":{card_id}:{opt_idx}" if card_id is not None else ""
     item = market_item_label(product, option)
@@ -1956,8 +1995,9 @@ def send_buy_options(user_id, profile, product, price, option=None,
                 }
             ]
         )
-    else:
-        rows.append([{"text": "💰 Top up balance", "callback_data": "topup"}])
+    # Direct options first — topping up is a fallback at the end,
+    # never the gate: a buyer with no balance can still pay for the
+    # item itself with Stars, USDT or directly to the seller.
     rows.append(
         [
             {
@@ -1982,6 +2022,8 @@ def send_buy_options(user_id, profile, product, price, option=None,
             }
         ]
     )
+    if balance < price:
+        rows.append([{"text": "💰 Top up balance", "callback_data": "topup"}])
     text = (
         f"🛍 {item} from {seller_name} — "
         f"{fmt_ks(price)} (${usd:g})\n\n"
@@ -1992,6 +2034,11 @@ def send_buy_options(user_id, profile, product, price, option=None,
         "🇲🇲 Direct: pay the seller's own KBZPay / WavePay / AYAPay / "
         "bank / USDT and send a receipt."
     )
+    if balance < price:
+        text += (
+            "\n\nNo need to top up first — pay directly above, or top "
+            "up if you'd rather pay from balance."
+        )
     send_message(user_id, text, reply_markup={"inline_keyboard": rows})
 
 
@@ -2767,7 +2814,8 @@ def card_options_done(chat_id, user_id, draft, state):
 
 def send_sell_preview(chat_id, user_id, draft):
     """Show the seller exactly what will post to the group, with
-    Post / Cancel buttons. With media, the preview is the blurred
+    Post / Cancel buttons. With a video preview the preview IS the
+    teaser video, unblurred; with a photo preview it is the blurred
     sneak peek photo — blurred once here and stored on the draft so
     the group card can reuse it."""
     profile = get_profile(user_id)
@@ -2794,6 +2842,18 @@ def send_sell_preview(chat_id, user_id, draft):
             ]
         ]
     }
+    if draft.get("preview_video_file_id"):
+        r = api(
+            "sendVideo",
+            {
+                "chat_id": chat_id,
+                "video": draft["preview_video_file_id"],
+                "caption": text,
+                "reply_markup": kb,
+            },
+        )
+        if r.get("ok"):
+            return
     if draft.get("preview_source_file_id") and not draft.get(
         "preview_file_id"
     ):
@@ -2921,8 +2981,10 @@ def handle_card_step(chat_id, user_id, text, state, user=None):
     if step == "preview_photo":
         send_message(
             chat_id,
-            "Send a preview photo for the video — this is the sneak "
-            "peek everyone sees in the group.",
+            "Send a preview photo or a short video (10 seconds or "
+            "less) for the video — this is the sneak peek everyone "
+            "sees in the group. A video plays as it is; a photo is "
+            "blurred.",
         )
         return True
     return False
@@ -3713,13 +3775,23 @@ def profile_after_role(chat_id, draft, data, state, username):
         send_profile_edit_menu(chat_id)
         return
     if draft.get("complete"):
-        if len(data.get("photos") or []) < 3:
+        if len(data.get("photos") or []) < PROFILE_PHOTOS_REQUIRED:
             draft["step"] = "photos"
             save_state(state)
             send_message(
                 chat_id,
-                f"Send {3 - len(data.get('photos') or [])} photo(s) of "
-                "you, one by one — 3 are required to sell.",
+                f"Send {PROFILE_PHOTOS_REQUIRED - len(data.get('photos') or [])} "
+                "photo(s) of you, one by one — "
+                f"{PROFILE_PHOTOS_REQUIRED} are required to sell.",
+            )
+        elif len(data.get("videos") or []) < PROFILE_VIDEOS_REQUIRED:
+            draft["step"] = "videos"
+            save_state(state)
+            send_message(
+                chat_id,
+                f"Send {PROFILE_VIDEOS_REQUIRED - len(data.get('videos') or [])} "
+                "video(s) of you, one by one — "
+                f"{PROFILE_VIDEOS_REQUIRED} are required to sell.",
             )
         else:
             draft["step"] = "confirm"
@@ -3750,6 +3822,7 @@ def start_profile_completion(chat_id, user_id, state):
         "age": profile.get("age"),
         "role": profile.get("role"),
         "photos": list(profile.get("photos") or []),
+        "videos": list(profile.get("videos") or []),
         "products": dict(profile.get("products", {})),
         "pay": dict(profile.get("pay", {})),
     }
@@ -3757,6 +3830,8 @@ def start_profile_completion(chat_id, user_id, state):
         "age"
         if "age" in missing
         else "role" if "role" in missing else "photos"
+        if "photos" in missing
+        else "videos"
     )
     state.setdefault("profile_draft", {})[str(chat_id)] = {
         "step": step,
@@ -3772,7 +3847,11 @@ def start_profile_completion(chat_id, user_id, state):
         bits.append("your role")
     if "photos" in missing:
         bits.append(
-            f"{3 - len(data['photos'])} photo(s) of you"
+            f"{PROFILE_PHOTOS_REQUIRED - len(data['photos'])} photo(s) of you"
+        )
+    if "videos" in missing:
+        bits.append(
+            f"{PROFILE_VIDEOS_REQUIRED - len(data['videos'])} video(s) of you"
         )
     intro = (
         "Before you post, finish your profile — I still need "
@@ -3786,11 +3865,17 @@ def start_profile_completion(chat_id, user_id, state):
     elif step == "role":
         send_message(chat_id, intro + "What's your role?")
         send_role_prompt(chat_id)
+    elif step == "videos":
+        send_message(
+            chat_id,
+            intro + f"Send {PROFILE_VIDEOS_REQUIRED} videos of you, one "
+            "by one — they're required to sell.",
+        )
     else:
         send_message(
             chat_id,
-            intro + "Send 3 photos of you, one by one — they're "
-            "required to sell.",
+            intro + f"Send {PROFILE_PHOTOS_REQUIRED} photos of you, one "
+            "by one — they're required to sell.",
         )
 
 
@@ -3843,6 +3928,12 @@ def send_profile_edit_menu(chat_id):
                 ],
                 [
                     {
+                        "text": "🎬 Videos",
+                        "callback_data": "profmenu:videos",
+                    }
+                ],
+                [
+                    {
                         "text": "✅ Done — review profile",
                         "callback_data": "profmenu:done",
                     }
@@ -3864,6 +3955,7 @@ def start_profile(chat_id, user, state, force_linear=False):
             "age": existing.get("age"),
             "role": existing.get("role"),
             "photos": list(existing.get("photos") or []),
+            "videos": list(existing.get("videos") or []),
             "products": dict(existing.get("products", {})),
             "pay": dict(existing.get("pay", {})),
         }
@@ -3903,8 +3995,11 @@ def start_profile(chat_id, user, state, force_linear=False):
 
 
 def send_profile_confirm(chat_id, data, username=""):
-    if data.get("photos"):
-        send_photos_group(chat_id, data["photos"])
+    if data.get("photos") or data.get("videos"):
+        send_profile_media_group(
+            chat_id, data.get("photos") or [],
+            data.get("videos") or [],
+        )
     text = "Check your profile:\n\n" + profile_summary_text(
         {
             "name": data.get("name", ""),
@@ -3950,6 +4045,12 @@ def send_profile_confirm(chat_id, data, username=""):
                         "callback_data": "profphotoedit",
                     }
                 ],
+                [
+                    {
+                        "text": "🎬 Change videos",
+                        "callback_data": "profvideoedit",
+                    }
+                ],
             ]
         },
     )
@@ -3976,11 +4077,12 @@ def send_photos_step_prompt(chat_id, data):
     draft already has."""
     photos = data.get("photos", [])
     if photos:
-        if len(photos) >= 3:
+        if len(photos) >= PROFILE_PHOTOS_REQUIRED:
             send_message(
                 chat_id,
-                "You already have 3 photos saved — /skip to "
-                "keep them, or send new ones to swap them.\n\n"
+                f"You already have {PROFILE_PHOTOS_REQUIRED} photos saved "
+                "— /skip to keep them, or send new ones to swap "
+                "them.\n\n"
                 "Send /clearphotos to remove the saved ones and "
                 "start over.",
             )
@@ -3988,17 +4090,51 @@ def send_photos_step_prompt(chat_id, data):
             send_message(
                 chat_id,
                 f"You have {len(photos)} photo(s) saved — "
-                f"send {3 - len(photos)} more photo(s) of "
-                "you, one by one. 3 are required to sell.\n\n"
+                f"send {PROFILE_PHOTOS_REQUIRED - len(photos)} more "
+                "photo(s) of you, one by one. "
+                f"{PROFILE_PHOTOS_REQUIRED} are required to sell.\n\n"
                 "Send /clearphotos to remove the saved ones and "
                 "start over.",
             )
     else:
         send_message(
             chat_id,
-            "Last step: send 3 photos of you, one by one — "
-            "they're required to sell.\n\n"
+            f"Send {PROFILE_PHOTOS_REQUIRED} photos of you, one by "
+            "one — they're required to sell.\n\n"
             "Send /clearphotos to remove the saved ones and "
+            "start over.",
+        )
+
+
+def send_videos_step_prompt(chat_id, data):
+    """The prompt for the videos step, mirroring the photos step."""
+    videos = data.get("videos", [])
+    if videos:
+        if len(videos) >= PROFILE_VIDEOS_REQUIRED:
+            send_message(
+                chat_id,
+                f"You already have {PROFILE_VIDEOS_REQUIRED} videos "
+                "saved — /skip to keep them, or send new ones to swap "
+                "them.\n\n"
+                "Send /clearvideos to remove the saved ones and "
+                "start over.",
+            )
+        else:
+            send_message(
+                chat_id,
+                f"You have {len(videos)} video(s) saved — "
+                f"send {PROFILE_VIDEOS_REQUIRED - len(videos)} more "
+                "video(s) of you, one by one. "
+                f"{PROFILE_VIDEOS_REQUIRED} are required to sell.\n\n"
+                "Send /clearvideos to remove the saved ones and "
+                "start over.",
+            )
+    else:
+        send_message(
+            chat_id,
+            f"Send {PROFILE_VIDEOS_REQUIRED} videos of you, one by "
+            "one — they're required to sell.\n\n"
+            "Send /clearvideos to remove the saved ones and "
             "start over.",
         )
 
@@ -4110,7 +4246,7 @@ def open_pay_edit(user_id, draft, state):
 
 def open_photos_edit(user_id, draft, state):
     """Re-open the photos step (v7.6 change-photos path). The
-    draft's saved photos stay in place; once 3 are saved, new
+    draft's saved photos stay in place; once 5 are saved, new
     photos swap the oldest out, and /clearphotos removes them all
     so the set can be redone."""
     draft["step"] = "photos"
@@ -4118,11 +4254,28 @@ def open_photos_edit(user_id, draft, state):
     send_message(
         user_id,
         "Change your photos — the ones you have stay saved for "
-        "now. Send new ones to swap the oldest out once 3 are "
+        "now. Send new ones to swap the oldest out once 5 are "
         "saved, or /clearphotos to remove them all and start "
         "over.",
     )
     send_photos_step_prompt(user_id, draft.get("data", {}))
+
+
+def open_videos_edit(user_id, draft, state):
+    """Re-open the videos step (v7.12 change-videos path, mirroring
+    open_photos_edit). Saved videos stay in place; once 5 are
+    saved, new videos swap the oldest out, and /clearvideos removes
+    them all so the set can be redone."""
+    draft["step"] = "videos"
+    save_state(state)
+    send_message(
+        user_id,
+        "Change your videos — the ones you have stay saved for "
+        "now. Send new ones to swap the oldest out once 5 are "
+        "saved, or /clearvideos to remove them all and start "
+        "over.",
+    )
+    send_videos_step_prompt(user_id, draft.get("data", {}))
 
 
 def handle_profile_step(chat_id, text, state, user=None):
@@ -4228,13 +4381,60 @@ def handle_profile_step(chat_id, text, state, user=None):
             save_state(state)
             send_message(
                 chat_id,
-                "Saved photos cleared — send 3 photos of you, "
+                f"Saved photos cleared — send "
+                f"{PROFILE_PHOTOS_REQUIRED} photos of you, "
                 "one by one.",
             )
             return True
         if text == "/skip":
             photos = data.get("photos", [])
-            if len(photos) >= 3:
+            if len(photos) >= PROFILE_PHOTOS_REQUIRED:
+                if draft.get("edit_menu"):
+                    draft["step"] = "menu"
+                    save_state(state)
+                    send_profile_edit_menu(chat_id)
+                elif len(data.get("videos") or []) < PROFILE_VIDEOS_REQUIRED:
+                    draft["step"] = "videos"
+                    save_state(state)
+                    send_videos_step_prompt(chat_id, data)
+                else:
+                    draft["step"] = "confirm"
+                    save_state(state)
+                    send_profile_confirm(chat_id, data, username)
+            else:
+                send_message(
+                    chat_id,
+                    f"Photos are required to sell — send "
+                    f"{PROFILE_PHOTOS_REQUIRED - len(photos)} more "
+                    "photo(s) of you, or /cancel.",
+                )
+            return True
+        send_message(
+            chat_id,
+            f"Send a photo of you — I need {PROFILE_PHOTOS_REQUIRED} "
+            "in total, one by one.\n\n"
+            "Send /clearphotos to remove the saved ones and "
+            "start over.",
+        )
+        return True
+
+    if step == "videos":
+        if text == "/clearvideos":
+            # v7.12 — reselect videos mid-flow, mirroring
+            # /clearphotos: remove the saved ones and start the set
+            # over. Harmless with 0 saved.
+            data["videos"] = []
+            save_state(state)
+            send_message(
+                chat_id,
+                f"Saved videos cleared — send "
+                f"{PROFILE_VIDEOS_REQUIRED} videos of you, "
+                "one by one.",
+            )
+            return True
+        if text == "/skip":
+            videos = data.get("videos", [])
+            if len(videos) >= PROFILE_VIDEOS_REQUIRED:
                 if draft.get("edit_menu"):
                     draft["step"] = "menu"
                     save_state(state)
@@ -4246,14 +4446,16 @@ def handle_profile_step(chat_id, text, state, user=None):
             else:
                 send_message(
                     chat_id,
-                    f"Photos are required to sell — send "
-                    f"{3 - len(photos)} more photo(s) of you, or /cancel.",
+                    f"Videos are required to sell — send "
+                    f"{PROFILE_VIDEOS_REQUIRED - len(videos)} more "
+                    "video(s) of you, or /cancel.",
                 )
             return True
         send_message(
             chat_id,
-            "Send a photo of you — I need 3 in total, one by one.\n\n"
-            "Send /clearphotos to remove the saved ones and "
+            f"Send a video of you — I need {PROFILE_VIDEOS_REQUIRED} "
+            "in total, one by one.\n\n"
+            "Send /clearvideos to remove the saved ones and "
             "start over.",
         )
         return True
@@ -4821,19 +5023,31 @@ def handle_flow_media(msg, state):
     video = msg.get("video")
     document = msg.get("document")
     if not photo and not video:
-        # A video sent as a file during an auction or a pool: nudge
-        # the seller to send it as a video instead — otherwise it
-        # silently falls through and nothing happens.
+        # A video sent as a file during a flow that waits for a
+        # video (auction / pool video or teaser, /sell preview, or
+        # profile videos): nudge the seller to send it as a video
+        # instead — otherwise it silently falls through and nothing
+        # happens.
         if document:
-            adraft = (state.get("auction_draft") or {}).get(str(user_id))
-            pdraft = (state.get("pool_draft") or {}).get(str(user_id))
-            draft = adraft if adraft and adraft.get("step") in (
-                "video", "teaser"
-            ) else (
-                pdraft if pdraft and pdraft.get("step") in (
-                    "video", "teaser"
-                ) else None
-            )
+            draft = None
+            for key, steps in (
+                ("auction_draft", ("video", "teaser")),
+                ("pool_draft", ("video", "teaser")),
+            ):
+                cand = (state.get(key) or {}).get(str(user_id))
+                if cand and cand.get("step") in steps:
+                    draft = cand
+                    break
+            if draft is None:
+                cdraft = (state.get("card_draft") or {}).get(str(user_id))
+                if cdraft and cdraft.get("step") == "preview_photo":
+                    draft = cdraft
+            if draft is None:
+                prdraft = (state.get("profile_draft") or {}).get(
+                    str(user_id)
+                )
+                if prdraft and prdraft.get("step") == "videos":
+                    draft = prdraft
             if draft:
                 send_message(
                     chat_id,
@@ -4843,7 +5057,7 @@ def handle_flow_media(msg, state):
                 return True
         return False
 
-    # ---- profile photos (3 required) ----
+    # ---- profile photos (5 required) ----
     pdraft = (state.get("profile_draft") or {}).get(str(user_id))
     if pdraft and pdraft.get("step") == "photos":
         if video:
@@ -4855,24 +5069,71 @@ def handle_flow_media(msg, state):
         fid = photo[-1]["file_id"]
         data = pdraft.setdefault("data", {})
         photos = data.setdefault("photos", [])
-        if len(photos) >= 3:
-            # Already has 3 — a new photo swaps the oldest one out.
+        if len(photos) >= PROFILE_PHOTOS_REQUIRED:
+            # Already has 5 — a new photo swaps the oldest one out.
             photos.pop(0)
             photos.append(fid)
             save_state(state)
             send_message(
                 chat_id,
-                "Photo updated — you still have 3. Send /skip to "
+                "Photo updated — you still have 5. Send /skip to "
                 "finish, or keep sending to swap more.",
             )
             return True
         photos.append(fid)
         save_state(state)
-        if len(photos) < 3:
+        if len(photos) < PROFILE_PHOTOS_REQUIRED:
             send_message(
                 chat_id,
-                f"Photo {len(photos)}/3 saved — send {3 - len(photos)} "
-                "more.",
+                f"Photo {len(photos)}/{PROFILE_PHOTOS_REQUIRED} saved — "
+                f"send {PROFILE_PHOTOS_REQUIRED - len(photos)} more.",
+            )
+        elif pdraft.get("edit_menu"):
+            pdraft["step"] = "menu"
+            save_state(state)
+            send_profile_edit_menu(chat_id)
+        elif len(data.get("videos") or []) < PROFILE_VIDEOS_REQUIRED:
+            pdraft["step"] = "videos"
+            save_state(state)
+            send_videos_step_prompt(chat_id, data)
+        else:
+            pdraft["step"] = "confirm"
+            save_state(state)
+            send_profile_confirm(
+                chat_id, data,
+                (msg.get("from", {}) or {}).get("username", ""),
+            )
+        return True
+
+    # ---- profile videos (5 required) ----
+    if pdraft and pdraft.get("step") == "videos":
+        if photo:
+            send_message(
+                chat_id,
+                "That was a photo — I need a video here. Send a video.",
+            )
+            return True
+        fid = video["file_id"]
+        data = pdraft.setdefault("data", {})
+        videos = data.setdefault("videos", [])
+        if len(videos) >= PROFILE_VIDEOS_REQUIRED:
+            # Already has 5 — a new video swaps the oldest one out.
+            videos.pop(0)
+            videos.append(fid)
+            save_state(state)
+            send_message(
+                chat_id,
+                "Video updated — you still have 5. Send /skip to "
+                "finish, or keep sending to swap more.",
+            )
+            return True
+        videos.append(fid)
+        save_state(state)
+        if len(videos) < PROFILE_VIDEOS_REQUIRED:
+            send_message(
+                chat_id,
+                f"Video {len(videos)}/{PROFILE_VIDEOS_REQUIRED} saved — "
+                f"send {PROFILE_VIDEOS_REQUIRED - len(videos)} more.",
             )
         elif pdraft.get("edit_menu"):
             pdraft["step"] = "menu"
@@ -4904,18 +5165,26 @@ def handle_flow_media(msg, state):
             save_state(state)
             send_message(
                 chat_id,
-                "Got the video. Now send a preview photo for it — "
-                "this is the blurred sneak peek everyone sees in the "
-                "group until someone buys it.",
+                "Got the video. Now send a preview for it — a photo, "
+                "or a short video (10 seconds or less). This is the "
+                "sneak peek everyone sees in the group until someone "
+                "buys it: a video plays as it is, a photo is blurred.",
             )
         return True
     if cdraft and cdraft.get("step") == "preview_photo":
         if video:
-            send_message(
-                chat_id,
-                "That was a video — the preview needs to be a photo. "
-                "Send a preview photo.",
-            )
+            dur = video.get("duration")
+            if dur is not None and dur > SELL_PREVIEW_MAX_VIDEO_S:
+                send_message(
+                    chat_id,
+                    "Keep the preview to 10 seconds — send a shorter "
+                    "clip, or send a photo.",
+                )
+                return True
+            cdraft["preview_video_file_id"] = video["file_id"]
+            cdraft["step"] = "confirm"
+            save_state(state)
+            send_sell_preview(chat_id, user_id, cdraft)
             return True
         if photo:
             cdraft["preview_source_file_id"] = photo[-1]["file_id"]
@@ -5370,11 +5639,12 @@ def handle_start(chat_id, text, state, user=None):
         "Tap a pack to pay — Stars, USDT, or KBZPay / WavePay / AYAPay.\n\n"
         "🛍 Plus the market — members sell products (milk, eggplant, "
         "peaches, donut, HD). Make your seller profile with /profile "
-        "— age, role and 3 photos of you, then it goes live straight "
-        "away. Post a card to the group with /sell — name your own "
-        "options (A, B, C, D) with your own prices and a product "
-        "photo or video. Cards show only a blurred sneak peek; the "
-        "full version is revealed in the group when someone buys it. "
+        "— age, role, 5 photos and 5 videos of you, then it goes "
+        "live straight away. Post a card to the group with /sell — "
+        "name your own options (A, B, C, D) with your own prices and "
+        "a product photo or video. Cards show only a sneak peek (a "
+        "photo is blurred, a short video plays as it is); the full "
+        "version is revealed in the group when someone buys it. "
         "🔨 Or run an auction with /auction — starting bid 5,000 Ks, "
         "24 hours, highest bidder wins the video privately. "
         "🤝 Or run a pool with /pool — a video at a price you set "
@@ -5401,13 +5671,14 @@ def handle_help(chat_id):
         "Receipts go to the admins for approval.\n\n"
         "Market — members sell products (milk, eggplant, peaches, "
         "donut, HD, 5,000–50,000 Ks each). Make a profile with "
-        "/profile — age, role and 3 photos of you, then it goes live "
-        "straight away, no approval needed. "
+        "/profile — age, role, 5 photos and 5 videos of you, then it "
+        "goes live straight away, no approval needed. "
         "Post a product card to the group with /sell: name your own "
         "options (A, B, C, D) with your own prices, up to 4 per card, "
         "and add a product photo or video. The card shows only a "
-        "blurred sneak peek; the full version is revealed in the "
-        "group when someone buys it. "
+        "sneak peek (a photo is blurred, a short video plays as it "
+        "is); the full version is revealed in the group when someone "
+        "buys it. "
         "Or run a video auction with /auction: starting bid 5,000 Ks, "
         "24 hours, bids from your bot balance — highest bidder wins "
         "the video privately (an admin win is revealed in the group "
@@ -5605,7 +5876,10 @@ def handle_message(msg, state):
             ]
         )
         kb = {"inline_keyboard": kb_rows}
-        send_photos_group(user_id, profile.get("photos") or [])
+        send_profile_media_group(
+            user_id, profile.get("photos") or [],
+            profile.get("videos") or [],
+        )
         send_message(
             chat_id,
             f"Your profile — {status}:\n\n" + profile_summary_text(profile),
@@ -5789,8 +6063,10 @@ def handle_message(msg, state):
         # v7.9 — /clearphotos only reaches the profile flow at the
         # photos step, where handle_profile_step handles it. At any
         # other step it must NOT be routed here: the name step would
-        # swallow it as the display name.
+        # swallow it as the display name. /clearvideos is guarded
+        # the same way, to the videos step only.
         or (text == "/clearphotos" and draft.get("step") == "photos")
+        or (text == "/clearvideos" and draft.get("step") == "videos")
     ):
         handle_profile_step(chat_id, text, state, user=msg.get("from", {}))
         return
@@ -6788,6 +7064,9 @@ def handle_callback(query, state):
         elif key == "photos":
             open_photos_edit(user_id, draft, state)
             answer_callback(qid, "Change photos.")
+        elif key == "videos":
+            open_videos_edit(user_id, draft, state)
+            answer_callback(qid, "Change videos.")
         elif key == "done":
             draft["step"] = "confirm"
             save_state(state)
@@ -6812,6 +7091,7 @@ def handle_callback(query, state):
             "age": pdata.get("age"),
             "role": pdata.get("role"),
             "photos": list(pdata.get("photos") or []),
+            "videos": list(pdata.get("videos") or []),
             "products": pdata.get("products", {}),
             "pay": pdata.get("pay", {}),
             "status": "live",
@@ -6889,7 +7169,7 @@ def handle_callback(query, state):
 
     if data == "profphotoedit":
         # v7.6 — change the profile photos: go back to the photos
-        # step. The draft's saved photos stay in place; once 3 are
+        # step. The draft's saved photos stay in place; once 5 are
         # saved, new photos swap the oldest out, and /clearphotos
         # removes them all so the set can be redone.
         draft = (state.get("profile_draft") or {}).get(str(user_id))
@@ -6898,6 +7178,20 @@ def handle_callback(query, state):
             return
         open_photos_edit(user_id, draft, state)
         answer_callback(qid, "Change photos.")
+        return
+
+    if data == "profvideoedit":
+        # v7.12 — change the profile videos: go back to the videos
+        # step, mirroring profphotoedit. The draft's saved videos
+        # stay in place; once 5 are saved, new videos swap the
+        # oldest out, and /clearvideos removes them all so the set
+        # can be redone.
+        draft = (state.get("profile_draft") or {}).get(str(user_id))
+        if not draft:
+            answer_callback(qid, "Start with /profile first.")
+            return
+        open_videos_edit(user_id, draft, state)
+        answer_callback(qid, "Change videos.")
         return
 
     if data == "myprofile_edit":
@@ -7119,6 +7413,7 @@ def handle_callback(query, state):
             "media_type": draft.get("media_type"),
             "media_file_id": draft.get("media_file_id"),
             "preview_file_id": draft.get("preview_file_id"),
+            "preview_video_file_id": draft.get("preview_video_file_id"),
             "revealed": False,
             "message_id": None,
             "ts": int(time.time()),
@@ -7775,12 +8070,16 @@ def handle_callback(query, state):
         seller_name = profile.get("name", "Seller")
         item = market_item_label(product, option)
         suffix = f":{card_id}:{opt_idx}" if card_id is not None else ""
+        # Stars for this item, rounded UP (ceil) — same as the buy
+        # prompt, so the seller is always paid the full price in Ks.
+        stars = max(1, -(-price // 50))
         if method == "balance":
             new_buyer = change_balance(user_id, -price)
             if new_buyer is None:
                 answer_callback(
                     qid,
-                    "Not enough balance — top up with /topup first.",
+                    f"Not enough balance — pay {stars} Stars instead, "
+                    "or top up with /topup.",
                     show_alert=True,
                 )
                 return
@@ -7812,7 +8111,6 @@ def handle_callback(query, state):
             answer_callback(qid, "Paid from balance.")
             return
         if method == "stars":
-            stars = max(1, round(price / 50))
             payload = f"mkt:{seller_id}:{product}:{price}:{user_id}"
             if card_id is not None:
                 payload += f":{card_id}:{opt_idx}"
