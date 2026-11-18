@@ -78,9 +78,29 @@
   <div class="share-link">
     <input type="text" id="sharelink" value="{{ share_url }}" readonly>
     <button class="btn ghost" type="button" onclick="navigator.clipboard.writeText(document.getElementById('sharelink').value); this.textContent='Copied!';">Copy link</button>
+    <button class="btn" type="button" id="sharebtn">Share</button>
   </div>
   <p><a class="btn ghost" href="{{ wa_url }}" target="_blank" rel="noopener">Share on WhatsApp</a>
      <a class="btn ghost" href="{{ mail_url }}">Share by email</a></p>
   <p class="qr-note">Anyone with the link can view this document — no login needed.</p>
 </div>
+<script>
+(function(){
+  var btn = document.getElementById("sharebtn");
+  if (!btn) return;
+  var data = {title: {{ (type_titles.get(doc.type, 'Document') ~ ' ' ~ doc.number) | tojson }},
+              text: {{ share_msg | tojson }},
+              url: {{ share_url | tojson }}};
+  btn.addEventListener("click", function(){
+    if (navigator.share) {
+      navigator.share(data).catch(function(){});
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(data.url).then(function(){
+        btn.textContent = "Copied!";
+        setTimeout(function(){ btn.textContent = "Share"; }, 2000);
+      });
+    }
+  });
+})();
+</script>
 {% endblock %}

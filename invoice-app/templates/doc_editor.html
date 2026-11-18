@@ -90,6 +90,14 @@
   <textarea name="terms">{{ doc.terms }}</textarea>
 </div>
 
+<div class="card">
+  <h2>Signature</h2>
+  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="show_signature" style="width:auto" {% if doc.get("show_signature", True) %}checked{% endif %}> Include signature on the PDF</label>
+  {% if not biz.signature_path %}
+  <p class="qr-note">No signature saved yet — add one in <a href="/settings/signature">Settings → Signature</a>.</p>
+  {% endif %}
+</div>
+
 <div class="actions">
   <button class="btn" type="submit">{% if mode == "new" %}Create document{% else %}Save changes{% endif %}</button>
   {% if edit_id %}<a class="btn ghost" href="/docs/{{ edit_id }}">Cancel</a>{% else %}<a class="btn ghost" href="/">Cancel</a>{% endif %}
