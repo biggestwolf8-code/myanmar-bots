@@ -163,6 +163,7 @@ VPN_WELCOME_MSG = (
     "🎉 Your Biggest VPN is ready! ({plan})\n"
     "Code: {code}\n"
     "Expires: {expires}\n\n"
+    "{app_section}"
     "📲 SETUP — do this once (takes 2 minutes):\n\n"
     "1️⃣ Install the free \"WireGuard\" app from Play Store (Android) "
     "or App Store (iPhone).\n\n"
@@ -196,6 +197,30 @@ VPN_WELCOME_MSG = (
     "(တစ်ချိန်မှာ တစ်ခုပဲသုံးလို့ရပါတယ်။)\n\n"
     "💡 အကြံ: Singapore က အနီးဆုံးမို့ အမြန်ဆုံးဖြစ်တတ်ပါတယ်။\n\n"
     "❓ အခက်အခဲရှိရင် @biggestseller1 ကို ဆက်သွယ်ပါ။"
+)
+
+
+# App section inserted into VPN_WELCOME_MSG ({app_section}) when the
+# customer's code was registered with the vpn-api, i.e. the Android app
+# will actually accept it. When registration failed the section is
+# empty and the customer only gets the WireGuard steps. The app is a
+# WireGuard client for the same servers — it does NOT fix MPT blocking,
+# so no such claim is made here.
+VPN_APP_SECTION = (
+    "📱 EASIER WAY — Biggest VPN app (Android only):\n"
+    "The app file is attached above (BiggestVPN.apk). Install it, open it, "
+    "and enter your code {code} — then tap a country to connect. "
+    "No .conf files needed. Your code works on 1 device — the first phone "
+    "you activate it on.\n"
+    "(iPhone / Windows / Mac: use the WireGuard steps below instead — "
+    "the app is Android-only.)\n\n"
+    "📱 ပိုလွယ်တဲ့နည်း — Biggest VPN app (Android သာ):\n"
+    "အပေါ်မှာ app file (BiggestVPN.apk) တွဲပေးထားပါတယ်။ Install လုပ်ပြီး "
+    "ဖွင့်လိုက်ပါ၊ ပြီးရင် ကုဒ် {code} ကို ရိုက်ထည့်ပါ — "
+    "နိုင်ငံတစ်ခုကို နှိပ်လိုက်ရင် ချိတ်ဆက်ပြီးပါပြီ။ "
+    ".conf file တွေ မလိုပါဘူး။ ကုဒ်တစ်ခုက ဖုန်း ၁ လုံးပဲ သုံးလို့ရပါတယ်။\n"
+    "(iPhone / Windows / Mac ကတော့ အောက်က WireGuard နည်းအတိုင်း သုံးပါ — "
+    "app က Android ပဲရပါတယ်။)\n\n"
 )
 
 
@@ -305,10 +330,13 @@ TRIAL_PLAN = vpn_mod.TRIAL_PLAN  # "7-Day Trial / 1 Device"
 
 
 def kb_vpn_buy(product):
-    """Buy buttons for each VPN plan, plus the free trial on top."""
+    """Buy buttons for each VPN plan, plus the app download and the
+    free trial on top."""
     items = [it for it in CATALOG if it["product"] == product]
-    rows = [[{"text": "🎁 FREE 7-Day Trial — try it first",
-              "callback_data": "vpntrial"}]]
+    rows = [[{"text": "📱 Download the app (APK)",
+              "callback_data": "vpnapk"}]]
+    rows.append([{"text": "🎁 FREE 7-Day Trial — try it first",
+                  "callback_data": "vpntrial"}])
     rows += [[{"text": f"🛒 Buy {it['plan']} — {it['price_ks']:,} Ks",
                "callback_data": f"vpnbuy:{it['plan']}"}] for it in items]
     rows.append([{"text": "⬅️ Back", "callback_data": prod_callback(product)}])
@@ -342,8 +370,44 @@ def trial_sweeper():
         time.sleep(3600)
 
 
+# Biggest VPN Android app (v3 build — a code-login client: the customer
+# enters their VPN code in the app and it fetches the configs from the
+# vpn-api; it does NOT import .conf files and does NOT scan QR codes).
+# Shipped in the repo so the bot can send it with sendDocument (17 MB,
+# under Telegram's 50 MB bot limit). Android only.
+APK_FILE = "biggest-vpn.apk"
+APK_FILENAME = "BiggestVPN.apk"
+
+
+def send_apk(chat_id, caption):
+    """Send the Biggest VPN app APK to a customer. Returns True on
+    success, False if the file is missing from the deploy or Telegram
+    refuses it (the caller decides what to tell the customer/admin)."""
+    path = os.path.join(BASE_DIR, APK_FILE)
+    try:
+        f = open(path, "rb")
+    except OSError:
+        print("APK file missing:", path)
+        return False
+    with f:
+        r = requests.post(
+            f"{API}/sendDocument", data={"chat_id": chat_id, "caption": caption},
+            files={"document": (APK_FILENAME, f,
+                                "application/vnd.android.package-archive")},
+            timeout=120)
+    if not r.json().get("ok"):
+        print("Failed to send APK:", r.text)
+        return False
+    return True
+
+
 def send_vpn_configs(chat_id, result):
-    """Deliver the 4 .conf files + setup instructions to the customer."""
+    """Deliver the 4 .conf files + the Android app + setup instructions
+    to the customer. The app section of the welcome message is only
+    included when the code was registered with the vpn-api
+    (result["app_registered"]) — otherwise the app login would fail and
+    the customer only gets the WireGuard steps, while the admin is told
+    the registration failed."""
     for srv in ("singapore", "japan", "uk", "usa"):
         country = vpn_mod.SERVERS[srv]["country"]
         filename = f"BiggestVPN-{country}.conf"
@@ -354,10 +418,31 @@ def send_vpn_configs(chat_id, result):
             files={"document": (filename, content.encode())}, timeout=60)
         if not r.json().get("ok"):
             print("Failed to send conf:", r.text)
+    app_registered = result.get("app_registered", False)
+    apk_ok = send_apk(
+        chat_id,
+        "📱 Biggest VPN app for Android (BiggestVPN.apk) — "
+        "see the message below for how to use it.")
+    if not apk_ok and ADMIN_CHAT_ID:
+        api("sendMessage", chat_id=ADMIN_CHAT_ID,
+            text=(f"⚠️ Could not send the VPN app APK to {chat_id} "
+                  f"(code {result.get('code')}). Check biggest-vpn.apk "
+                  "is deployed with the bot."))
+    if not app_registered and ADMIN_CHAT_ID:
+        api("sendMessage", chat_id=ADMIN_CHAT_ID,
+            text=(f"⚠️ VPN delivered to {chat_id} "
+                  f"(code {result.get('code')}) but the code was NOT "
+                  "registered with the app API — the customer can use "
+                  "the .conf files, but the app login will fail until "
+                  "this is fixed. Check VPN_API_ADMIN_SECRET on this bot."))
+    app_section = ""
+    if app_registered:
+        app_section = VPN_APP_SECTION.format(code=result["code"])
     exp = result["expires_at"][:10]
     api("sendMessage", chat_id=chat_id,
         text=VPN_WELCOME_MSG.format(plan=result.get("plan", ""),
-                                   code=result["code"], expires=exp))
+                                    code=result["code"], expires=exp,
+                                    app_section=app_section))
 
 # Fixed answers, checked before product search. [PAYMENT] is a placeholder
 # until the owner provides the real payment methods.
@@ -1080,6 +1165,22 @@ def handle_callback(cb):
             edit(product_text(product, cur), kb_price(int(ci), int(j), cur))
         except (ValueError, IndexError, KeyError):
             pass
+    elif data == "vpnapk":
+        # Standalone app download from the product page (before buying).
+        # The app needs an activation code: the customer gets one when
+        # they buy a plan or start the free trial.
+        if send_apk(chat_id,
+                    "📱 Biggest VPN app for Android (BiggestVPN.apk).\n\n"
+                    "Install it, open it, and enter your activation code.\n"
+                    "No code yet? Tap 🎁 FREE 7-Day Trial on the product "
+                    "page, or buy a plan — your code arrives with your VPN."):
+            edit("📱 App sent — install the file below, then open it and "
+                 "enter your activation code.",
+                 kb_vpn_buy("Biggest VPN"))
+        else:
+            edit("⚠️ The app file isn't available right now — please "
+                 "contact @biggestseller1.",
+                 kb_vpn_buy("Biggest VPN"))
     elif data == "vpntrial":
         # Free 7-day trial: auto-delivered, no receipt, one per customer.
         # Only mark the trial used AFTER provisioning succeeds, so a
