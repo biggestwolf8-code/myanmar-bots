@@ -670,6 +670,7 @@ def _parse_doc_form(d):
         "shipping": parse_num(request.form.get("shipping")),
         "notes": (request.form.get("notes") or "").strip(),
         "terms": (request.form.get("terms") or "").strip(),
+        "show_signature": "show_signature" in request.form,
     }
 
 
@@ -684,6 +685,7 @@ def _default_doc(d, dtype):
         "shipping": 0,
         "notes": b.get("default_notes") or "",
         "terms": b.get("default_terms") or "",
+        "show_signature": True,
     }
 
 
@@ -775,6 +777,7 @@ def doc_detail(doc_id):
     return render_template("doc_detail.html", email=email, biz=d["business"],
                            doc=doc, client=client, totals=totals,
                            status=eff_status(doc), share_url=share_url,
+                           share_msg=msg,
                            wa_url=wa_url, mail_url=mail_url,
                            fmt_money=fmt_money, fmt_date=fmt_date,
                            dformat=d["business"].get("date_format",
@@ -1099,10 +1102,10 @@ def render_doc_pdf(d, doc):
                            new_y=YPos.NEXT)
             y = pdf.get_y() + 3
 
-    # signature
+    # signature (per-document switch; legacy docs without the key show it)
     sig = biz.get("signature_path") or ""
     sig_file = os.path.join(DATA_DIR, sig) if sig else ""
-    if sig_file and os.path.isfile(sig_file):
+    if doc.get("show_signature", True) and sig_file and os.path.isfile(sig_file):
         if y + 30 > 270:
             pdf.add_page()
             y = pdf.get_y()

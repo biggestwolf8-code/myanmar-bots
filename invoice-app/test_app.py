@@ -285,6 +285,77 @@ r = c.post("/docs/new", data={"type": "invoice", "client_id": cid,
 newdoc = d["documents"][-1]
 check("custom prefix+next", newdoc["number"] == "BILL0050", newdoc["number"])
 
+# --- per-document signature switch + native Share button ---
+import base64
+from PIL import Image, ImageDraw
+
+# editor shows the checkbox, checked by default, with a hint (no signature yet)
+r = c.get("/docs/new?type=invoice")
+check("editor has signature checkbox",
+      b'Include signature on the PDF' in r.data and b'name="show_signature"' in r.data)
+check("editor checkbox checked by default",
+      re.search(rb'name="show_signature"[^>]*checked', r.data) is not None)
+check("editor hints at missing signature",
+      b"No signature saved yet" in r.data and b"/settings/signature" in r.data)
+
+# save a signature via the settings form (small black-on-white PNG)
+buf = io.BytesIO()
+_im = Image.new("RGB", (200, 80), "white")
+_dr = ImageDraw.Draw(_im)
+_dr.line([(10, 50), (60, 20), (120, 60), (190, 30)], fill="black", width=3)
+_im.save(buf, "PNG")
+sig_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+r = c.post("/settings/signature", data={"signature_data": sig_url}, follow_redirects=True)
+sig_path = A.invdata["user@example.com"]["business"].get("signature_path") or ""
+check("signature saved", bool(sig_path) and os.path.isfile(os.path.join(tmpd, sig_path)), sig_path)
+r = c.get("/docs/new?type=invoice")
+check("editor hint gone once signature saved", b"No signature saved yet" not in r.data)
+
+def _pdf_text(doc_id):
+    rr = c.get(f"/docs/{doc_id}/pdf")
+    assert rr.status_code == 200, rr.status_code
+    rd = PdfReader(io.BytesIO(rr.data))
+    return "\n".join(p.extract_text() or "" for p in rd.pages)
+
+_sigform = {"type": "invoice", "client_id": cid,
+            "issue_date": "2026-10-13", "due_date": "",
+            "desc": ["Sig test"], "qty": ["1"], "rate": ["1000"], "tax_pct": ["0"],
+            "discount_type": "amount", "discount_value": "0",
+            "tax_type": "percent", "tax_value": "0", "shipping": "0",
+            "notes": "", "terms": ""}
+
+# new invoice with the box checked -> flag True, PDF carries the signature
+r = c.post("/docs/new", data=dict(_sigform, show_signature="on"), follow_redirects=False)
+sigdoc = d["documents"][-1]
+check("new doc show_signature True", sigdoc.get("show_signature") is True)
+check("pdf includes signature when on", "Authorized signature" in _pdf_text(sigdoc["id"]))
+
+# same doc edited with the box unchecked -> flag False, PDF drops the signature
+r = c.post(f"/docs/{sigdoc['id']}/edit", data=dict(_sigform), follow_redirects=False)
+check("edit unchecks signature", sigdoc.get("show_signature") is False)
+check("pdf omits signature when off", "Authorized signature" not in _pdf_text(sigdoc["id"]))
+
+# new invoice without the checkbox -> False (unchecked boxes post nothing)
+r = c.post("/docs/new", data=dict(_sigform), follow_redirects=False)
+offdoc = d["documents"][-1]
+check("new doc without checkbox is False", offdoc.get("show_signature") is False)
+
+# legacy document without the key behaves as True (signature shows)
+doc.pop("show_signature", None)
+check("legacy doc without flag shows signature",
+      "Authorized signature" in _pdf_text(doc["id"]))
+
+# detail page: native Share button + existing share options intact
+r = c.get(f"/docs/{sigdoc['id']}")
+check("detail has native Share button",
+      b'id="sharebtn"' in r.data and b"navigator.share" in r.data)
+check("detail share carries public url",
+      sigdoc["share_token"].encode() in r.data)
+check("detail share title is Invoice + number",
+      ("Invoice " + sigdoc["number"]).encode() in r.data)
+check("detail keeps copy/whatsapp/email share",
+      b"Copy link" in r.data and b"Share on WhatsApp" in r.data and b"Share by email" in r.data)
+
 # admin: revoke code + delete user
 c.get("/logout")
 login_admin()
