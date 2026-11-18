@@ -4,8 +4,13 @@
 Run from this directory:  python3 test_vpn_app.py
 
 Covers:
-  - product page has the "Download the app (APK)" button
+  - product page leads with the download section: Android APK, computer
+    WireGuard and iPhone WireGuard buttons in that order, then trial
+    and the 4 buy plans; the lead line names all three platforms
   - vpnapk callback sends the APK file
+  - vpnpc / vpnios callbacks show the official WireGuard download
+    instructions (verified links) and explain the .conf files arrive
+    with the code on purchase / trial — no branded computer/iOS app
   - vpntrial / vpnok deliveries send 4 .conf + APK + welcome message,
     with the app section only when the code was registered with the
     vpn-api (and an admin warning when it was not)
@@ -107,11 +112,77 @@ class BotApkTests(unittest.TestCase):
                      for row in kb["inline_keyboard"] for b in row]
         self.assertIn("vpnapk", callbacks)
         texts = [b["text"] for row in kb["inline_keyboard"] for b in row]
-        self.assertIn("📱 Download the app (APK)", texts)
+        self.assertIn("📱 Android — Download the app (APK)", texts)
         # trial + 4 buy buttons + back still present
         self.assertIn("vpntrial", callbacks)
         self.assertEqual(sum(1 for c in callbacks
                              if c.startswith("vpnbuy:")), 4)
+
+    def test_product_page_download_buttons_in_order(self):
+        kb = bot.kb_vpn_buy("Biggest VPN")
+        rows = kb["inline_keyboard"]
+        self.assertEqual([r[0]["callback_data"] for r in rows[:4]],
+                         ["vpnapk", "vpnpc", "vpnios", "vpntrial"])
+        self.assertEqual([r[0]["text"] for r in rows[:3]],
+                         ["📱 Android — Download the app (APK)",
+                          "💻 Computer — Get WireGuard",
+                          "🍎 iPhone — Get WireGuard"])
+        # 4 buy plans, then Back
+        self.assertEqual(sum(1 for r in rows
+                             if r[0]["callback_data"].startswith("vpnbuy:")),
+                         4)
+        self.assertEqual(rows[-1][0]["text"], "⬅️ Back")
+
+    def test_product_page_lead_line_names_three_platforms(self):
+        ci = bot.CATS.index("VPN")
+        j = bot.PRODUCTS["VPN"].index("Biggest VPN")
+        self._callback(f"p:{ci}:{j}")
+        edits = self.tg.edits()
+        self.assertEqual(len(edits), 1)
+        text = edits[0][1]["text"]
+        self.assertIn("⬇️ Download Biggest VPN — for Android, iPhone "
+                      "and computers:", text)
+        self.assertIn("4 countries included: Singapore, Japan, UK, USA.",
+                      text)
+
+    def test_vpnpc_callback_shows_computer_message(self):
+        self._callback("vpnpc")
+        self.assertEqual(len(self.tg.documents()), 0)  # no APK on this path
+        self.assertEqual(len(self.tg.messages()), 0)  # edit, not a new msg
+        edits = self.tg.edits()
+        self.assertEqual(len(edits), 1)
+        text = edits[0][1]["text"]
+        self.assertIn("https://www.wireguard.com/install/", text)
+        for word in ("Windows", "macOS", "Linux", ".conf",
+                     "free trial", "official WireGuard app"):
+            self.assertIn(word, text)
+        # no branded computer app is claimed
+        self.assertIn("no separate Biggest VPN app for computers", text)
+        self.assertNotIn("BiggestVPN.apk", text)
+        # the product-page keyboard comes back with the download buttons
+        kb = edits[0][1]["reply_markup"]["inline_keyboard"]
+        callbacks = [b["callback_data"] for row in kb for b in row]
+        self.assertEqual(callbacks[:3], ["vpnapk", "vpnpc", "vpnios"])
+
+    def test_vpnios_callback_shows_iphone_message(self):
+        self._callback("vpnios")
+        self.assertEqual(len(self.tg.documents()), 0)
+        self.assertEqual(len(self.tg.messages()), 0)
+        edits = self.tg.edits()
+        self.assertEqual(len(edits), 1)
+        text = edits[0][1]["text"]
+        # official WireGuard iOS app on the App Store (verified link)
+        self.assertIn("https://itunes.apple.com/us/app/wireguard/"
+                      "id1441195209?ls=1&mt=8", text)
+        for word in ("App Store", ".conf", "free trial",
+                     "official WireGuard app"):
+            self.assertIn(word, text)
+        # no branded iPhone app is claimed
+        self.assertIn("no separate Biggest VPN app for iPhone", text)
+        self.assertNotIn("BiggestVPN.apk", text)
+        kb = edits[0][1]["reply_markup"]["inline_keyboard"]
+        callbacks = [b["callback_data"] for row in kb for b in row]
+        self.assertEqual(callbacks[:3], ["vpnapk", "vpnpc", "vpnios"])
 
     def test_vpnapk_callback_sends_apk(self):
         self._callback("vpnapk")

@@ -224,6 +224,63 @@ VPN_APP_SECTION = (
 )
 
 
+# NOTE: Burmese wording below is a DRAFT — owner must verify before final.
+# Computer and iPhone setup messages (product page download buttons).
+# There is NO branded Biggest VPN app for computers or iPhone — both use
+# the official WireGuard app; the .conf files arrive with the code when
+# the customer buys a plan or starts the free trial.
+VPN_PC_MSG = (
+    "💻 Computer — WireGuard (Windows, macOS, Linux):\n\n"
+    "1️⃣ Download the free official WireGuard app:\n"
+    "https://www.wireguard.com/install/\n\n"
+    "2️⃣ When you buy a plan or start the free trial, your code arrives "
+    "with 4 .conf files (one per country). Save them to your computer.\n\n"
+    "3️⃣ Open WireGuard → Add Tunnel → Import from file → choose a "
+    ".conf file. Repeat for the other countries.\n\n"
+    "4️⃣ Tap the toggle next to the country you want to connect. "
+    "That's it — you're on VPN! ✅\n\n"
+    "There is no separate Biggest VPN app for computers — computers use "
+    "the official WireGuard app above.\n\n"
+    "💻 ကွန်ပျူတာ — WireGuard (Windows, macOS, Linux):\n\n"
+    "1️⃣ တရားဝင် WireGuard app အခမဲ့ကို ဒီမှာ download လုပ်ပါ:\n"
+    "https://www.wireguard.com/install/\n\n"
+    "2️⃣ plan ဝယ်တာ ဒါမှမဟုတ် free trial စတာနဲ့ ကုဒ်နဲ့အတူ "
+    ".conf file ၄ ခု (တစ်နိုင်ငံတစ်ခု) ရပါမယ်။ "
+    "ကွန်ပျူတာထဲသိမ်းပါ။\n\n"
+    "3️⃣ WireGuard ဖွင့် → Add Tunnel → Import from file → "
+    ".conf file ရွေး။ ကျန်တာတွေလည်း ဒီလိုပဲလုပ်။\n\n"
+    "4️⃣ ချိတ်ဆက်ချင်တဲ့နိုင်ငံ ဘေးက ခလုတ်ကိုနှိပ်။ ရပါပြီ! ✅\n\n"
+    "ကွန်ပျူတာအတွက် Biggest VPN app သီးသန့် မရှိပါဘူး — "
+    "တရားဝင် WireGuard app ကိုပဲ သုံးပါတယ်။"
+)
+
+VPN_IOS_MSG = (
+    "🍎 iPhone — WireGuard:\n\n"
+    "1️⃣ Download the free official WireGuard app from the App Store:\n"
+    "https://itunes.apple.com/us/app/wireguard/id1441195209?ls=1&mt=8\n\n"
+    "2️⃣ When you buy a plan or start the free trial, your code arrives "
+    "with 4 .conf files (one per country). Save them to your iPhone.\n\n"
+    "3️⃣ Open WireGuard → tap the + button → Import from file → choose "
+    "a .conf file. Repeat for the other countries.\n\n"
+    "4️⃣ Tap the toggle next to the country you want to connect. "
+    "That's it — you're on VPN! ✅\n\n"
+    "There is no separate Biggest VPN app for iPhone — iPhone uses the "
+    "official WireGuard app above. (Android has its own Biggest VPN "
+    "app — see the 📱 Android button.)\n\n"
+    "🍎 iPhone — WireGuard:\n\n"
+    "1️⃣ တရားဝင် WireGuard app အခမဲ့ကို App Store က download လုပ်ပါ:\n"
+    "https://itunes.apple.com/us/app/wireguard/id1441195209?ls=1&mt=8\n\n"
+    "2️⃣ plan ဝယ်တာ ဒါမှမဟုတ် free trial စတာနဲ့ ကုဒ်နဲ့အတူ "
+    ".conf file ၄ ခု (တစ်နိုင်ငံတစ်ခု) ရပါမယ်။ iPhone ထဲသိမ်းပါ။\n\n"
+    "3️⃣ WireGuard ဖွင့် → + ခလုတ်နှိပ် → Import from file → "
+    ".conf file ရွေး။ ကျန်တာတွေလည်း ဒီလိုပဲလုပ်။\n\n"
+    "4️⃣ ချိတ်ဆက်ချင်တဲ့နိုင်ငံ ဘေးက ခလုတ်ကိုနှိပ်။ ရပါပြီ! ✅\n\n"
+    "iPhone အတွက် Biggest VPN app သီးသန့် မရှိပါဘူး — "
+    "တရားဝင် WireGuard app ကိုပဲ သုံးပါတယ်။ (Android ကတော့ ကိုယ်ပိုင် "
+    "Biggest VPN app ရှိပါတယ် — 📱 Android ခလုတ်ကို နှိပ်ပါ။)"
+)
+
+
 def load_vpn_orders():
     try:
         with open(VPN_ORDERS_FILE, encoding="utf-8") as f:
@@ -330,11 +387,15 @@ TRIAL_PLAN = vpn_mod.TRIAL_PLAN  # "7-Day Trial / 1 Device"
 
 
 def kb_vpn_buy(product):
-    """Buy buttons for each VPN plan, plus the app download and the
-    free trial on top."""
+    """Buy buttons for each VPN plan, with the download buttons for
+    Android, computer and iPhone on top, then the free trial."""
     items = [it for it in CATALOG if it["product"] == product]
-    rows = [[{"text": "📱 Download the app (APK)",
-              "callback_data": "vpnapk"}]]
+    rows = [[{"text": "📱 Android — Download the app (APK)",
+              "callback_data": "vpnapk"}],
+            [{"text": "💻 Computer — Get WireGuard",
+              "callback_data": "vpnpc"}],
+            [{"text": "🍎 iPhone — Get WireGuard",
+              "callback_data": "vpnios"}]]
     rows.append([{"text": "🎁 FREE 7-Day Trial — try it first",
                   "callback_data": "vpntrial"}])
     rows += [[{"text": f"🛒 Buy {it['plan']} — {it['price_ks']:,} Ks",
@@ -1104,6 +1165,7 @@ def handle_callback(cb):
             product = PRODUCTS[CATS[int(ci)]][int(j)]
             if product == "Biggest VPN":
                 edit(f"🛡️ {product} — choose a plan:\n"
+                     "⬇️ Download Biggest VPN — for Android, iPhone and computers:\n"
                      "4 countries included: Singapore, Japan, UK, USA.",
                      kb_vpn_buy(product))
             elif product in APP_PRODUCTS:
@@ -1181,6 +1243,15 @@ def handle_callback(cb):
             edit("⚠️ The app file isn't available right now — please "
                  "contact @biggestseller1.",
                  kb_vpn_buy("Biggest VPN"))
+    elif data == "vpnpc":
+        # Computer setup: official WireGuard app + .conf files, which
+        # arrive with the code on purchase / free trial. No branded
+        # computer app exists.
+        edit(VPN_PC_MSG, kb_vpn_buy("Biggest VPN"))
+    elif data == "vpnios":
+        # iPhone setup: official WireGuard app from the App Store +
+        # .conf files on purchase / free trial. No branded iOS app.
+        edit(VPN_IOS_MSG, kb_vpn_buy("Biggest VPN"))
     elif data == "vpntrial":
         # Free 7-day trial: auto-delivered, no receipt, one per customer.
         # Only mark the trial used AFTER provisioning succeeds, so a
