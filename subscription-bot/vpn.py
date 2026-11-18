@@ -60,6 +60,73 @@ PLANS = {
     "1 Year / 1 Device": 365,
 }
 
+# The Biggest VPN Android app logs in through the vpn-api service
+# (/api/login), which keeps its OWN customer store. A code issued here is
+# unknown to the API until the bot registers it — without this, the app
+# refuses every bot-issued code with "Invalid code." VPN_API_ADMIN_SECRET
+# must be set on the bot service to the SAME value as the vpn-api
+# service's ADMIN_SECRET env var. Registration is best-effort: if the
+# API is unreachable or the secret is not set, provisioning still
+# succeeds and the .conf delivery still works — only the app login is
+# affected, and the caller is told via the "app_registered" flag.
+VPN_API_BASE = os.environ.get(
+    "VPN_API_BASE",
+    "https://vpn-api-production-30d3.up.railway.app").strip().rstrip("/")
+VPN_API_ADMIN_SECRET = os.environ.get("VPN_API_ADMIN_SECRET", "").strip()
+
+
+def _api_post(path, payload, timeout=20):
+    """POST JSON to the vpn-api. Returns (ok, parsed_json_or_error)."""
+    import urllib.request
+    req = urllib.request.Request(
+        f"{VPN_API_BASE}{path}", data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return True, json.loads(r.read().decode())
+    except Exception as e:
+        return False, str(e)
+
+
+def register_app_code(code, record, configs):
+    """Register a bot-provisioned customer with the vpn-api so the
+    Android app can log in with this code. The peers already exist (the
+    bot created them over SSH) — this only stores the code + configs +
+    expiry in the API's store. Returns True on success, False (with a
+    printed warning) otherwise."""
+    if not VPN_API_ADMIN_SECRET:
+        print("WARNING: VPN_API_ADMIN_SECRET not set — code", code,
+              "not registered with the app API.")
+        return False
+    ok, resp = _api_post("/api/admin/register", {
+        "admin_secret": VPN_API_ADMIN_SECRET,
+        "code": code,
+        "name": record.get("name"),
+        "telegram_id": record.get("telegram_id"),
+        "expires_at": record.get("expires_at"),
+        "configs": configs,
+        "client_pub": record.get("client_pub"),
+        "ips": record.get("ips"),
+        "trial": record.get("trial", False),
+    })
+    if not ok or not resp.get("ok"):
+        print("WARNING: app API registration failed for", code, ":", resp)
+        return False
+    return True
+
+
+def _api_renew_revoke(path, code, days=None):
+    """Best-effort: mirror a renew/revoke in the API's store so the app
+    login stays in step with the bot's own record."""
+    if not VPN_API_ADMIN_SECRET:
+        return
+    payload = {"admin_secret": VPN_API_ADMIN_SECRET, "code": code}
+    if days is not None:
+        payload["days"] = days
+    ok, resp = _api_post(path, payload)
+    if not ok or not resp.get("ok"):
+        print(f"WARNING: app API {path} failed for", code, ":", resp)
+
 # One trial per Telegram ID, ever — recorded separately from
 # vpn_customers.json, because revoke() deletes the customer record on
 # expiry. Without this file, an expired trial customer could claim again.
@@ -222,9 +289,13 @@ def provision(name, telegram_id, plan_label):
         "trial": plan_label == TRIAL_PLAN,
     }
     _save(customers)
+    # Register with the vpn-api so the Android app accepts this code.
+    # The peers already exist; this only stores the code + configs there.
+    app_registered = register_app_code(code, customers[code], configs)
     return True, {"code": code, "configs": configs,
                   "expires_at": customers[code]["expires_at"],
-                  "countries": [SERVERS[s]["country"] for s in SERVERS]}
+                  "countries": [SERVERS[s]["country"] for s in SERVERS],
+                  "app_registered": app_registered}
 
 
 def revoke(code):
@@ -241,6 +312,9 @@ def revoke(code):
         if not ok:
             errors.append(f"{srv}: {out}")
     _save(customers)
+    # Drop the API record too, so the app login stops accepting the code
+    # (the peers are already gone, so the tunnel is dead either way).
+    _api_renew_revoke("/api/admin/revoke", code)
     return True, errors
 
 
@@ -258,6 +332,8 @@ def renew(code, days):
     cust["expires_at"] = new_exp.isoformat()
     cust["active"] = True
     _save(customers)
+    # Keep the app's days-left in step with the new expiry.
+    _api_renew_revoke("/api/admin/renew", code, days=days)
     return True, new_exp.isoformat()
 
 
