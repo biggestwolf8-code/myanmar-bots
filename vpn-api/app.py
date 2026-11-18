@@ -3,6 +3,9 @@
 Endpoints:
   POST /api/login            {code} -> customer configs + expiry (used by the app)
   POST /api/admin/create     {admin_secret, name, telegram_id, days} -> {code, configs}
+  POST /api/admin/register   {admin_secret, code, configs, expires_at, ...}
+                             -> register a customer provisioned elsewhere
+                             (subscription bot) so the app can log in with it
   POST /api/admin/renew      {admin_secret, code, days} -> {expires_at}
   POST /api/admin/revoke     {admin_secret, code} -> removes WireGuard peers
   GET  /api/admin/list       ?admin_secret=... -> customer list
@@ -305,6 +308,52 @@ def admin_create():
     _save_customers(customers)
     return jsonify(ok=True, code=code, expires_at=customer["expires_at"],
                    max_devices=max_devices, configs=configs)
+
+
+@app.post("/api/admin/register")
+def admin_register():
+    """Register a customer that was provisioned elsewhere (no new peers).
+
+    The subscription bot provisions WireGuard peers directly over SSH and
+    issues VPN-xxxxxx codes, but the app can only log in with codes this
+    API knows — so the bot registers each code here right after
+    provisioning. The peers already exist on the servers; this only
+    stores the record (code + configs + expiry) so /api/login can return
+    the configs. Re-registering an existing code updates its record but
+    keeps its device bindings.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    if not _require_admin(data):
+        return jsonify(ok=False, error="Unauthorized."), 403
+    code = (data.get("code") or "").strip()
+    configs = data.get("configs") or {}
+    expires_at = (data.get("expires_at") or "").strip()
+    if not code or not isinstance(configs, dict) or not configs:
+        return jsonify(ok=False, error="code and configs are required."), 400
+    try:
+        datetime.fromisoformat(expires_at)
+    except (ValueError, TypeError):
+        return jsonify(ok=False, error="expires_at must be ISO format."), 400
+    customers = _load_customers()
+    existing = customers.get(code) or {}
+    customers[code] = {
+        "name": (data.get("name") or "customer"),
+        "telegram_id": data.get("telegram_id"),
+        "code": code,
+        "created_at": existing.get("created_at")
+                      or datetime.now(timezone.utc).isoformat(),
+        "expires_at": expires_at,
+        "days": data.get("days"),
+        "ips": data.get("ips") or {},
+        "client_pub": data.get("client_pub"),
+        "configs": configs,
+        "active": True,
+        "trial": bool(data.get("trial")),
+        "max_devices": existing.get("max_devices", 1),
+        "device_ids": existing.get("device_ids", []),
+    }
+    _save_customers(customers)
+    return jsonify(ok=True, code=code, expires_at=expires_at)
 
 
 @app.post("/api/admin/renew")
