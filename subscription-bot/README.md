@@ -26,6 +26,40 @@ BOT_TOKEN=<token> ADMIN_CHAT_ID=<your-id> python bot.py
 Optional: `CONTACT_USERNAME=@someone` overrides the order contact
 (default `@biggestseller1`).
 
+## Biggest VPN app (APK)
+
+The bot ships the Android app, `biggest-vpn.apk` (v3 build, 17 MB), and
+sends it two ways:
+
+- **📱 Download the app (APK)** button on the Biggest VPN product page
+  — sends the APK to anyone, before buying.
+- **With every delivery** (paid order via ✅ Approve & Deliver, and the
+  free 7-day trial) — the APK goes out together with the 4 `.conf`
+  files, and the welcome message tells Android customers to install the
+  app and enter their VPN code. iPhone / Windows / Mac customers use
+  the WireGuard steps instead — the app is Android-only.
+
+How the app works (important): it does NOT import `.conf` files and
+does NOT scan QR codes. The customer enters their VPN code in the app,
+and the app fetches the configs from the **vpn-api** service
+(`/api/login`). The vpn-api keeps its own customer store, so the bot
+registers every code it issues there right after provisioning
+(`POST /api/admin/register` — peers are NOT re-created, the record is
+just stored). Renewals and revocations are mirrored the same way.
+
+Required env var on this bot service (in addition to `BOT_TOKEN` /
+`ADMIN_CHAT_ID`):
+
+- `VPN_API_ADMIN_SECRET` — must be the SAME value as the vpn-api
+  service's `ADMIN_SECRET` env var. Without it, codes are not
+  registered: the `.conf` delivery still works, but the app login fails
+  and the admin gets a warning message for each affected delivery.
+- `VPN_API_BASE` — optional, defaults to
+  `https://vpn-api-production-30d3.up.railway.app`.
+
+Note: the app is a WireGuard client for the same 4 servers, so it does
+NOT fix the MPT situation — WireGuard is still DPI-blocked on MPT.
+
 ## Step 4 — Host it 24/7
 
 Same options as the English bot: Railway/Render (connect repo, background
