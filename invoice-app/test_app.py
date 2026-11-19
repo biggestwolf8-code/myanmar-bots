@@ -120,18 +120,26 @@ check("totals math", abs(totals["total"] - 1147000) < 0.01, str(totals))
 # PDF download + content check
 r = c.get(f"/docs/{doc['id']}/pdf")
 check("pdf 200", r.status_code == 200 and r.mimetype == "application/pdf", f"{r.status_code} {r.mimetype}")
+_disp = r.headers.get("Content-Disposition") or ""
+check("pdf served inline not attachment",
+      "inline" in _disp and "attachment" not in _disp, _disp)
+check("pdf inline keeps filename", "INV0001.pdf" in _disp, _disp)
 pdf_bytes = r.data
 check("pdf non-trivial", len(pdf_bytes) > 5000, str(len(pdf_bytes)))
 open("/tmp/test-invoice.pdf", "wb").write(pdf_bytes)
 
-# shared link: public page shows a Download PDF button, PDF works logged-out
+# shared link: public page shows a View PDF button, PDF works logged-out
 anon = A.app.test_client()
 r = anon.get("/s/" + doc["share_token"])
 check("public view 200", r.status_code == 200)
-check("public view has pdf button", b"/pdf" in r.data and b"Download PDF" in r.data)
+check("public view has pdf button", b"/pdf" in r.data and b"View PDF" in r.data)
 r = anon.get("/s/" + doc["share_token"] + "/pdf")
 check("public pdf 200 no login", r.status_code == 200 and r.mimetype == "application/pdf",
       f"{r.status_code} {r.mimetype}")
+_pdisp = r.headers.get("Content-Disposition") or ""
+check("public pdf served inline not attachment",
+      "inline" in _pdisp and "attachment" not in _pdisp, _pdisp)
+check("public pdf inline keeps filename", "INV0001.pdf" in _pdisp, _pdisp)
 # byte equality is wrong here: fpdf2 stamps a per-render creation timestamp,
 # so two renders of the same doc differ whenever they straddle a second.
 # Compare extracted text instead — the document must be the same.
@@ -361,6 +369,8 @@ check("detail share title is Invoice + number",
       ("Invoice " + sigdoc["number"]).encode() in r.data)
 check("detail keeps copy/whatsapp/email share",
       b"Copy link" in r.data and b"Share on WhatsApp" in r.data and b"Share by email" in r.data)
+check("detail button is View PDF now",
+      b"View PDF" in r.data and b"Download PDF" not in r.data)
 
 # --- public share page: Share + Back buttons, no dead end ---
 r = anon.get("/s/" + token)
@@ -370,8 +380,10 @@ check("public share fetches pdf as file",
       b"canShare" in r.data and b"/pdf" in r.data and b"new File" in r.data)
 check("public has Back button",
       b"history.back()" in r.data and "← Back".encode() in r.data)
-check("public still has Download PDF",
-      b"Download PDF" in r.data and b"/pdf" in r.data)
+check("public button is View PDF now",
+      b"View PDF" in r.data and b"Download PDF" not in r.data and b"/pdf" in r.data)
+check("public has share tip",
+      b"tap Share to send this invoice without downloading it" in r.data)
 
 # --- payment methods: saved once, printed on every invoice ---
 pay_text = "KBZPay: 09 xxx xxx xxx\nWavePay: 09 xxx xxx xxx"
