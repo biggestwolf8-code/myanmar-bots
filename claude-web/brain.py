@@ -132,6 +132,8 @@ def extract_doc_text(filename, data, max_chars=20000):
     try:
         if ext in (".txt", ".md", ".markdown", ".csv"):
             text = data.decode("utf-8", errors="replace")
+        elif ext == ".xlsx":
+            return extract_xlsx_text(data, max_chars=max_chars)
         else:
             return False, "unsupported file type"
     except Exception as e:
@@ -185,6 +187,31 @@ def extract_pptx_text(data, max_chars=20000):
         text = "\n\n".join(slide_texts).strip()
     except Exception as e:
         return False, f"could not read PowerPoint: {e}"
+    if not text:
+        return False, "no readable text found"
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n[...truncated]"
+    return True, text
+
+
+def extract_xlsx_text(data, max_chars=20000):
+    """Extract cell text from an .xlsx upload. Returns (ok, text_or_error)."""
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        sheet_texts = []
+        for ws in wb.worksheets:
+            parts = []
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(c).strip() for c in row
+                         if c is not None and str(c).strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+            if parts:
+                sheet_texts.append(f"Sheet {ws.title}:\n" + "\n".join(parts))
+        text = "\n\n".join(sheet_texts).strip()
+    except Exception as e:
+        return False, f"could not read spreadsheet: {e}"
     if not text:
         return False, "no readable text found"
     if len(text) > max_chars:
