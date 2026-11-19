@@ -132,7 +132,13 @@ check("public view has pdf button", b"/pdf" in r.data and b"Download PDF" in r.d
 r = anon.get("/s/" + doc["share_token"] + "/pdf")
 check("public pdf 200 no login", r.status_code == 200 and r.mimetype == "application/pdf",
       f"{r.status_code} {r.mimetype}")
-check("public pdf same bytes", r.data == pdf_bytes)
+# byte equality is wrong here: fpdf2 stamps a per-render creation timestamp,
+# so two renders of the same doc differ whenever they straddle a second.
+# Compare extracted text instead — the document must be the same.
+from pypdf import PdfReader as _PR
+_pub_text = "\n".join(p.extract_text() or "" for p in _PR(io.BytesIO(r.data)).pages)
+_own_text = "\n".join(p.extract_text() or "" for p in _PR(io.BytesIO(pdf_bytes)).pages)
+check("public pdf same content", _pub_text == _own_text)
 
 from pypdf import PdfReader
 reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -355,6 +361,56 @@ check("detail share title is Invoice + number",
       ("Invoice " + sigdoc["number"]).encode() in r.data)
 check("detail keeps copy/whatsapp/email share",
       b"Copy link" in r.data and b"Share on WhatsApp" in r.data and b"Share by email" in r.data)
+
+# --- public share page: Share + Back buttons, no dead end ---
+r = anon.get("/s/" + token)
+check("public has Share button",
+      b'id="sharepdfbtn"' in r.data and b"navigator.share" in r.data)
+check("public share fetches pdf as file",
+      b"canShare" in r.data and b"/pdf" in r.data and b"new File" in r.data)
+check("public has Back button",
+      b"history.back()" in r.data and "← Back".encode() in r.data)
+check("public still has Download PDF",
+      b"Download PDF" in r.data and b"/pdf" in r.data)
+
+# --- payment methods: saved once, printed on every invoice ---
+pay_text = "KBZPay: 09 xxx xxx xxx\nWavePay: 09 xxx xxx xxx"
+r = c.post("/settings/payments", data={"payment_details": pay_text}, follow_redirects=True)
+check("payments saved",
+      A.invdata["user@example.com"]["business"]["payment_details"] == pay_text)
+check("payments shown on settings page", b"KBZPay: 09 xxx xxx xxx" in r.data)
+import json as _J
+_on_disk = _J.load(open(os.path.join(tmpd, "invdata.json")))
+check("payments persisted to disk",
+      _on_disk["user@example.com"]["business"]["payment_details"] == pay_text)
+
+# rendered PDF: payment text under "Payment details", before Notes, notes untouched
+ptxt = _pdf_text(doc["id"])
+# pypdf extracts some Myanmar sequences with control chars (fpdf2 ligature
+# glyphs map to \x02/\x03/\x07), so strip those before matching; the tail of
+# the notes ("တင်ပါသည်") extracts cleanly and is unique to the notes.
+ptxt_ns = re.sub(r"[\x00-\x1f]", "", ptxt.replace(" ", "").replace("\n", ""))
+check("pdf has Payment details heading", "Payment details" in ptxt)
+check("pdf has saved payment text", "KBZPay: 09 xxx xxx xxx" in ptxt)
+check("pdf payment block before notes",
+      ptxt.index("Payment details") < ptxt.index("Notes"))
+check("pdf notes untouched", "တင်ပါသည်" in ptxt_ns)
+
+# editor: no hint while payment methods are set, hint + link when empty
+r = c.get("/docs/new?type=invoice")
+check("editor hides payment hint when set", b"Payment methods not set" not in r.data)
+c.post("/settings/payments", data={"payment_details": ""}, follow_redirects=True)
+check("payments cleared", A.invdata["user@example.com"]["business"]["payment_details"] == "")
+r = c.get("/docs/new?type=invoice")
+check("editor shows payment hint when empty",
+      b"Payment methods not set" in r.data and b"/settings/payments" in r.data)
+
+# detail page: edit-payment-methods link + file-share Share button
+r = c.get(f"/docs/{doc['id']}")
+check("detail has edit payment methods link",
+      b"Edit payment methods" in r.data and b"/settings/payments" in r.data)
+check("detail share tries pdf file first",
+      b"canShare" in r.data and b"new File" in r.data)
 
 # admin: revoke code + delete user
 c.get("/logout")
