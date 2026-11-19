@@ -14,6 +14,10 @@ Covers:
   - vpntrial / vpnok deliveries send 4 .conf + APK + welcome message,
     with the app section only when the code was registered with the
     vpn-api (and an admin warning when it was not)
+  - /vpnprovision admin command: usage on wrong args, unknown plan
+    rejected, valid input provisions with the right plan label and an
+    empty telegram_id, failures and app-registration failures are
+    reported, non-admin messages are ignored
   - vpn.provision() registers the code with the vpn-api (stubbed HTTP),
     and renew()/revoke() mirror the change there
   - vpn-api /api/admin/register + /api/login round-trip (Flask test client)
@@ -69,6 +73,10 @@ class TelegramRecorder:
                 content = body.read() if hasattr(body, "read") else body
                 files_info[key] = (name, len(content))
         self.calls.append((method, data or json or {}, files_info))
+        if method == "forwardMessage":
+            # Telegram returns the forwarded message; forward_to_admin
+            # needs result.message_id to map the reply back to the customer.
+            return FakeResp({"ok": True, "result": {"message_id": 777}})
         return FakeResp()
 
     def documents(self):
@@ -267,6 +275,117 @@ class BotApkTests(unittest.TestCase):
         self.assertEqual(docs[4][2]["document"][0], "BiggestVPN.apk")
         texts = [m[1]["text"] for m in self.tg.messages()]
         self.assertTrue(any("EASIER WAY" in t for t in texts))
+
+
+class VpnProvisionCommandTests(unittest.TestCase):
+    """Manual /vpnprovision admin command (bot.handle_message)."""
+
+    def setUp(self):
+        self.tg = TelegramRecorder()
+        self.patch_post = mock.patch.object(requests, "post",
+                                            side_effect=self.tg.post)
+        self.patch_post.start()
+        self.addCleanup(self.patch_post.stop)
+
+    def _message(self, text, chat_id="111"):
+        bot.handle_message({"message_id": 1,
+                            "chat": {"id": int(chat_id)},
+                            "text": text}, {})
+
+    def _provision_result(self, app_registered=True):
+        result = fake_result(app_registered=app_registered)
+        result["countries"] = ["Singapore", "Japan", "UK", "USA"]
+        return result
+
+    def _admin_texts(self):
+        return [m[1]["text"] for m in self.tg.messages()
+                if m[1].get("chat_id") == "111"]
+
+    def test_usage_on_wrong_arg_count(self):
+        with mock.patch.object(vpn_mod, "provision") as mock_prov:
+            self._message("/vpnprovision Cucumber")
+            mock_prov.assert_not_called()
+        self.assertTrue(any(
+            "Usage: /vpnprovision <name> <plan>  (plans: 1mo, 3mo, 6mo, 1yr)"
+            in t for t in self._admin_texts()))
+
+    def test_usage_on_extra_args(self):
+        with mock.patch.object(vpn_mod, "provision") as mock_prov:
+            self._message("/vpnprovision John Doe 3mo")
+            mock_prov.assert_not_called()
+        self.assertTrue(any("Usage: /vpnprovision" in t
+                            for t in self._admin_texts()))
+
+    def test_unknown_plan_rejected(self):
+        with mock.patch.object(vpn_mod, "provision") as mock_prov:
+            self._message("/vpnprovision Cucumber 2mo")
+            mock_prov.assert_not_called()
+        self.assertTrue(any(
+            "❌ Unknown plan: 2mo (use 1mo, 3mo, 6mo or 1yr)" in t
+            for t in self._admin_texts()))
+
+    def test_valid_provision_maps_plan_and_sends_configs(self):
+        result = self._provision_result(app_registered=True)
+        with mock.patch.object(vpn_mod, "provision",
+                               return_value=(True, result)) as mock_prov:
+            self._message("/vpnprovision Cucumber 3mo")
+            mock_prov.assert_called_once_with(
+                "Cucumber", "", "3 Months / 1 Device")
+        texts = self._admin_texts()
+        self.assertTrue(any("VPN-123456" in t for t in texts))
+        self.assertTrue(any("2026-12-18" in t for t in texts))
+        self.assertTrue(any("Singapore, Japan, UK, USA" in t
+                            for t in texts))
+        self.assertTrue(any("App login: registered" in t for t in texts))
+        docs = self.tg.documents()
+        self.assertEqual(len(docs), 5)  # 4 .conf + APK
+        names = [d[2]["document"][0] for d in docs]
+        self.assertEqual(names[:4], ["BiggestVPN-Singapore.conf",
+                                     "BiggestVPN-Japan.conf",
+                                     "BiggestVPN-UK.conf",
+                                     "BiggestVPN-USA.conf"])
+
+    def test_plan_mapping_all_labels(self):
+        labels = {"1mo": "1 Month / 1 Device",
+                  "3mo": "3 Months / 1 Device",
+                  "6mo": "6 Months / 1 Device",
+                  "1yr": "1 Year / 1 Device"}
+        for short, label in labels.items():
+            with mock.patch.object(vpn_mod, "provision",
+                                   return_value=(True, self._provision_result())) as mock_prov:
+                self._message(f"/vpnprovision Cucumber {short}")
+                mock_prov.assert_called_once_with("Cucumber", "", label)
+
+    def test_provision_failure_replies_with_error(self):
+        with mock.patch.object(vpn_mod, "provision",
+                               return_value=(False,
+                                             "No free IPs on singapore.")):
+            self._message("/vpnprovision Cucumber 3mo")
+        self.assertTrue(any("❌ No free IPs on singapore." in t
+                            for t in self._admin_texts()))
+        self.assertEqual(len(self.tg.documents()), 0)
+
+    def test_app_registration_failure_flagged(self):
+        result = self._provision_result(app_registered=False)
+        with mock.patch.object(vpn_mod, "provision",
+                               return_value=(True, result)):
+            self._message("/vpnprovision Cucumber 3mo")
+        self.assertTrue(any(
+            "⚠️ App registration failed — the code will NOT work in the "
+            "Biggest VPN app until registered" in t
+            for t in self._admin_texts()))
+
+    def test_non_admin_ignored(self):
+        # A non-admin's /vpnprovision is not a command for them: the bot
+        # just treats it as a normal customer message (forwarded to the
+        # admin). Provision must never run. save_map is stubbed so the
+        # forward does not write a real state file during the test.
+        with mock.patch.object(vpn_mod, "provision") as mock_prov, \
+             mock.patch.object(bot, "save_map"):
+            self._message("/vpnprovision Cucumber 3mo", chat_id="999")
+            mock_prov.assert_not_called()
+        self.assertFalse(any("VPN-123456" in t
+                             for t in self._admin_texts()))
 
 
 class VpnApiRegistrationTests(unittest.TestCase):

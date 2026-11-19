@@ -385,6 +385,14 @@ def create_app_code(product, plan_label, customer_id):
 
 TRIAL_PLAN = vpn_mod.TRIAL_PLAN  # "7-Day Trial / 1 Device"
 
+# Short plan labels for the manual /vpnprovision admin command.
+MANUAL_VPN_PLANS = {
+    "1mo": "1 Month / 1 Device",
+    "3mo": "3 Months / 1 Device",
+    "6mo": "6 Months / 1 Device",
+    "1yr": "1 Year / 1 Device",
+}
+
 
 def kb_vpn_buy(product):
     """Buy buttons for each VPN plan, with the download buttons for
@@ -1008,6 +1016,45 @@ def handle_message(msg, fwd_map):
                           f"✅ Expired {len(revoked)} trial(s).", msg)
         else:
             send_threaded(chat_id, "No expired trials to revoke.", msg)
+        return
+
+    if is_admin and text.startswith("/vpnprovision"):
+        parts = text.split()
+        if len(parts) != 3:
+            send_threaded(chat_id,
+                          "Usage: /vpnprovision <name> <plan>  (plans: 1mo, 3mo, 6mo, 1yr)",
+                          msg)
+            return
+        _, name, plan_short = parts
+        plan_label = MANUAL_VPN_PLANS.get(plan_short.lower())
+        if not plan_label:
+            send_threaded(chat_id,
+                          f"❌ Unknown plan: {plan_short} "
+                          "(use 1mo, 3mo, 6mo or 1yr)", msg)
+            return
+        # telegram_id is "" — the customer's Telegram id is unknown for a
+        # manual provision; provision() stores it as "" which stays falsy,
+        # so the renew-notify path skips it.
+        ok, result = vpn_mod.provision(name, "", plan_label)
+        if not ok:
+            send_threaded(chat_id, f"❌ {result}", msg)
+            return
+        result["plan"] = plan_label
+        exp = result["expires_at"][:10]
+        countries = ", ".join(result.get("countries") or [])
+        lines = [f"✅ VPN provisioned for {name} ({plan_label}).",
+                 f"Code: {result['code']}",
+                 f"Expires: {exp}",
+                 f"Countries: {countries}"]
+        if result.get("app_registered"):
+            lines.append("📱 App login: registered — the code works in the "
+                         "Biggest VPN app.")
+        else:
+            lines.append("⚠️ App registration failed — the code will NOT "
+                         "work in the Biggest VPN app until registered")
+        send_threaded(chat_id, "\n".join(lines), msg)
+        # .conf files + APK to the admin DM — forward to the customer.
+        send_vpn_configs(chat_id, result)
         return
 
     if text.startswith("/start"):
