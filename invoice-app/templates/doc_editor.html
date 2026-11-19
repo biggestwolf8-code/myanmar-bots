@@ -88,6 +88,9 @@
   <textarea name="notes">{{ doc.notes }}</textarea>
   <label>Terms</label>
   <textarea name="terms">{{ doc.terms }}</textarea>
+  {% if not biz.payment_details %}
+  <p class="qr-note">Payment methods not set — <a href="/settings/payments">set them once and they'll print on every invoice</a>.</p>
+  {% endif %}
 </div>
 
 <div class="card">
