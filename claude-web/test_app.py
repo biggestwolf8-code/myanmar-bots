@@ -173,6 +173,56 @@ check("confirm gates the /api/new fetch",
       and "return" in _newchat[_ci:_fi],
       "fetch runs before / unguarded by confirm()")
 
+# 9. /api/my_usage: the "$0.00 today" pill and the usage popup.
+#    Uses a fresh code so the counts are exact.
+CODE2 = "TESTCODE2"
+A.codes[CODE2] = {"used_by": None, "label": "test2",
+                  "created": "2026-11-19", "used_at": None}
+
+# 9a. Logged out -> 401.
+r = c0.get("/api/my_usage")
+check("my_usage 401 when logged out", r.status_code == 401, f"got {r.status_code}")
+
+# 9b. Fresh code -> zeros, with the configured limits.
+c2 = redeem(CODE2)
+r = c2.get("/api/my_usage")
+check("my_usage zeros for fresh code",
+      r.status_code == 200 and r.json == {
+          "ok": True, "daily_cost": 0.0, "daily_cost_limit": A.DAILY_COST_LIMIT,
+          "daily_count": 0, "daily_msg_limit": A.DAILY_LIMIT,
+          "total_cost": 0.0, "total_input": 0, "total_output": 0},
+      f"got {r.json}")
+
+# 9c. After one chat exchange (stubbed model: 5 in / 5 out tokens)
+#    the daily cost/count and the all-time totals match.
+r = c2.post("/api/chat", json={"message": "How much did that cost?"})
+check("chat exchange for usage ok", r.status_code == 200 and r.json.get("ok"),
+      f"got {r.status_code} {r.json}")
+_exp_cost = brain.cost_for(brain.MODEL, 5, 5)
+r = c2.get("/api/my_usage")
+_d = r.json or {}
+check("my_usage reflects one exchange",
+      r.status_code == 200 and _d.get("ok")
+      and _d.get("daily_count") == 1
+      and abs(_d.get("daily_cost", -1) - _exp_cost) < 1e-9
+      and _d.get("daily_cost_limit") == A.DAILY_COST_LIMIT
+      and _d.get("daily_msg_limit") == A.DAILY_LIMIT
+      and abs(_d.get("total_cost", -1) - _exp_cost) < 1e-9
+      and _d.get("total_input") == 5 and _d.get("total_output") == 5,
+      f"got {r.json} (expected cost {_exp_cost})")
+
+# 9d. A stale daily bucket (yesterday) reads as zero for today,
+#    while the all-time totals still stand.
+A.codes[CODE2]["daily"] = {"day": "2000-01-01", "count": 7, "cost": 0.5}
+r = c2.get("/api/my_usage")
+_d = r.json or {}
+check("my_usage ignores a stale daily bucket",
+      r.status_code == 200 and _d.get("daily_count") == 0
+      and _d.get("daily_cost") == 0.0
+      and abs(_d.get("total_cost", -1) - _exp_cost) < 1e-9
+      and _d.get("total_input") == 5 and _d.get("total_output") == 5,
+      f"got {r.json}")
+
 print(f"\n{len(passed)} passed, {len(failed)} failed")
 if failed:
     print("FAILED:", failed)
