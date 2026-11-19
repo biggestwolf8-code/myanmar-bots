@@ -481,6 +481,34 @@ def api_history():
     return jsonify({"ok": True, "history": _display_history(histories.get(hk))})
 
 
+@app.route("/api/my_usage")
+def api_my_usage():
+    """Usage for the "$0.00 today" pill and the usage popup: today's
+    spend and message count for this invite code, plus its all-time
+    totals. The frontend calls this on load and every 30s."""
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False}), 401
+    code = code_for_sid(sid)
+    today = datetime.date.today().isoformat()
+    d = (codes.get(code) or {}).get("daily") or {}
+    if d.get("day") == today:
+        daily_cost = float(d.get("cost", 0.0))
+        daily_count = int(d.get("count", 0))
+    else:
+        daily_cost = 0.0
+        daily_count = 0
+    u = usage.get(code) or {}
+    return jsonify({"ok": True,
+                    "daily_cost": daily_cost,
+                    "daily_cost_limit": DAILY_COST_LIMIT,
+                    "daily_count": daily_count,
+                    "daily_msg_limit": DAILY_LIMIT,
+                    "total_cost": float(u.get("cost", 0.0)),
+                    "total_input": int(u.get("input", 0)),
+                    "total_output": int(u.get("output", 0))})
+
+
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
     session.pop("sid", None)
