@@ -11,6 +11,7 @@
 </head>
 <body>
 <main class="wrap" style="max-width:760px">
+  <p style="margin:12px 0 0"><button type="button" class="btn ghost" onclick="history.back()">← Back</button></p>
   <div class="doc-paper">
     <div class="banner" style="background:{{ biz.accent_color or '#2563eb' }}">
       <h2>{{ biz.name or 'Invoice Maker' }}</h2>
@@ -61,8 +62,38 @@
   </div>
   <p style="text-align:center;margin:18px 0 6px">
     <a class="btn" href="/s/{{ doc.share_token }}/pdf">Download PDF</a>
+    <button class="btn" type="button" id="sharepdfbtn">Share</button>
   </p>
   <p class="foot">Shared via Invoice Maker</p>
 </main>
+<script>
+(function(){
+  var btn = document.getElementById("sharepdfbtn");
+  if (!btn) return;
+  var pdfUrl = {{ ("/s/" ~ doc.share_token ~ "/pdf") | tojson }};
+  var fileName = {{ ((doc.number or "document") ~ ".pdf") | tojson }};
+  var pageUrl = window.location.href;
+  btn.addEventListener("click", async function(){
+    try {
+      var res = await fetch(pdfUrl);
+      var blob = await res.blob();
+      var file = new File([blob], fileName, {type: "application/pdf"});
+      if (navigator.canShare && navigator.canShare({files: [file]})) {
+        await navigator.share({files: [file], title: fileName});
+        return;
+      }
+    } catch(e) {}
+    if (navigator.share) {
+      try { await navigator.share({url: pageUrl}); return; } catch(e) {}
+    }
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(pageUrl).then(function(){
+        btn.textContent = "Copied!";
+        setTimeout(function(){ btn.textContent = "Share"; }, 2000);
+      });
+    }
+  });
+})();
+</script>
 </body>
 </html>
