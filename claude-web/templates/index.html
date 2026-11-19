@@ -315,6 +315,7 @@ function updateUsagePill() {
 setInterval(updateUsagePill, 30000);
 
 async function newChat(){
+  if (!confirm('Start a new chat? Your current chat will be permanently deleted.')) return;
   await fetch('/api/new',{method:'POST'});
   document.getElementById('msgs').innerHTML = '';
   addMsg('bot','✨ Fresh start! What would you like to work on?');
