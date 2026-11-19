@@ -50,6 +50,7 @@
     {% if biz.payment_details %}
     <h3>Payment details</h3><p style="white-space:pre-line">{{ biz.payment_details }}</p>
     {% endif %}
+    <p class="qr-note"><a href="/settings/payments">Edit payment methods</a></p>
     {% if doc.notes %}<h3>Notes</h3><p style="white-space:pre-line">{{ doc.notes }}</p>{% endif %}
     {% if doc.terms %}<h3>Terms</h3><p style="white-space:pre-line">{{ doc.terms }}</p>{% endif %}
   </div>
@@ -91,7 +92,18 @@
   var data = {title: {{ (type_titles.get(doc.type, 'Document') ~ ' ' ~ doc.number) | tojson }},
               text: {{ share_msg | tojson }},
               url: {{ share_url | tojson }}};
-  btn.addEventListener("click", function(){
+  var pdfUrl = {{ ("/docs/" ~ doc.id ~ "/pdf") | tojson }};
+  var fileName = {{ ((doc.number or "document") ~ ".pdf") | tojson }};
+  btn.addEventListener("click", async function(){
+    try {
+      var res = await fetch(pdfUrl);
+      var blob = await res.blob();
+      var file = new File([blob], fileName, {type: "application/pdf"});
+      if (navigator.canShare && navigator.canShare({files: [file]})) {
+        await navigator.share({files: [file], title: data.title});
+        return;
+      }
+    } catch(e) {}
     if (navigator.share) {
       navigator.share(data).catch(function(){});
     } else if (navigator.clipboard) {
