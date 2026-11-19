@@ -155,6 +155,24 @@ check("xls still rejected",
       r.status_code == 400 and "isn't supported" in (r.json or {}).get("error", ""),
       f"got {r.status_code} {r.json}")
 
+# 8. "+ New chat" asks for confirmation before wiping history.
+#    The confirm() must appear before the /api/new fetch in newChat(),
+#    and cancelling it must return before the fetch runs.
+_tpl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "templates", "index.html")).read()
+_start = _tpl.index("async function newChat(){")
+_end = _tpl.index("\n}\n", _start)
+_newchat = _tpl[_start:_end]
+check("newChat asks to confirm before deleting",
+      "confirm('Start a new chat? Your current chat will be permanently deleted.')" in _newchat,
+      "confirm() with that message not found in newChat()")
+_ci = _newchat.find("confirm(")
+_fi = _newchat.find("fetch('/api/new'")
+check("confirm gates the /api/new fetch",
+      _ci != -1 and _fi != -1 and _ci < _fi
+      and "return" in _newchat[_ci:_fi],
+      "fetch runs before / unguarded by confirm()")
+
 print(f"\n{len(passed)} passed, {len(failed)} failed")
 if failed:
     print("FAILED:", failed)
