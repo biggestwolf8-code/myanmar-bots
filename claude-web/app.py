@@ -193,6 +193,31 @@ def hist_key(sid):
     return code
 
 
+def _display_history(history):
+    """Stored history entries reduced to what the page can render.
+
+    Plain Chat turns are {"role": ..., "content": str}. Agent turns can
+    carry API block lists (tool_use / tool_result) as content — those are
+    context for Claude, not readable chat, so tool entries are skipped and
+    the text blocks inside a list are joined into one readable message."""
+    out = []
+    for m in history or []:
+        role = m.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = m.get("content")
+        if isinstance(content, str):
+            out.append({"role": role, "content": content})
+        elif isinstance(content, list):
+            text = "".join(
+                b.get("text", "") for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+                and isinstance(b.get("text"), str))
+            if text:
+                out.append({"role": role, "content": text})
+    return out
+
+
 def over_daily_limit(code):
     today = datetime.date.today().isoformat()
     e = codes.get(code, {})
@@ -442,6 +467,18 @@ def api_me():
     if sessions[sid].get("email"):
         _touch_account(sessions[sid]["email"])
     return jsonify({"ok": True, "has_account": has_account})
+
+
+@app.route("/api/history")
+def api_history():
+    """Return this invite code's saved chat so the page can show old
+    chats on load. History is stored server-side (webhistories.json,
+    keyed by invite code) but the page never loaded it back."""
+    sid = current_sid()
+    if not sid:
+        return jsonify({"ok": False}), 401
+    hk = hist_key(sid)
+    return jsonify({"ok": True, "history": _display_history(histories.get(hk))})
 
 
 @app.route("/api/logout", methods=["POST"])
