@@ -1147,7 +1147,7 @@ def doc_pdf(doc_id):
                 "Please try again."), 500
     fname = "%s.pdf" % (doc.get("number") or "document")
     return send_file(io.BytesIO(data), mimetype="application/pdf",
-                     as_attachment=True, download_name=fname)
+                     as_attachment=False, download_name=fname)
 
 
 @app.route("/s/<token>")
@@ -1169,7 +1169,7 @@ def public_view(token):
 
 @app.route("/s/<token>/pdf")
 def public_pdf(token):
-    """Shared-link PDF download — no account needed."""
+    """Shared-link PDF, shown inline — no account needed."""
     for email, d in invdata.items():
         doc = find_doc_by_token(d, token)
         if doc:
@@ -1182,7 +1182,7 @@ def public_pdf(token):
                         "Please try again."), 500
             fname = "%s.pdf" % (doc.get("number") or "document")
             return send_file(io.BytesIO(data), mimetype="application/pdf",
-                             as_attachment=True, download_name=fname)
+                             as_attachment=False, download_name=fname)
     abort(404)
 
 
