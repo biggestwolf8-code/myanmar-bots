@@ -226,7 +226,18 @@ async function boot(){
   if (j.ok) document.getElementById('createAccountBtn').style.display = j.has_account ? 'none' : '';
   if (j.ok && !window._welcomed){
     window._welcomed = true;
-    addMsg('bot', "👋 Hi! I'm Claude, your AI co-worker.\n\n💬 **Chat** — ask me anything: drafting, writing, translations, planning. Tap 📎 to attach photos or documents.\n\n⚙️ **Agent** — give me a multi-step task and I'll work through it: read files, run code, create documents and spreadsheets.\n\n📁 **Files** — your workspace. Upload files for the agent to use, download what it creates.");
+    let restored = false;
+    try{
+      const hr = await fetch('/api/history');
+      const hj = await hr.json();
+      if (hj.ok && hj.history && hj.history.length){
+        for (const m of hj.history) addMsg(m.role === 'user' ? 'user' : 'bot', m.content);
+        restored = true;
+      }
+    }catch(e){}
+    if (!restored){
+      addMsg('bot', "👋 Hi! I'm Claude, your AI co-worker.\n\n💬 **Chat** — ask me anything: drafting, writing, translations, planning. Tap 📎 to attach photos or documents.\n\n⚙️ **Agent** — give me a multi-step task and I'll work through it: read files, run code, create documents and spreadsheets.\n\n📁 **Files** — your workspace. Upload files for the agent to use, download what it creates.");
+    }
     document.getElementById('msgInput').focus();
   }
 }
