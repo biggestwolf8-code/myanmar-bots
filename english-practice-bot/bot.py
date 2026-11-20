@@ -19,6 +19,9 @@ Deploy as a Railway worker. Env vars:
   OPENAI_API_KEY     OpenAI API key (platform.openai.com) — needed for voice
   MODEL              Claude model id (default: claude-haiku-4-5-20251001)
   TTS_VOICE          OpenAI TTS voice (default: onyx)
+  TTS_VOLUME_GAIN    How much louder the bot's voice is, as a multiplier
+                     (default: 2.0, about twice as loud; needs ffmpeg on the
+                     server — if ffmpeg is missing the voice is sent as-is)
   ADMIN_CHAT_ID      Telegram user id of the teacher (full access + commands)
   BOT_USERNAME       Bot username without @ (default: MasterclassPractice_Bot)
   DATA_DIR           Directory for codes.json (default: "."; use "/data" with
@@ -58,6 +61,8 @@ import html
 import json
 import os
 import secrets
+import shutil
+import subprocess
 import time
 import urllib.parse
 import urllib.request
@@ -71,6 +76,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 MODEL = os.environ.get("MODEL", "claude-haiku-4-5-20251001")
 TTS_VOICE = os.environ.get("TTS_VOICE", "onyx")
+TTS_VOLUME_GAIN = float(os.environ.get("TTS_VOLUME_GAIN", "2.0"))
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "MasterclassPractice_Bot")
 DATA_DIR = os.environ.get("DATA_DIR", ".")
@@ -1187,7 +1193,33 @@ def tts_speak(text):
         timeout=90,
     )
     r.raise_for_status()
-    return r.content
+    return _amplify_opus(r.content)
+
+
+def _amplify_opus(audio_bytes):
+    """Make the TTS voice louder: OpenAI's TTS has no volume setting, so the
+    audio is run through ffmpeg with a gain (default 2x) plus a limiter so it
+    never clips. Fail-open: if ffmpeg is missing or errors, the original
+    audio is returned untouched, so voice replies never break."""
+    if not audio_bytes or TTS_VOLUME_GAIN <= 1.0:
+        return audio_bytes
+    if not shutil.which("ffmpeg"):
+        print("ffmpeg not found — sending voice at original volume")
+        return audio_bytes
+    try:
+        p = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", "pipe:0",
+             "-af", "volume=%.2f,alimiter=limit=0.95" % TTS_VOLUME_GAIN,
+             "-c:a", "libopus", "-f", "opus", "pipe:1"],
+            input=audio_bytes, capture_output=True, timeout=60,
+        )
+        if p.returncode == 0 and p.stdout:
+            return p.stdout
+        print("ffmpeg amplify failed (rc=%s) — sending voice at original volume"
+              % p.returncode)
+    except Exception as e:
+        print("ffmpeg amplify error — sending voice at original volume:", e)
+    return audio_bytes
 
 
 def tutor_reply(user_id, user_text):
