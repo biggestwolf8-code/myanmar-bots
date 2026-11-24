@@ -30,10 +30,17 @@ USAGE_FILE = os.path.join(config.DATA_DIR, "usage.json")
 def tg(method, **params):
     try:
         r = requests.post(f"{API}/{method}", json=params, timeout=30)
-        return r.json()
+        data = r.json()
     except Exception as e:
         print("telegram error:", e)
         return {}
+    if isinstance(data, dict) and data.get("ok") is False:
+        # Telegram answered but refused (e.g. bot blocked, chat gone).
+        # send() callers ignore the return value, so log it here or the
+        # failure is invisible — this hid the Nov 2026 outage's tail.
+        print(f"telegram {method} failed: {data.get('error_code')} "
+              f"{data.get('description')}", flush=True)
+    return data
 
 
 COMMANDS_BTN = "📋 Commands"
