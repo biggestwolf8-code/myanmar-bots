@@ -47,6 +47,13 @@ DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "500"))
 MAX_AGENT_STEPS = int(os.environ.get("MAX_AGENT_STEPS", "12"))
 HTTP_PORT = int(os.environ.get("PORT", "8080"))
 
+# Watchdog (2026-11-24): longest one message's agent run may hold the
+# handling lock before it is abandoned (lock released, owner told).
+# Env-overridable; no Railway var change needed for the defaults.
+HANDLER_TIMEOUT_S = int(os.environ.get("HANDLER_TIMEOUT_S", "1800"))
+# Heartbeat: how often the watchdog thread logs loop/lock/step state.
+HEARTBEAT_S = int(os.environ.get("HEARTBEAT_S", "60"))
+
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 MODEL_RATES = {

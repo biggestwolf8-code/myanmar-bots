@@ -13,6 +13,7 @@ import urllib.request
 import config
 import memory_store
 import remote
+import watchdog
 
 WORKSPACE = os.path.join(config.DATA_DIR, "workspace")
 os.makedirs(WORKSPACE, exist_ok=True)
@@ -377,8 +378,13 @@ def run_agent(history, max_steps=None):
     messages = _sanitize_messages(
         [{"role": m["role"], "content": m["content"]} for m in history])
     text = ""
-    for _ in range(max_steps):
+    for i in range(max_steps):
+        watchdog.note_step(f"api-call step {i + 1}/{max_steps}")
+        t0 = time.time()
         out, usage = _api_call(_sanitize_messages(messages), TOOLS)
+        print(f"agent: api call step {i + 1} took {time.time() - t0:.1f}s "
+              f"in={usage['input_tokens']} out={usage['output_tokens']}",
+              flush=True)
         total_in += usage["input_tokens"]
         total_out += usage["output_tokens"]
         assistant_blocks = [b for b in out.get("content", [])
@@ -392,13 +398,18 @@ def run_agent(history, max_steps=None):
         results = []
         for tu in tool_uses:
             name, inp = tu.get("name", ""), tu.get("input", {}) or {}
+            watchdog.note_step(f"tool:{name}")
+            t0 = time.time()
             result = _execute_tool(name, inp)
+            print(f"agent: tool {name} took {time.time() - t0:.1f}s",
+                  flush=True)
             steps.append("✓ " + _describe_step(name, inp))
             results.append({"type": "tool_result", "tool_use_id": tu.get("id"),
                             "content": result})
         messages.append({"role": "user", "content": results})
     else:
         text = (text + "\n\n_(Stopped after the step limit — ask me to continue if needed.)_").strip()
+    watchdog.step_done()
     # persist the turn pair(s)
     history.append({"role": "assistant", "content": text or "(no reply)"})
     return text, {"input_tokens": total_in, "output_tokens": total_out}, steps

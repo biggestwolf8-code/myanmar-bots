@@ -15,6 +15,7 @@ import config
 import memory_store
 import scheduler
 import server
+import watchdog
 from agent import run_agent
 
 API = config.API
@@ -161,11 +162,43 @@ def typing_loop(chat_id, stop):
 def handle_message(chat_id, text):
     # Serialize with inbox handling: both threads use the same chat_id and
     # share the history file, so load -> run -> save must be atomic.
+    # The handler runs in a worker thread under the lock: if one message's
+    # agent run hangs, it is abandoned after HANDLER_TIMEOUT_S instead of
+    # jamming the queue forever (Nov 2026 outage: 15h of silence). The
+    # abandoned thread may still finish in the background; its final
+    # sends are suppressed via `cancelled`, and the next message proceeds.
+    label = f"chat={chat_id} len={len(text)}"
     with _HANDLE_LOCK:
-        _handle_message_inner(chat_id, text)
+        watchdog.lock_acquired(label)
+        cancelled = threading.Event()
+        done = threading.Event()
+
+        def _run():
+            try:
+                _handle_message_inner(chat_id, text, cancelled)
+            except Exception as e:
+                print("handler thread failed:", e, flush=True)
+            finally:
+                done.set()
+
+        started = time.time()
+        threading.Thread(target=_run, daemon=True).start()
+        try:
+            if not done.wait(timeout=config.HANDLER_TIMEOUT_S):
+                cancelled.set()
+                print(f"WATCHDOG: handler {label} exceeded "
+                      f"{config.HANDLER_TIMEOUT_S}s, abandoning; lock released",
+                      flush=True)
+                send(chat_id, esc("⏱ That task took too long and I stopped it — please try again. If it keeps happening, tell Muse."))
+            else:
+                print(f"handler done: {label} in {time.time() - started:.1f}s",
+                      flush=True)
+        finally:
+            watchdog.lock_released()
+            watchdog.note_handled()
 
 
-def _handle_message_inner(chat_id, text):
+def _handle_message_inner(chat_id, text, cancelled=None):
     history = memory_store.load_history(chat_id)
     history.append({"role": "user", "content": text})
     stop = threading.Event()
@@ -178,6 +211,12 @@ def _handle_message_inner(chat_id, text):
         reply, usage, steps = "Something went wrong on my end — try again in a moment.", {"input_tokens": 0, "output_tokens": 0}, []
     finally:
         stop.set()
+    if cancelled is not None and cancelled.is_set():
+        # Abandoned by the watchdog: the owner already got a timeout
+        # reply. Drop the turn (no save, no sends) so a late finish
+        # can't double-reply or persist a reply that was never sent.
+        print("handler abandoned: dropping turn, no reply sent", flush=True)
+        return
     memory_store.save_history(chat_id, history)
     record_usage(usage)
     if steps:
@@ -194,7 +233,11 @@ def process_inbox(text):
     The raw text is still logged to inbox.jsonl and readable via /inbox.
     """
     chat_id = str(config.ADMIN_CHAT_ID)
-    handle_message(chat_id, "[Inbox from Muse] " + text)
+    watchdog.note_inbox_start()
+    try:
+        handle_message(chat_id, "[Inbox from Muse] " + text)
+    finally:
+        watchdog.note_inbox_done()
 
 
 def main():
@@ -205,6 +248,7 @@ def main():
     scheduler.start()
     server.inbox_handler = process_inbox
     threading.Thread(target=server.run, daemon=True).start()
+    watchdog.start(config.HEARTBEAT_S, config.HANDLER_TIMEOUT_S)
     print("agent bot starting...", flush=True)
     offset = 0
     while True:
@@ -215,6 +259,7 @@ def main():
             print("poll error:", e)
             time.sleep(5)
             continue
+        watchdog.note_poll()
         for upd in r.get("result", []):
             offset = upd["update_id"] + 1
             msg = upd.get("message") or {}
@@ -232,6 +277,7 @@ def main():
             if text.startswith("/"):
                 handle_command(chat_id, text)
             else:
+                print(f"update: owner message len={len(text)}", flush=True)
                 handle_message(chat_id, text)
 
 

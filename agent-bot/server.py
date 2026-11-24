@@ -115,6 +115,7 @@ def inbox():
     if inbox_handler is None:
         return jsonify({"ok": False, "error": "inbox not ready"}), 503
     log_inbox(text)
+    print(f"inbox: received {len(text)} chars, starting handler", flush=True)
     threading.Thread(target=inbox_handler, args=(text,), daemon=True).start()
     return jsonify({"ok": True})
 
