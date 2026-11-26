@@ -424,6 +424,126 @@ check("detail has edit payment methods link",
 check("detail share tries pdf file first",
       b"canShare" in r.data and b"new File" in r.data)
 
+# --- Zoom price table: computed prices, previous vs current rate, screenshot ---
+_zdb = A.default_business()
+check("zoom defaults",
+      _zdb["zoom_rate_ks_per_usd"] == 5600
+      and _zdb["zoom_prev_rate_ks_per_usd"] == 4400
+      and abs(_zdb["zoom_usd_per_month"] - 35000 / 4400) < 1e-9
+      and _zdb["zoom_official_1mo_usd"] == 16.99
+      and _zdb["zoom_official_3mo_usd"] == 50.97
+      and "zoom_3mo_ks" not in _zdb and "zoom_1mo_ks" not in _zdb)
+
+r = c.get("/settings/business")
+check("settings shows zoom fields",
+      b"zoom_rate_ks_per_usd" in r.data and b"zoom_prev_rate_ks_per_usd" in r.data
+      and b"zoom_usd_per_month" in r.data)
+
+_zoomform = dict(bdata, zoom_rate_ks_per_usd="5600", zoom_prev_rate_ks_per_usd="4400",
+                 zoom_usd_per_month="7.9545", zoom_official_1mo_usd="16.99",
+                 zoom_official_3mo_usd="50.97")
+r = c.post("/settings/business", data=_zoomform, follow_redirects=True)
+_biz = A.invdata["user@example.com"]["business"]
+check("zoom settings saved",
+      _biz["zoom_rate_ks_per_usd"] == 5600 and _biz["zoom_prev_rate_ks_per_usd"] == 4400
+      and abs(_biz["zoom_usd_per_month"] - 35000 / 4400) < 1e-9
+      and _biz["zoom_official_1mo_usd"] == 16.99 and _biz["zoom_official_3mo_usd"] == 50.97)
+r = c.get("/settings/business")
+check("settings shows usd base as 7.9545", b"7.9545" in r.data)
+
+_zp = A.zoom_prices(_biz)
+check("computed prices at defaults",
+      _zp["ks_1mo"] == 44545 and _zp["ks_3mo"] == 133636
+      and _zp["prev_ks_1mo"] == 35000 and _zp["prev_ks_3mo"] == 105000
+      and _zp["off_1mo_ks"] == 95144 and _zp["off_3mo_ks"] == 285432,
+      str(_zp))
+
+r = c.get("/docs/new?type=invoice")
+check("editor has zoom checkbox + preset + proof upload",
+      b'name="show_zoom_prices"' in r.data and b"Show Zoom price table" in r.data
+      and b"Add Zoom Pro (100 participants)" in r.data and b'id="addzoom"' in r.data
+      and b'name="proof_image"' in r.data)
+check("editor form is multipart", b"multipart/form-data" in r.data)
+check("editor preset uses computed 3-month price", b"133636" in r.data)
+check("editor hint shows current prices",
+      b"K44,545" in r.data and b"K133,636" in r.data)
+
+_zform = {"type": "invoice", "client_id": cid,
+          "issue_date": "2026-10-13", "due_date": "",
+          "desc": ["Zoom Pro License - 100 participants, 3 months"], "qty": ["1"],
+          "rate": ["133636"], "tax_pct": ["0"],
+          "discount_type": "amount", "discount_value": "0",
+          "tax_type": "percent", "tax_value": "0", "shipping": "0",
+          "notes": "", "terms": "", "show_zoom_prices": "on"}
+r = c.post("/docs/new", data=_zform, follow_redirects=False)
+zdoc = d["documents"][-1]
+check("zoom invoice has flag", zdoc.get("show_zoom_prices") is True)
+_ztxt = _pdf_text(zdoc["id"])
+for _s in ("Zoom Pro - 100 participants",
+           "Previous rate: 1 USD = 4,400 Ks", "Current rate: 1 USD = 5,600 Ks",
+           "$7.95 x 4,400 Ks = K35,000", "$23.86 x 4,400 Ks = K105,000",
+           "$7.95 x 5,600 Ks = K44,545", "$23.86 x 5,600 Ks = K133,636",
+           "$16.99 (K95,144)", "$50.97 (K285,432)"):
+    check("pdf zoom table: " + _s, _s in _ztxt)
+_zpdf = c.get(f"/docs/{zdoc['id']}/pdf").data
+_zreader = PdfReader(io.BytesIO(_zpdf))
+_zimgs = [im.image for p in _zreader.pages for im in p.images]
+check("pdf embeds default proof screenshot",
+      any(im.size == (1139, 1062) for im in _zimgs),
+      str([im.size for im in _zimgs]))
+
+_plain = dict(_zform)
+_plain.pop("show_zoom_prices")
+r = c.post("/docs/new", data=_plain, follow_redirects=False)
+plaindoc = d["documents"][-1]
+check("plain invoice has no zoom flag", not plaindoc.get("show_zoom_prices"))
+check("plain pdf has no zoom table",
+      "Zoom Pro - 100 participants" not in _pdf_text(plaindoc["id"]))
+_ppdf = c.get(f"/docs/{plaindoc['id']}/pdf").data
+_pimgs = [im for p in PdfReader(io.BytesIO(_ppdf)).pages for im in p.images]
+check("plain pdf embeds no images", len(_pimgs) == 0, str(len(_pimgs)))
+
+# changing the current rate recomputes both prices (4400 -> 35000 / 105000)
+c.post("/settings/business", data=dict(_zoomform, zoom_rate_ks_per_usd="4400"),
+       follow_redirects=True)
+_zp2 = A.zoom_prices(A.invdata["user@example.com"]["business"])
+check("rate change recomputes both prices",
+      _zp2["ks_1mo"] == 35000 and _zp2["ks_3mo"] == 105000, str(_zp2))
+r = c.post("/docs/new", data=_zform, follow_redirects=False)
+_rtxt = _pdf_text(d["documents"][-1]["id"])
+check("pdf at rate 4400 shows recomputed prices",
+      "Current rate: 1 USD = 4,400 Ks" in _rtxt
+      and "$7.95 x 4,400 Ks = K35,000" in _rtxt
+      and "$23.86 x 4,400 Ks = K105,000" in _rtxt, _rtxt[-400:])
+c.post("/settings/business", data=_zoomform, follow_redirects=True)
+
+# changing the previous rate recomputes the previous prices only
+c.post("/settings/business", data=dict(_zoomform, zoom_prev_rate_ks_per_usd="5000"),
+       follow_redirects=True)
+_zp3 = A.zoom_prices(A.invdata["user@example.com"]["business"])
+check("previous rate change recomputes previous prices",
+      _zp3["prev_ks_1mo"] == 39773 and _zp3["prev_ks_3mo"] == 119318
+      and _zp3["ks_1mo"] == 44545 and _zp3["ks_3mo"] == 133636, str(_zp3))
+c.post("/settings/business", data=_zoomform, follow_redirects=True)
+
+# per-invoice screenshot replaces the default in the PDF
+_buf = io.BytesIO()
+Image.new("RGB", (100, 50), "red").save(_buf, "PNG")
+_buf.seek(0)
+r = c.post("/docs/new", data=dict(_zform, proof_image=(_buf, "proof.png")),
+           follow_redirects=False)
+udoc = d["documents"][-1]
+check("per-invoice proof stored",
+      bool(udoc.get("proof_image"))
+      and os.path.isfile(os.path.join(tmpd, udoc["proof_image"])),
+      udoc.get("proof_image") or "")
+_updf = c.get(f"/docs/{udoc['id']}/pdf").data
+_uimgs = [im.image for p in PdfReader(io.BytesIO(_updf)).pages for im in p.images]
+check("uploaded proof overrides default in pdf",
+      any(im.size == (100, 50) for im in _uimgs)
+      and not any(im.size == (1139, 1062) for im in _uimgs),
+      str([im.size for im in _uimgs]))
+
 # admin: revoke code + delete user
 c.get("/logout")
 login_admin()

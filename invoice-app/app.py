@@ -32,6 +32,10 @@ PORT = int(os.environ.get("PORT", "5000"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONTS_DIR = os.path.join(BASE_DIR, "fonts")
 UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
+# Default price-proof screenshot (Arkar's own screenshot of Zoom's official
+# pricing page); a per-invoice upload replaces it, never this file.
+DEFAULT_PROOF_IMAGE = os.path.join(
+    BASE_DIR, "static", "zoom-pro-official-pricing.jpg")
 VERSION = "1.0"
 
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
@@ -105,6 +109,17 @@ def default_business():
             "inv_prefix": "INV", "est_prefix": "EST", "rec_prefix": "REC",
             "default_tax": 0, "default_notes": "", "default_terms": "",
             "date_format": "DD Mon YYYY",
+            # Zoom Pro (100 participants) prices. Both periods are COMPUTED
+            # from the USD base price x the exchange rate — there is no
+            # fixed Ks price anymore:
+            #   1 month  = round(USD base x rate)
+            #   3 months = round(USD base x 3 x rate)
+            # The previous-rate section of the price table shows the old
+            # prices so customers see why the price changed.
+            "zoom_rate_ks_per_usd": 5600,
+            "zoom_prev_rate_ks_per_usd": 4400,
+            "zoom_usd_per_month": ZOOM_USD_BASE,
+            "zoom_official_1mo_usd": 16.99, "zoom_official_3mo_usd": 50.97,
             "default_email_message": (
                 "Hello {client},\n\n"
                 "Please find your {type} {number} for {total} here: {link}\n\n"
@@ -362,6 +377,44 @@ def parse_num(v, default=0.0):
         return float(str(v).replace(",", "").strip() or 0)
     except (TypeError, ValueError):
         return default
+
+
+# Exact USD base price for one month of Zoom Pro: K35,000 at the old rate
+# of 4,400 Ks/USD. Displayed as $7.95; the exact fraction (not the rounded
+# 7.9545) is what reproduces the historical K35,000 / K105,000 exactly —
+# the rounded 7.9545 gives K104,999 for 3 months at the old rate.
+ZOOM_USD_BASE = 35000 / 4400
+
+
+def zoom_prices(b):
+    """Computed Zoom Pro (100 participants) prices for the price table.
+
+    Both periods are computed from the same USD base price x exchange
+    rate — there is no fixed Ks price anymore:
+      1 month  = round(USD base x rate)
+      3 months = round(USD base x 3 x rate)
+    Previous prices use the previous rate with the same base. All Ks
+    values use the UNROUNDED USD figures (e.g. 7.9545... x 3 = 23.8636
+    x 5600 = 133,636, NOT 3 x the rounded 1-month price); only the
+    display rounds to 2 decimals.
+    """
+    rate = parse_num(b.get("zoom_rate_ks_per_usd")) or 5600
+    prev_rate = parse_num(b.get("zoom_prev_rate_ks_per_usd")) or 4400
+    usd_mo = parse_num(b.get("zoom_usd_per_month"))
+    usd_3mo = usd_mo * 3
+    off_1mo = parse_num(b.get("zoom_official_1mo_usd"))
+    off_3mo = parse_num(b.get("zoom_official_3mo_usd"))
+    return {
+        "rate": rate, "prev_rate": prev_rate,
+        "usd_1mo": usd_mo, "usd_3mo": usd_3mo,
+        "ks_1mo": round(usd_mo * rate),
+        "ks_3mo": round(usd_3mo * rate),
+        "prev_ks_1mo": round(usd_mo * prev_rate),
+        "prev_ks_3mo": round(usd_3mo * prev_rate),
+        "off_1mo_usd": off_1mo, "off_3mo_usd": off_3mo,
+        "off_1mo_ks": round(off_1mo * rate),
+        "off_3mo_ks": round(off_3mo * rate),
+    }
 
 
 def doc_totals(doc):
@@ -671,7 +724,30 @@ def _parse_doc_form(d):
         "notes": (request.form.get("notes") or "").strip(),
         "terms": (request.form.get("terms") or "").strip(),
         "show_signature": "show_signature" in request.form,
+        "show_zoom_prices": "show_zoom_prices" in request.form,
     }
+
+
+def _handle_proof_upload(email, doc):
+    """Store an optional per-invoice price-proof screenshot on the doc.
+
+    A valid upload replaces the default screenshot for this invoice only
+    (file is named per doc id, so two invoices never overwrite each
+    other). Invalid files are ignored; ticking "use the default" clears a
+    custom screenshot back to the default.
+    """
+    proof = request.files.get("proof_image")
+    if proof and proof.filename:
+        ext = (proof.filename.rsplit(".", 1)[-1] or "").lower()
+        if ext in ("png", "jpg", "jpeg"):
+            try:
+                doc["proof_image"] = _store_image_upload(
+                    proof, _user_upload_dir(email),
+                    "proof-%s.png" % doc["id"])
+            except ValueError:
+                pass
+    elif request.form.get("remove_proof_image"):
+        doc["proof_image"] = ""
 
 
 def _default_doc(d, dtype):
@@ -686,6 +762,8 @@ def _default_doc(d, dtype):
         "notes": b.get("default_notes") or "",
         "terms": b.get("default_terms") or "",
         "show_signature": True,
+        "show_zoom_prices": False,
+        "proof_image": "",
     }
 
 
@@ -706,6 +784,7 @@ def doc_new():
                "created_at": now_iso(),
                "paid_at": now_iso() if status == "paid" else None}
         doc.update(fields)
+        _handle_proof_upload(email, doc)
         d["documents"].append(doc)
         save_all()
         return redirect("/docs/" + doc["id"])
@@ -714,6 +793,7 @@ def doc_new():
                            items=d["items"], mode="new", edit_id=None,
                            cur=d["business"].get("currency", "MMK"),
                            currencies=CURRENCIES,
+                           zoom=zoom_prices(d["business"]),
                            activetab={"invoice": "invoices",
                                       "estimate": "estimates"}.get(dtype,
                                                                    "more"))
@@ -739,6 +819,7 @@ def doc_edit(doc_id):
             fields["status"] = doc.get("status", "draft")
             fields["paid_at"] = doc.get("paid_at")
         doc.update(fields)
+        _handle_proof_upload(email, doc)
         save_all()
         return redirect("/docs/" + doc["id"])
     ed = dict(doc)
@@ -749,6 +830,7 @@ def doc_edit(doc_id):
                            mode="edit", edit_id=doc_id,
                            cur=d["business"].get("currency", "MMK"),
                            currencies=CURRENCIES,
+                           zoom=zoom_prices(d["business"]),
                            activetab={"invoice": "invoices",
                                       "estimate": "estimates"}.get(
                                           ed.get("type"), "more"))
@@ -1074,6 +1156,130 @@ def render_doc_pdf(d, doc):
     pdf.set_text_color(0, 0, 0)
     y += 12
 
+    # Zoom price table + official-price screenshot (per-invoice switch;
+    # legacy docs without the key hide it). Two clearly labelled sections
+    # — previous rate and current rate — so the customer sees at a glance
+    # why the price changed; the current rate is emphasized with the
+    # accent-colour section header.
+    if doc.get("show_zoom_prices"):
+        zp = zoom_prices(biz)
+        # heading 7 + gap 1 + header 8 + 2 sections x (subheader 7 + 2 rows 16)
+        table_h = 7 + 1 + 8 + 2 * (7 + 16)
+        if y + table_h > 270:
+            pdf.add_page()
+            y = pdf.get_y()
+        pdf.set_xy(12, y)
+        pdf.set_font("ns", "B", 11)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(0, 7, "Zoom Pro - 100 participants",
+                 new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        y = pdf.get_y() + 1
+        zw = [28, 34, 72, 52]
+        zx = [12, 40, 74, 146]
+        pdf.set_fill_color(243, 244, 246)
+        pdf.set_font("ns", "B", 10)
+        pdf.set_text_color(60, 60, 60)
+        for i, head in enumerate(("Period", "Our price", "Converted from",
+                                  "Official Zoom price")):
+            pdf.set_xy(zx[i], y)
+            pdf.cell(zw[i], 8, head, border=1, fill=True,
+                    align="L" if i == 0 else "R",
+                    new_x=XPos.RIGHT, new_y=YPos.TOP)
+        y += 8
+        # official prices: Ks equivalents are at the current rate, so the
+        # previous section shows USD only.
+        off_prev_1 = "$%.2f" % zp["off_1mo_usd"] \
+            if zp["off_1mo_usd"] > 0 else "-"
+        off_prev_3 = "$%.2f" % zp["off_3mo_usd"] \
+            if zp["off_3mo_usd"] > 0 else "-"
+        off_cur_1 = "${:,.2f} (K{:,.0f})".format(
+            zp["off_1mo_usd"], zp["off_1mo_ks"]) \
+            if zp["off_1mo_usd"] > 0 else "-"
+        off_cur_3 = "${:,.2f} (K{:,.0f})".format(
+            zp["off_3mo_usd"], zp["off_3mo_ks"]) \
+            if zp["off_3mo_usd"] > 0 else "-"
+        sections = (
+            ("Previous rate: 1 USD = {:,.0f} Ks".format(zp["prev_rate"]),
+             False, (
+                 ("1 month", zp["prev_ks_1mo"], zp["usd_1mo"],
+                  zp["prev_rate"], off_prev_1),
+                 ("3 months", zp["prev_ks_3mo"], zp["usd_3mo"],
+                  zp["prev_rate"], off_prev_3),
+             )),
+            ("Current rate: 1 USD = {:,.0f} Ks".format(zp["rate"]),
+             True, (
+                 ("1 month", zp["ks_1mo"], zp["usd_1mo"],
+                  zp["rate"], off_cur_1),
+                 ("3 months", zp["ks_3mo"], zp["usd_3mo"],
+                  zp["rate"], off_cur_3),
+             )),
+        )
+        for title, is_current, rows in sections:
+            if is_current:
+                pdf.set_fill_color(accent[0], accent[1], accent[2])
+                pdf.set_text_color(255, 255, 255)
+            else:
+                pdf.set_fill_color(243, 244, 246)
+                pdf.set_text_color(60, 60, 60)
+            pdf.set_font("ns", "B", 10)
+            pdf.set_xy(12, y)
+            pdf.cell(W, 7, title, border=1, fill=True,
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            y += 7
+            pdf.set_font("ns", "", 10)
+            pdf.set_text_color(0, 0, 0)
+            for label, ks, usd, rate, official in rows:
+                ours = "K{:,.0f}".format(ks) if ks > 0 else "-"
+                conv = "${:,.2f} x {:,.0f} Ks = K{:,.0f}".format(
+                    usd, rate, ks) if ks > 0 else "-"
+                pdf.set_xy(zx[0], y)
+                pdf.cell(zw[0], 8, label, border=1,
+                        new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.set_xy(zx[1], y)
+                pdf.cell(zw[1], 8, ours, border=1, align="R",
+                        new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.set_xy(zx[2], y)
+                pdf.cell(zw[2], 8, conv, border=1, align="R",
+                        new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.set_xy(zx[3], y)
+                pdf.cell(zw[3], 8, official, border=1, align="R",
+                        new_x=XPos.RIGHT, new_y=YPos.TOP)
+                y += 8
+        y += 4
+        # proof screenshot: per-invoice upload if present, else the default
+        # screenshot shipped with the app (Arkar's screenshot of Zoom's
+        # official pricing page).
+        proof = doc.get("proof_image") or ""
+        proof_file = os.path.join(DATA_DIR, proof) if proof else ""
+        if not proof_file or not os.path.isfile(proof_file):
+            proof_file = DEFAULT_PROOF_IMAGE \
+                if os.path.isfile(DEFAULT_PROOF_IMAGE) else ""
+        if proof_file:
+            try:
+                from PIL import Image
+                with Image.open(proof_file) as _im:
+                    _iw, _ih = _im.size
+            except Exception:
+                _iw, _ih = 1139, 1062
+            img_w = 120
+            img_h = img_w * _ih / _iw
+            if y + 8 + img_h > 270:
+                pdf.add_page()
+                y = pdf.get_y()
+            pdf.set_xy(12, y)
+            pdf.set_font("ns", "", 9)
+            pdf.set_text_color(110, 110, 110)
+            pdf.cell(0, 6, "Official Zoom pricing - zoom.us/pricing",
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            y = pdf.get_y() + 1
+            try:
+                pdf.image(proof_file, x=12, y=y, w=img_w)
+            except Exception as e:
+                print("proof image embed failed:", e, flush=True)
+            else:
+                y += img_h + 3
+            pdf.set_text_color(0, 0, 0)
+
     if biz.get("payment_details"):
         if y > 245:
             pdf.add_page()
@@ -1329,6 +1535,17 @@ def settings_business():
     if request.method == "POST":
         for k in ("name", "address", "email", "phone", "website", "tax_id"):
             b[k] = (request.form.get(k) or "").strip()
+        for k in ("zoom_rate_ks_per_usd", "zoom_prev_rate_ks_per_usd",
+                  "zoom_official_1mo_usd", "zoom_official_3mo_usd"):
+            b[k] = parse_num(request.form.get(k))
+        _usd = parse_num(request.form.get("zoom_usd_per_month"))
+        # "7.9545" is the 4-decimal display of the exact base 35000/4400;
+        # keep the exact fraction so the historical K35,000 / K105,000
+        # reproduce exactly at the old rate (the rounded 7.9545 gives
+        # K104,999 for 3 months at 4,400 Ks/USD).
+        if abs(_usd - round(ZOOM_USD_BASE, 4)) < 1e-9:
+            _usd = ZOOM_USD_BASE
+        b["zoom_usd_per_month"] = _usd
         try:
             udir = _user_upload_dir(email)
             logo = request.files.get("logo")
