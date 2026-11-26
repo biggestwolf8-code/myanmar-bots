@@ -4,7 +4,7 @@
 {% block fab %}{% endblock %}
 {% block content %}
 <h1>{% if mode == "new" %}New document{% else %}Edit {{ doc.number }}{% endif %}</h1>
-<form method="post" id="docform">
+<form method="post" id="docform" enctype="multipart/form-data">
 <div class="card">
   <div class="two">
     <div>
@@ -49,6 +49,17 @@
   <datalist id="itemlist">
     {% for it in items %}<option value="{{ it.name }}">{% endfor %}
   </datalist>
+</div>
+
+<div class="card">
+  <h2>Zoom prices</h2>
+  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="show_zoom_prices" style="width:auto" {% if doc.get("show_zoom_prices") %}checked{% endif %}> Show Zoom price table on the PDF</label>
+  <p class="qr-note">Current prices: 1 month K{{ "{:,.0f}".format(zoom.ks_1mo) }} · 3 months K{{ "{:,.0f}".format(zoom.ks_3mo) }} (1 USD = {{ "{:,.0f}".format(zoom.rate) }} Ks). Edit the rate and USD price in <a href="/settings/business">Settings → Business details</a>.</p>
+  <button type="button" class="btn ghost small" id="addzoom">+ Add Zoom Pro (100 participants)</button>
+  <label>Price screenshot (optional — replaces the default)</label>
+  <input type="file" name="proof_image" accept=".png,.jpg,.jpeg">
+  {% if doc.get("proof_image") %}<p><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="remove_proof_image" style="width:auto"> Use the default screenshot instead</label></p>
+  {% else %}<p class="qr-note">Default screenshot: official Zoom pricing (zoom.us/pricing).</p>{% endif %}
 </div>
 
 <div class="card">
@@ -142,6 +153,12 @@ function addRow(desc, qty, rate, tax){
   linesEl.appendChild(row);
 }
 document.getElementById("addline").addEventListener("click", () => addRow("", 1, 0, 0));
+document.getElementById("addzoom").addEventListener("click", () => {
+  addRow({{ "Zoom Pro License - 100 participants, 3 months" | tojson }}, 1, {{ zoom.ks_3mo | tojson }}, 0);
+  const zp = document.querySelector('input[name=show_zoom_prices]');
+  if (zp) zp.checked = true;
+  recalc();
+});
 
 function recalc(){
   let sub = 0, lineTax = 0;

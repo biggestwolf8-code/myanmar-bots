@@ -21,6 +21,15 @@
     <div><label>Website</label><input type="text" name="website" value="{{ biz.website }}"></div>
     <div><label>Tax ID</label><input type="text" name="tax_id" value="{{ biz.tax_id }}"></div>
   </div>
+  <h2>Zoom prices</h2>
+  <p class="qr-note">Shown on invoices that have "Show Zoom price table" ticked. Both prices are calculated from the USD price x the exchange rate — change the rate and the prices update. The table also shows the previous rate, so customers see why the price changed.</p>
+  <div class="two">
+    <div><label>Exchange rate — Ks per 1 USD (current)</label><input type="number" step="any" min="0" name="zoom_rate_ks_per_usd" value="{{ biz.zoom_rate_ks_per_usd or '' }}"></div>
+    <div><label>Previous rate — Ks per 1 USD</label><input type="number" step="any" min="0" name="zoom_prev_rate_ks_per_usd" value="{{ biz.zoom_prev_rate_ks_per_usd or '' }}"></div>
+    <div><label>USD base price — per month ($)</label><input type="number" step="any" min="0" name="zoom_usd_per_month" value="{{ "%.4f" | format(biz.zoom_usd_per_month) if biz.zoom_usd_per_month else '' }}"></div>
+    <div><label>Official Zoom price — 1 month (USD)</label><input type="number" step="any" min="0" name="zoom_official_1mo_usd" value="{{ biz.zoom_official_1mo_usd or '' }}"></div>
+    <div><label>Official Zoom price — 3 months (USD)</label><input type="number" step="any" min="0" name="zoom_official_3mo_usd" value="{{ biz.zoom_official_3mo_usd or '' }}"></div>
+  </div>
   <p><button class="btn block" type="submit">Save</button></p>
 </div>
 </form>
