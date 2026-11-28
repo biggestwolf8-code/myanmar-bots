@@ -2,3 +2,4 @@ requests
 imageio-ffmpeg
 yt-dlp
 bgutil-ytdlp-pot-provider
+curl-cffi  # for yt-dlp impersonate (Chrome TLS fingerprint)
