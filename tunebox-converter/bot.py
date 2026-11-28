@@ -468,6 +468,13 @@ def _download_with_clients(url, tmpdir, clients, cookies=None,
         "verbose": True,
         "logger": collector,
         "ffmpeg_location": os.path.dirname(ffmpeg_exe()),
+        # Impersonate a real Chrome browser (TLS + HTTP fingerprint,
+        # via curl_cffi in requirements.txt) so YouTube's "Sign in to
+        # confirm you're not a bot" check sees a browser, not a
+        # datacenter script. Added 2026-11-28 after all six passes
+        # failed with that check on Railway while the same links
+        # worked from a non-datacenter IP.
+        "impersonate": "chrome",
     }
     if want_video:
         ydl_opts["merge_output_format"] = "mp4"
@@ -539,7 +546,12 @@ def download_youtube_media(url, tmpdir, want_video=False):
         log("yt-dlp pass (%s) failed:" % label, title_or_err)
         last_err = title_or_err
     err = last_err
-    if "Sign in to confirm you're not a bot" in err:
+    # yt-dlp's message uses a curly apostrophe (you’re), not the
+    # straight one — normalize before matching, or the specific
+    # message below never fires. Caught 2026-11-28: the bot showed the
+    # generic "may be unavailable" line for a bot-check failure.
+    err_norm = err.replace("\u2019", "'").replace("\u2018", "'")
+    if "Sign in to confirm you're not a bot" in err_norm:
         return None, ("YouTube blocked the download — it flagged the "
                       "bot's server as a bot. It's not the video; "
                       "the bot needs a signed-in session to get past "
