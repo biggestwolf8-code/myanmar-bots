@@ -29,6 +29,9 @@ Env vars:
                       fail with "login required".
     FACEBOOK_COOKIES - optional: the same export from facebook.com.
                       Public Facebook videos usually work without it.
+                      Stories always need it — they are login-only.
+                      Without it the bot says so instead of failing
+                      mysteriously.
     POT_PROVIDER_URL - optional: base URL of the bgutil PO-token
                       provider server. Default http://127.0.0.1:4416.
                       On Railway this is the provider service over
@@ -41,7 +44,9 @@ is too big; MP4 is fetched at 720p and re-encoded smaller once if it
 is still too big, otherwise the bot says the clip is too long.
 """
 
+import http.cookiejar
 import ipaddress
+import json
 import os
 import re
 import shutil
@@ -64,6 +69,11 @@ if not BOT_TOKEN:
 
 TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 TG_FILE = f"https://api.telegram.org/file/bot{BOT_TOKEN}"
+
+# Plain browser User-Agent for fetching story pages directly.
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/126.0.0.0 Safari/537.36")
 
 MAX_INPUT_BYTES = 400 * 1024 * 1024
 MAX_SEND_BYTES = 48 * 1024 * 1024  # under Telegram's 50 MB bot limit
@@ -261,6 +271,96 @@ def site_name(url):
     if is_instagram_url(url):
         return "Instagram"
     return None
+
+
+def is_facebook_story_url(url):
+    """True for facebook.com/stories/<id> links. yt-dlp has no
+    Facebook-stories extractor (checked 2026-11-28 on yt-dlp
+    2026.11.23 — its Facebook extractor only knows watch, story.php,
+    permalink.php and the like), so these are fetched by reading the
+    story page with the owner's Facebook cookies instead."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = (parsed.hostname or "").lower()
+    except ValueError:
+        return False
+    if not (host == "facebook.com" or host.endswith(".facebook.com")
+            or host == "fb.com" or host.endswith(".fb.com")):
+        return False
+    parts = [p for p in parsed.path.split("/") if p]
+    return len(parts) == 2 and parts[0] == "stories" \
+        and parts[1].isdigit()
+
+
+def _story_video_url(page_html):
+    """Pull the story's video URL out of the story viewer page.
+    Facebook embeds the media as JSON with playable_url_quality_hd
+    (HD) or playable_url (SD); fall back to the og:video meta tag.
+    Returns the URL or None."""
+    for key in ("playable_url_quality_hd", "playable_url"):
+        m = re.search(r'"%s"\s*:\s*"((?:\\.|[^"\\])*)"' % key,
+                      page_html)
+        if m:
+            try:
+                url = json.loads('"' + m.group(1) + '"')
+            except ValueError:
+                continue
+            if url.startswith("http"):
+                return url
+    m = re.search(
+        r'<meta[^>]+property="og:video(?::secure_url)?"[^>]+content="([^"]+)"',
+        page_html)
+    if m:
+        return m.group(1).replace("&amp;", "&")
+    return None
+
+
+def download_facebook_story(url, tmpdir, want_video=False):
+    """Fetch one Facebook story (facebook.com/stories/<id>) with the
+    owner's Facebook sign-in. Stories are login-only, so this needs
+    FACEBOOK_COOKIES; without them it says so instead of failing
+    mysteriously. Returns (path, title) or (None, error)."""
+    story_id = [p for p in urllib.parse.urlparse(url).path.split("/")
+                if p][1]
+    cookies_file = _cookies_file_for("facebook")
+    if not cookies_file:
+        return None, ("Facebook stories need your sign-in — add "
+                      "FACEBOOK_COOKIES to the bot (same cookies.txt "
+                      "export as YouTube, from facebook.com) and send "
+                      "the link again.")
+    jar = http.cookiejar.MozillaCookieJar(cookies_file)
+    try:
+        jar.load(ignore_expires=True, ignore_discard=True)
+    except Exception as e:
+        log("facebook cookies: could not load:", repr(e)[:200])
+        return None, ("Your saved Facebook sign-in couldn't be read — "
+                      "export a fresh cookies.txt from facebook.com and "
+                      "update FACEBOOK_COOKIES.")
+    try:
+        r = requests.get(url, cookies=jar, timeout=(10, 60),
+                         headers={"User-Agent": BROWSER_UA},
+                         allow_redirects=True)
+    except requests.exceptions.RequestException as e:
+        return None, "Couldn't reach Facebook (%s)." % e.__class__.__name__
+    if r.status_code != 200:
+        return None, ("Facebook answered HTTP %d for that story — it may "
+                      "have expired." % r.status_code)
+    if "login.php" in r.url or "checkpoint" in r.url:
+        return None, ("Facebook asked for a sign-in for that story — your "
+                      "saved FACEBOOK_COOKIES may have expired. Export a "
+                      "fresh cookies.txt and update the bot.")
+    video_url = _story_video_url(r.text)
+    if not video_url:
+        return None, ("I couldn't find a video in that story — it may be "
+                      "a photo story (no audio), expired, or not visible "
+                      "to your account.")
+    if not _url_is_public(video_url):
+        return None, "That story's video link doesn't look public."
+    dest = os.path.join(tmpdir, "input.mp4")
+    ok, err = download_url(video_url, dest)
+    if not ok:
+        return None, err
+    return dest, "Facebook story %s" % story_id
 
 
 def _cookies_file_for(site):
@@ -482,7 +582,11 @@ def download_social_media(url, tmpdir, want_video=False):
 def download_from_site(url, tmpdir, want_video=False):
     """Fetch one YouTube / Facebook / Instagram link: audio (MP3 path)
     or video at 720p (MP4 path). Returns (path, title) on success,
-    (None, error message) on failure."""
+    (None, error message) on failure. Facebook story links bypass
+    yt-dlp (it has no stories extractor) and go through the story
+    page reader instead."""
+    if is_facebook_story_url(url):
+        return download_facebook_story(url, tmpdir, want_video)
     if is_youtube_url(url):
         return download_youtube_media(url, tmpdir, want_video)
     return download_social_media(url, tmpdir, want_video)

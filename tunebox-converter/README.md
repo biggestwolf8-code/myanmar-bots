@@ -33,7 +33,10 @@ from Spotify or any other streaming site.
   usually asks for one even for public reels, so INSTAGRAM_COOKIES
   (same Netscape cookies.txt export as YouTube, from instagram.com)
   is normally needed there. FACEBOOK_COOKIES is the same for
-  facebook.com, for videos that ask for a sign-in.
+  facebook.com, for videos that ask for a sign-in. Facebook story
+  links (facebook.com/stories/<id>) work too, but they always need
+  FACEBOOK_COOKIES — stories are login-only, and yt-dlp has no
+  stories extractor, so the bot reads the story page directly.
 - Paste a direct video link (mp4/mov/webm/mkv/…) — the bot downloads it,
   converts the audio to MP3 and sends the MP3 back (in /mp4 mode a
   video file is sent back as video instead).
@@ -47,7 +50,9 @@ from Spotify or any other streaming site.
   once if it is still too big; longer clips may still not fit.
 - YouTube links are supported (single videos, no playlists); Facebook
   and Instagram links are supported the same way (single posts/reels,
-  no feeds or stories). YouTube may block datacenter IPs with its
+  no feeds). Facebook stories are supported too, but only with
+  FACEBOOK_COOKIES set — stories are login-only. YouTube may block
+  datacenter IPs with its
   "Sign in to confirm you're not a bot" check, in which case the bot
   reports the failure instead of hanging. The bot tries the android,
   iOS, then TV player clients without cookies first (web cookies can
